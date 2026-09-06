@@ -39,7 +39,7 @@ crates/kb-app/                     # Vault、配置、注册、采用、状态�
 crates/kb-cli/                     # 唯一 kb 二进制、参数和人类/JSON 渲染
 assets/vault-template/             # 编译进 kb 的最小 Vault 文本资产
 schemas/                           # 产品拥有的 JSON Schema 源文件
-tests/e2e/                         # 构建后 kb 的真实入口测试
+crates/kb-cli/tests/               # Cargo 注入同包 kb 二进制的真实入口测试
 tests/fixtures/                    # 配置、准入和已有目录夹具
 docs/decisions/proposed/           # 尚未完整实现的架构决定
 docs/reference/                    # 阶段 1 当前行为的查阅文档
@@ -131,9 +131,7 @@ Run `git add docs/decisions/proposed && git commit -m "docs: record Knowledge-Br
 - Create: `crates/kb-protocol/src/lib.rs`
 - Create: `crates/kb-cli/Cargo.toml`
 - Create: `crates/kb-cli/src/main.rs`
-- Create: `tests/e2e/Cargo.toml`
-- Create: `tests/e2e/src/lib.rs`
-- Create: `tests/e2e/tests/help.rs`
+- Create: `crates/kb-cli/tests/help.rs`
 
 **Interfaces:**
 
@@ -163,7 +161,7 @@ fn help_identifies_the_portable_cli() {
 Run:
 
 ```bash
-cargo test -p kb-e2e --test help
+cargo test -p kb-cli --test help
 ```
 
 Expected: failure because the workspace and `kb` binary do not exist.
@@ -179,7 +177,6 @@ members = [
   "crates/kb-app",
   "crates/kb-protocol",
   "crates/kb-cli",
-  "tests/e2e",
 ]
 resolver = "3"
 
@@ -212,7 +209,7 @@ all = "warn"
 pedantic = "warn"
 ```
 
-The e2e crate uses `assert_cmd = "2"`, `predicates = "3"`, `serde_json = "1"`, and `tempfile = "3"` as dev dependencies. Do not create `kb-mcp` or `kb-server` placeholders in this stage.
+`kb-cli` uses `assert_cmd = "2"`, `predicates = "3"`, `serde_json = "1"`, and `tempfile = "3"` as dev dependencies. Keeping the tests in the binary package lets Cargo provide the exact built executable through `CARGO_BIN_EXE_kb`. Do not create `kb-mcp` or `kb-server` placeholders in this stage.
 
 - [ ] **Step 4: Implement the minimum CLI**
 
@@ -235,14 +232,14 @@ Run:
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test -p kb-e2e --test help
+cargo test -p kb-cli --test help
 ```
 
 Expected: all three commands exit 0 and the test launches the built `kb` binary.
 
 - [ ] **Step 6: Commit the workspace baseline**
 
-Run `git add Cargo.toml Cargo.lock rust-toolchain.toml .cargo crates tests/e2e && git commit -m "chore: bootstrap Rust workspace"`.
+Run `git add Cargo.toml Cargo.lock rust-toolchain.toml .cargo crates && git commit -m "chore: bootstrap Rust workspace"`.
 
 ### Task 3: Define schema versions, stable errors and JSON envelopes
 
@@ -376,7 +373,7 @@ Run `git add crates/kb-core crates/kb-protocol && git commit -m "feat: define sc
 - Create: `crates/kb-core/src/platform.rs`
 - Modify: `crates/kb-core/src/lib.rs`
 - Create: `crates/kb-core/tests/path_rules.rs`
-- Create: `tests/e2e/tests/vault_discovery.rs`
+- Create: `crates/kb-cli/tests/vault_discovery.rs`
 
 **Interfaces:**
 
@@ -435,7 +432,7 @@ Expected: all active tests pass on the current OS.
 
 - [ ] **Step 7: Commit portable path enforcement**
 
-Run `git add crates/kb-core tests/e2e/tests/vault_discovery.rs && git commit -m "feat: enforce portable vault paths"`.
+Run `git add crates/kb-core crates/kb-cli/tests/vault_discovery.rs && git commit -m "feat: enforce portable vault paths"`.
 
 ### Task 5: Embed and initialize the minimum Vault
 
@@ -452,7 +449,7 @@ Run `git add crates/kb-core tests/e2e/tests/vault_discovery.rs && git commit -m 
 - Create: `crates/kb-app/src/init.rs`
 - Modify: `crates/kb-app/src/lib.rs`
 - Create: `crates/kb-app/tests/init.rs`
-- Create: `tests/e2e/tests/init.rs`
+- Create: `crates/kb-cli/tests/init.rs`
 
 **Interfaces:**
 
@@ -500,7 +497,7 @@ fn init_creates_only_the_minimum_vault() {
 
 - [ ] **Step 2: Verify the test fails**
 
-Run `cargo test -p kb-e2e --test init`.
+Run `cargo test -p kb-cli --test init`.
 
 Expected: `kb init` is not a recognized command.
 
@@ -549,14 +546,14 @@ Run:
 
 ```bash
 cargo test -p kb-app --test init
-cargo test -p kb-e2e --test init
+cargo test -p kb-cli --test init
 ```
 
 Expected: both pass and the e2e test reopens `.kb/config.yml` to verify the UUID and schema version.
 
 - [ ] **Step 7: Commit minimum Vault initialization**
 
-Run `git add assets schemas crates/kb-app tests/e2e/tests/init.rs && git commit -m "feat: initialize minimum portable vault"`.
+Run `git add assets schemas crates/kb-app crates/kb-cli/tests/init.rs && git commit -m "feat: initialize minimum portable vault"`.
 
 ### Task 6: Load layered configuration with field provenance
 
@@ -654,7 +651,7 @@ Run `git add crates/kb-core crates/kb-app tests/fixtures/config && git commit -m
 - Create: `crates/kb-app/tests/config_edit.rs`
 - Create: `tests/fixtures/config/comments/config.yml`
 - Create: `tests/fixtures/config/comments/admission.yml`
-- Create: `tests/e2e/tests/config.rs`
+- Create: `crates/kb-cli/tests/config.rs`
 
 **Interfaces:**
 
@@ -706,14 +703,14 @@ Run:
 
 ```bash
 cargo test -p kb-app --test config_edit
-cargo test -p kb-e2e --test config
+cargo test -p kb-cli --test config
 ```
 
 Expected: both pass. The e2e suite invokes `kb config set`, re-reads the file, invokes `kb config show --sources --json`, and verifies the effective value and source.
 
 - [ ] **Step 7: Commit lossless configuration editing**
 
-Run `git add crates/kb-app tests/fixtures/config tests/e2e/tests/config.rs && git commit -m "feat: edit configuration without rewriting user text"`.
+Run `git add crates/kb-app tests/fixtures/config crates/kb-cli/tests/config.rs && git commit -m "feat: edit configuration without rewriting user text"`.
 
 ### Task 8: Register, select and relocate Vaults
 
@@ -724,7 +721,7 @@ Run `git add crates/kb-app tests/fixtures/config tests/e2e/tests/config.rs && gi
 - Modify: `crates/kb-app/src/init.rs`
 - Modify: `crates/kb-app/src/lib.rs`
 - Create: `crates/kb-app/tests/registry.rs`
-- Create: `tests/e2e/tests/vault.rs`
+- Create: `crates/kb-cli/tests/vault.rs`
 
 **Interfaces:**
 
@@ -782,14 +779,14 @@ Run:
 
 ```bash
 cargo test -p kb-app --test registry
-cargo test -p kb-e2e --test vault
+cargo test -p kb-cli --test vault
 ```
 
 Expected: tests use overridden user directories, move the Vault, observe the stale registration, rebind it, and reopen it by UUID.
 
 - [ ] **Step 7: Commit Vault registration and relocation**
 
-Run `git add crates/kb-app tests/e2e/tests/vault.rs && git commit -m "feat: register and relocate vaults"`.
+Run `git add crates/kb-app crates/kb-cli/tests/vault.rs && git commit -m "feat: register and relocate vaults"`.
 
 ### Task 9: Plan and apply adoption without touching existing content
 
@@ -801,7 +798,7 @@ Run `git add crates/kb-app tests/e2e/tests/vault.rs && git commit -m "feat: regi
 - Create: `crates/kb-app/src/adopt.rs`
 - Modify: `crates/kb-app/src/lib.rs`
 - Create: `crates/kb-app/tests/adopt.rs`
-- Create: `tests/e2e/tests/adopt.rs`
+- Create: `crates/kb-cli/tests/adopt.rs`
 
 **Interfaces:**
 
@@ -870,14 +867,14 @@ Run:
 
 ```bash
 cargo test -p kb-app --test adopt
-cargo test -p kb-e2e --test adopt
+cargo test -p kb-cli --test adopt
 ```
 
 Expected: planning is read-only, stale plans make no target changes, apply preserves the note byte-for-byte, and repeated apply returns the stored result.
 
 - [ ] **Step 7: Commit planned adoption**
 
-Run `git add crates/kb-core crates/kb-app tests/e2e/tests/adopt.rs && git commit -m "feat: adopt existing directories through plans"`.
+Run `git add crates/kb-core crates/kb-app crates/kb-cli/tests/adopt.rs && git commit -m "feat: adopt existing directories through plans"`.
 
 ### Task 10: Wire the Stage 1 command surface, status and diagnostics
 
@@ -891,9 +888,9 @@ Run `git add crates/kb-core crates/kb-app tests/e2e/tests/adopt.rs && git commit
 - Create: `crates/kb-cli/src/args.rs`
 - Create: `crates/kb-cli/src/render.rs`
 - Modify: `crates/kb-cli/src/main.rs`
-- Create: `tests/e2e/tests/json_contract.rs`
-- Create: `tests/e2e/tests/doctor.rs`
-- Modify: `tests/e2e/tests/vault_discovery.rs`
+- Create: `crates/kb-cli/tests/json_contract.rs`
+- Create: `crates/kb-cli/tests/doctor.rs`
+- Modify: `crates/kb-cli/tests/vault_discovery.rs`
 
 **Interfaces:**
 
@@ -916,7 +913,7 @@ fn invalid_config_is_stdout_clean_and_machine_readable() {
 
 - [ ] **Step 2: Verify the tests fail**
 
-Run `cargo test -p kb-e2e --test json_contract`.
+Run `cargo test -p kb-cli --test json_contract`.
 
 Expected: commands or response wiring are absent.
 
@@ -962,24 +959,24 @@ Stage 1 capabilities report `direct_search: false`, `bm25: false`, no extractors
 Remove the ignore from `vault_discovery.rs`. Run:
 
 ```bash
-cargo test -p kb-e2e --test vault_discovery
-cargo test -p kb-e2e --test json_contract
-cargo test -p kb-e2e --test doctor
+cargo test -p kb-cli --test vault_discovery
+cargo test -p kb-cli --test json_contract
+cargo test -p kb-cli --test doctor
 ```
 
 Expected: tests launch the built binary, parse only stdout in JSON mode, re-read filesystem state, and verify nonzero process exit codes for errors.
 
 - [ ] **Step 8: Commit the Stage 1 command surface**
 
-Run `git add crates/kb-app crates/kb-cli tests/e2e && git commit -m "feat: expose vault status and diagnostics"`.
+Run `git add crates/kb-app crates/kb-cli && git commit -m "feat: expose vault status and diagnostics"`.
 
 ### Task 11: Prove Stage 1 across operating systems and after relocation
 
 **Files:**
 
 - Create: `.github/workflows/phase-1.yml`
-- Create: `tests/e2e/tests/phase1_journey.rs`
-- Create: `tests/e2e/tests/portable_names.rs`
+- Create: `crates/kb-cli/tests/phase1_journey.rs`
+- Create: `crates/kb-cli/tests/portable_names.rs`
 - Create: `scripts/check-stage-1.sh`
 - Create: `scripts/check-stage-1.ps1`
 
@@ -1039,7 +1036,7 @@ Expected on the current macOS host: all checks exit 0. This proves only the macO
 
 - [ ] **Step 7: Commit the Stage 1 journey gate**
 
-Run `git add .github scripts tests/e2e && git commit -m "test: cover the Stage 1 vault journey"`. Leave the phase status unaccepted until native Windows and Linux evidence exists.
+Run `git add .github scripts crates/kb-cli/tests && git commit -m "test: cover the Stage 1 vault journey"`. Leave the phase status unaccepted until native Windows and Linux evidence exists.
 
 ### Task 12: Publish Stage 1 reference and evaluate the phase gate
 
