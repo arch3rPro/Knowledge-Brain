@@ -189,6 +189,9 @@ fn config_set_validates_the_complete_candidate_before_writing() {
             "--yes",
             "--json",
         ])
+        .env("KB_CONFIG_DIR", temp.path().join("user-config"))
+        .env("KB_STATE_DIR", temp.path().join("user-state"))
+        .env("KB_CACHE_DIR", temp.path().join("user-cache"))
         .env("KB_LIMITS_MAX_FILE_BYTES", "0")
         .output()
         .unwrap();
@@ -218,6 +221,9 @@ fn config_set_rejects_multiple_target_layers() {
             "--user",
             "--yes",
         ])
+        .env("KB_CONFIG_DIR", temp.path().join("user-config"))
+        .env("KB_STATE_DIR", temp.path().join("user-state"))
+        .env("KB_CACHE_DIR", temp.path().join("user-cache"))
         .output()
         .unwrap();
 
@@ -226,8 +232,21 @@ fn config_set_rejects_multiple_target_layers() {
 }
 
 fn run(arguments: &[&str]) -> serde_json::Value {
+    let vault = if arguments.first() == Some(&"init") {
+        std::path::Path::new(arguments[1])
+    } else {
+        let index = arguments
+            .iter()
+            .position(|argument| *argument == "--vault")
+            .unwrap();
+        std::path::Path::new(arguments[index + 1])
+    };
+    let user_root = vault.parent().unwrap();
     let output = Command::cargo_bin("kb")
         .unwrap()
+        .env("KB_CONFIG_DIR", user_root.join("user-config"))
+        .env("KB_STATE_DIR", user_root.join("user-state"))
+        .env("KB_CACHE_DIR", user_root.join("user-cache"))
         .args(arguments)
         .output()
         .unwrap();

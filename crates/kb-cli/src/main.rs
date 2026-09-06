@@ -2,13 +2,16 @@ use std::{collections::BTreeMap, path::PathBuf, process::ExitCode};
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
-    AdmissionAction, ConfigOverrides, ConfigTarget, InitRequest, UserPaths, admission_change,
-    config_get, config_set, config_show, config_unset, config_validate, init_vault, load_admission,
+    AdmissionAction, ConfigOverrides, ConfigTarget, InitRequest, UserPaths, VaultSelection,
+    admission_change, config_get, config_set, config_show, config_unset, config_validate,
+    init_and_register_vault, init_vault, list_vaults, load_admission, rebind_vault, register_vault,
+    resolve_vault, unregister_vault,
 };
 use kb_core::KbError;
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Serialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(
@@ -34,6 +37,44 @@ enum Commands {
     Config {
         #[command(subcommand)]
         command: ConfigCommands,
+    },
+    /// Manage machine-local Vault registrations.
+    Vault {
+        #[command(subcommand)]
+        command: VaultCommands,
+    },
+    /// Show resolved paths for the selected Vault.
+    Paths {
+        #[command(flatten)]
+        context: VaultContext,
+    },
+}
+
+#[derive(Subcommand)]
+enum VaultCommands {
+    /// List registered Vaults without opening them.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Register an initialized Vault.
+    Register {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Update the path for a registered stable Vault ID.
+    Rebind {
+        vault_id: Uuid,
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Forget a registration without deleting Vault data.
+    Unregister {
+        vault_id: Uuid,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -136,9 +177,9 @@ enum AdmissionCommands {
 
 #[derive(Debug, Clone, Args)]
 struct VaultContext {
-    /// Vault directory. Registry IDs and discovery are added by the Vault task.
+    /// Vault path or registered stable ID.
     #[arg(long)]
-    vault: PathBuf,
+    vault: Option<String>,
     /// Emit one stable JSON response on stdout.
     #[arg(long)]
     json: bool,
@@ -182,8 +223,38 @@ fn main() -> ExitCode {
 
 fn dispatch(command: Commands) -> Result<Value, KbError> {
     match command {
-        Commands::Init { target, .. } => to_value(init_vault(&InitRequest { target })?),
+        Commands::Init { target, .. } => {
+            let request = InitRequest { target };
+            let environment = environment();
+            let mut report = match UserPaths::resolve(&environment) {
+                Ok(paths) => init_and_register_vault(&request, &paths)?,
+                Err(error) => {
+                    let mut report = init_vault(&request)?;
+                    report.warnings.push(format!(
+                        "Vault initialized but not registered: {error} Run kb vault register {}.",
+                        report.root.display()
+                    ));
+                    report
+                }
+            };
+            report.warnings.sort();
+            to_value(report)
+        }
         Commands::Config { command } => dispatch_config(command),
+        Commands::Vault { command } => dispatch_vault(command),
+        Commands::Paths { context } => {
+            let (_, resolved) = resolve_context(&context)?;
+            Ok(serde_json::json!({
+                "vault_id": resolved.vault_id,
+                "root": resolved.root,
+                "config": resolved.root.join(".kb/config.yml"),
+                "local_config": resolved.root.join(".kb/config.local.yml"),
+                "admission": resolved.root.join("admission.yml"),
+                "wiki": resolved.root.join("Wiki"),
+                "runtime": resolved.root.join(".kb/runtime"),
+                "cache": resolved.root.join(".kb/cache"),
+            }))
+        }
     }
 }
 
@@ -191,11 +262,13 @@ fn dispatch_config(command: ConfigCommands) -> Result<Value, KbError> {
     match command {
         ConfigCommands::Show { sources, context } => {
             let (paths, overrides) = runtime_config()?;
-            config_show(&context.vault, &paths, &overrides, sources)
+            let vault = resolve_with_paths(&context, &paths, &overrides.environment)?;
+            config_show(&vault.root, &paths, &overrides, sources)
         }
         ConfigCommands::Get { key, context } => {
             let (paths, overrides) = runtime_config()?;
-            config_get(&context.vault, &paths, &overrides, &key)
+            let vault = resolve_with_paths(&context, &paths, &overrides.environment)?;
+            config_get(&vault.root, &paths, &overrides, &key)
         }
         ConfigCommands::Set {
             key,
@@ -205,8 +278,9 @@ fn dispatch_config(command: ConfigCommands) -> Result<Value, KbError> {
             yes,
         } => {
             let (paths, overrides) = runtime_config()?;
+            let vault = resolve_with_paths(&context, &paths, &overrides.environment)?;
             to_value(config_set(
-                &context.vault,
+                &vault.root,
                 &paths,
                 &overrides,
                 layer.target(),
@@ -222,8 +296,9 @@ fn dispatch_config(command: ConfigCommands) -> Result<Value, KbError> {
             yes,
         } => {
             let (paths, overrides) = runtime_config()?;
+            let vault = resolve_with_paths(&context, &paths, &overrides.environment)?;
             to_value(config_unset(
-                &context.vault,
+                &vault.root,
                 &paths,
                 &overrides,
                 layer.target(),
@@ -233,7 +308,8 @@ fn dispatch_config(command: ConfigCommands) -> Result<Value, KbError> {
         }
         ConfigCommands::Validate { context } => {
             let (paths, overrides) = runtime_config()?;
-            to_value(config_validate(&context.vault, &paths, &overrides)?)
+            let vault = resolve_with_paths(&context, &paths, &overrides.environment)?;
+            to_value(config_validate(&vault.root, &paths, &overrides)?)
         }
         ConfigCommands::Admission { command } => dispatch_admission(command),
     }
@@ -241,37 +317,72 @@ fn dispatch_config(command: ConfigCommands) -> Result<Value, KbError> {
 
 fn dispatch_admission(command: AdmissionCommands) -> Result<Value, KbError> {
     match command {
-        AdmissionCommands::List { context } => to_value(load_admission(&context.vault)?),
+        AdmissionCommands::List { context } => {
+            let (_, vault) = resolve_context(&context)?;
+            to_value(load_admission(&vault.root)?)
+        }
         AdmissionCommands::Add {
             id,
             path,
             context,
             yes,
-        } => to_value(admission_change(
-            &context.vault,
-            &AdmissionAction::Add { id, path },
-            yes,
-        )?),
-        AdmissionCommands::Enable { id, context, yes } => to_value(admission_change(
-            &context.vault,
-            &AdmissionAction::Enable { id },
-            yes,
-        )?),
-        AdmissionCommands::Disable { id, context, yes } => to_value(admission_change(
-            &context.vault,
-            &AdmissionAction::Disable { id },
-            yes,
-        )?),
-        AdmissionCommands::Remove { id, context, yes } => to_value(admission_change(
-            &context.vault,
-            &AdmissionAction::Remove { id },
-            yes,
-        )?),
+        } => {
+            let (_, vault) = resolve_context(&context)?;
+            to_value(admission_change(
+                &vault.root,
+                &AdmissionAction::Add { id, path },
+                yes,
+            )?)
+        }
+        AdmissionCommands::Enable { id, context, yes } => {
+            let (_, vault) = resolve_context(&context)?;
+            to_value(admission_change(
+                &vault.root,
+                &AdmissionAction::Enable { id },
+                yes,
+            )?)
+        }
+        AdmissionCommands::Disable { id, context, yes } => {
+            let (_, vault) = resolve_context(&context)?;
+            to_value(admission_change(
+                &vault.root,
+                &AdmissionAction::Disable { id },
+                yes,
+            )?)
+        }
+        AdmissionCommands::Remove { id, context, yes } => {
+            let (_, vault) = resolve_context(&context)?;
+            to_value(admission_change(
+                &vault.root,
+                &AdmissionAction::Remove { id },
+                yes,
+            )?)
+        }
+    }
+}
+
+fn dispatch_vault(command: VaultCommands) -> Result<Value, KbError> {
+    let paths = UserPaths::resolve(&environment())?;
+    match command {
+        VaultCommands::List { .. } => Ok(serde_json::json!({
+            "vaults": list_vaults(&paths)?,
+        })),
+        VaultCommands::Register { path, .. } => to_value(register_vault(&paths, &path)?),
+        VaultCommands::Rebind { vault_id, path, .. } => {
+            to_value(rebind_vault(&paths, vault_id, &path)?)
+        }
+        VaultCommands::Unregister { vault_id, .. } => {
+            unregister_vault(&paths, vault_id)?;
+            Ok(serde_json::json!({
+                "vault_id": vault_id,
+                "unregistered": true,
+            }))
+        }
     }
 }
 
 fn runtime_config() -> Result<(UserPaths, ConfigOverrides), KbError> {
-    let environment = std::env::vars().collect::<BTreeMap<_, _>>();
+    let environment = environment();
     let paths = UserPaths::resolve(&environment)?;
     Ok((
         paths,
@@ -280,6 +391,34 @@ fn runtime_config() -> Result<(UserPaths, ConfigOverrides), KbError> {
             cli: BTreeMap::new(),
         },
     ))
+}
+
+fn resolve_context(context: &VaultContext) -> Result<(UserPaths, kb_app::ResolvedVault), KbError> {
+    let environment = environment();
+    let paths = UserPaths::resolve(&environment)?;
+    let vault = resolve_with_paths(context, &paths, &environment)?;
+    Ok((paths, vault))
+}
+
+fn resolve_with_paths(
+    context: &VaultContext,
+    paths: &UserPaths,
+    environment: &BTreeMap<String, String>,
+) -> Result<kb_app::ResolvedVault, KbError> {
+    let current_dir = std::env::current_dir()
+        .map_err(|error| KbError::io_failure("read current directory", ".", error.to_string()))?;
+    resolve_vault(
+        paths,
+        &VaultSelection {
+            explicit: context.vault.clone(),
+            environment: environment.clone(),
+            current_dir,
+        },
+    )
+}
+
+fn environment() -> BTreeMap<String, String> {
+    std::env::vars().collect()
 }
 
 fn to_value(value: impl Serialize) -> Result<Value, KbError> {
@@ -322,6 +461,13 @@ fn render_error(error: KbError, json_output: bool) -> ExitCode {
 fn command_wants_json(command: &Commands) -> bool {
     match command {
         Commands::Init { json, .. } => *json,
+        Commands::Vault { command } => match command {
+            VaultCommands::List { json }
+            | VaultCommands::Register { json, .. }
+            | VaultCommands::Rebind { json, .. }
+            | VaultCommands::Unregister { json, .. } => *json,
+        },
+        Commands::Paths { context } => context.json,
         Commands::Config { command } => match command {
             ConfigCommands::Show { context, .. }
             | ConfigCommands::Get { context, .. }

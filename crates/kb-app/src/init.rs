@@ -8,6 +8,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
+    UserPaths, register_vault,
     storage::atomic_replace,
     template::{EMPTY_DIRECTORIES, STATIC_FILES, config_yaml},
 };
@@ -68,6 +69,28 @@ pub fn init_vault(request: &InitRequest) -> Result<InitReport, KbError> {
         created_files: created_file_names(),
         warnings,
     })
+}
+
+/// Create a minimum Vault and attempt to add it to the machine-local registry.
+///
+/// A registry failure is returned as a warning because the newly created Vault
+/// remains valid and can be registered later.
+///
+/// # Errors
+///
+/// Returns the same target and staging errors as [`init_vault`].
+pub fn init_and_register_vault(
+    request: &InitRequest,
+    user_paths: &UserPaths,
+) -> Result<InitReport, KbError> {
+    let mut report = init_vault(request)?;
+    if let Err(error) = register_vault(user_paths, &report.root) {
+        report.warnings.push(format!(
+            "Vault initialized but not registered: {error} Run kb vault register {}.",
+            report.root.display()
+        ));
+    }
+    Ok(report)
 }
 
 fn initialize_nonexistent(target: &Path, vault_id: Uuid) -> Result<Vec<String>, KbError> {

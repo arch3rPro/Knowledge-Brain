@@ -713,6 +713,7 @@ Run `git add crates/kb-app tests/fixtures/config crates/kb-cli/tests/config.rs &
 - Modify: `crates/kb-app/src/init.rs`
 - Modify: `crates/kb-app/src/lib.rs`
 - Create: `crates/kb-app/tests/registry.rs`
+- Modify: `crates/kb-cli/src/main.rs`
 - Create: `crates/kb-cli/tests/vault.rs`
 
 **Interfaces:**
