@@ -3,6 +3,7 @@
 mod admission;
 mod config;
 mod error;
+mod operation;
 mod path;
 mod platform;
 mod version;
@@ -14,6 +15,9 @@ pub use config::{
     SearchMode, Sourced,
 };
 pub use error::{ErrorCode, KbError};
+pub use operation::{
+    AdoptionPlan, ObservedEntry, ObservedKind, OperationId, OperationKind, PlannedFile,
+};
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,
     portability_key, validate_admission_directory, validate_generated_path,

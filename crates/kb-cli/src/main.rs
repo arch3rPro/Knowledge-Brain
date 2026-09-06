@@ -2,12 +2,13 @@ use std::{collections::BTreeMap, path::PathBuf, process::ExitCode};
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
-    AdmissionAction, ConfigOverrides, ConfigTarget, InitRequest, UserPaths, VaultSelection,
-    admission_change, config_get, config_set, config_show, config_unset, config_validate,
-    init_and_register_vault, init_vault, list_vaults, load_admission, rebind_vault, register_vault,
-    resolve_vault, unregister_vault,
+    AdmissionAction, ConfigOverrides, ConfigTarget, InitRequest, OperationState, UserPaths,
+    VaultSelection, admission_change, apply_operation, config_get, config_set, config_show,
+    config_unset, config_validate, create_adoption_plan, init_and_register_vault, init_vault,
+    inspect_operation, list_vaults, load_admission, rebind_vault, register_vault, resolve_vault,
+    unregister_vault,
 };
-use kb_core::KbError;
+use kb_core::{KbError, OperationId};
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Serialize;
 use serde_json::Value;
@@ -47,6 +48,33 @@ enum Commands {
     Paths {
         #[command(flatten)]
         context: VaultContext,
+    },
+    /// Review an existing directory and save an adoption plan.
+    Adopt {
+        target: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Apply one previously reviewed operation.
+    Apply {
+        operation_id: OperationId,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Inspect stored operation plans and results.
+    Operation {
+        #[command(subcommand)]
+        command: OperationCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum OperationCommands {
+    /// Show a plan or completed result by operation ID.
+    Show {
+        operation_id: OperationId,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -255,6 +283,29 @@ fn dispatch(command: Commands) -> Result<Value, KbError> {
                 "cache": resolved.root.join(".kb/cache"),
             }))
         }
+        Commands::Adopt { target, .. } => {
+            let paths = UserPaths::resolve(&environment())?;
+            to_value(create_adoption_plan(&target, &paths)?)
+        }
+        Commands::Apply { operation_id, .. } => {
+            let paths = UserPaths::resolve(&environment())?;
+            to_value(apply_operation(&paths, operation_id)?)
+        }
+        Commands::Operation { command } => match command {
+            OperationCommands::Show { operation_id, .. } => {
+                let paths = UserPaths::resolve(&environment())?;
+                match inspect_operation(&paths, operation_id)? {
+                    OperationState::Planned(plan) => Ok(serde_json::json!({
+                        "state": "planned",
+                        "plan": plan,
+                    })),
+                    OperationState::Applied(result) => Ok(serde_json::json!({
+                        "state": "applied",
+                        "result": result,
+                    })),
+                }
+            }
+        },
     }
 }
 
@@ -460,7 +511,9 @@ fn render_error(error: KbError, json_output: bool) -> ExitCode {
 
 fn command_wants_json(command: &Commands) -> bool {
     match command {
-        Commands::Init { json, .. } => *json,
+        Commands::Init { json, .. }
+        | Commands::Adopt { json, .. }
+        | Commands::Apply { json, .. } => *json,
         Commands::Vault { command } => match command {
             VaultCommands::List { json }
             | VaultCommands::Register { json, .. }
@@ -468,6 +521,9 @@ fn command_wants_json(command: &Commands) -> bool {
             | VaultCommands::Unregister { json, .. } => *json,
         },
         Commands::Paths { context } => context.json,
+        Commands::Operation { command } => match command {
+            OperationCommands::Show { json, .. } => *json,
+        },
         Commands::Config { command } => match command {
             ConfigCommands::Show { context, .. }
             | ConfigCommands::Get { context, .. }

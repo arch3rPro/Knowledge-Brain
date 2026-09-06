@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use kb_core::{
-    detect_portability_collisions, ensure_not_link_or_reparse_point, find_vault_root,
-    validate_admission_directory,
+    PortableRelativePath, detect_portability_collisions, ensure_not_link_or_reparse_point,
+    find_vault_root, validate_admission_directory,
 };
 
 #[test]
@@ -24,6 +24,13 @@ fn admission_accepts_one_portable_component_only() {
             "{path}"
         );
     }
+}
+
+#[test]
+fn deserialization_revalidates_portable_paths() {
+    assert!(serde_json::from_str::<PortableRelativePath>(r#""Wiki/index.md""#).is_ok());
+    assert!(serde_json::from_str::<PortableRelativePath>(r#""../../outside""#).is_err());
+    assert!(serde_json::from_str::<PortableRelativePath>(r#""CON/file.md""#).is_err());
 }
 
 #[test]
