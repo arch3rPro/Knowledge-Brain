@@ -1,10 +1,18 @@
 //! Domain types and deterministic rules shared by every Knowledge-Brain entry point.
 
+mod admission;
+mod config;
 mod error;
 mod path;
 mod platform;
 mod version;
 
+pub use admission::{AdmissionDocument, AdmissionEntry};
+pub use config::{
+    ConfigSource, EffectiveConfig, EffectiveFiles, EffectiveLimits, EffectiveOperations,
+    EffectiveSearch, PartialConfig, PartialFiles, PartialLimits, PartialOperations, PartialSearch,
+    SearchMode, Sourced,
+};
 pub use error::{ErrorCode, KbError};
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,

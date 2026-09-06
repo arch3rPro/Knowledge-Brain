@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 atomic-write-file.workspace = true
+directories.workspace = true
 kb-core = { path = "../kb-core" }
 serde.workspace = true
 serde_json.workspace = true
