@@ -47,7 +47,17 @@ fn init_creates_only_the_minimum_vault() {
     assert!(uuid::Uuid::parse_str(config["vault_id"].as_str().unwrap()).is_ok());
     assert_eq!(config["search"]["mode"].as_str(), Some("direct"));
 
-    assert!(!vault.join("AI-Toolkit").exists());
+    let top_level = std::fs::read_dir(&vault)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        top_level,
+        [".kb", "KB.md", "Wiki", "admission.yml"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    );
     assert!(!vault.join(".git").exists());
     assert!(!vault.join(".kb/config.local.yml").exists());
 }
