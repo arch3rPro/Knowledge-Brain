@@ -1,0 +1,6 @@
+/target/
+/.worktrees/
+/reference/
+/.superpowers/
+.DS_Store
+*.tmp
