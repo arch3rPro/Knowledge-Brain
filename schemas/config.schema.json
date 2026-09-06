@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-brain.local/schemas/config.schema.json",
+  "title": "Knowledge-Brain Vault configuration",
+  "type": "object",
+  "required": ["schema_version", "vault_id"],
+  "properties": {
+    "schema_version": {
+      "const": "v1.0"
+    },
+    "vault_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "search": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": ["direct", "bm25"]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

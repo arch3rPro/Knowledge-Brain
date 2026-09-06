@@ -6,7 +6,15 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+atomic-write-file.workspace = true
 kb-core = { path = "../kb-core" }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

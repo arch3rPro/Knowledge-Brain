@@ -18,6 +18,7 @@ pub enum ErrorCode {
     TargetNotEmpty,
     UnsafePath,
     OperationNotFound,
+    IoFailure,
 }
 
 /// A caller-facing application error with stable machine semantics.
@@ -65,5 +66,23 @@ impl KbError {
             format!("Correct {path} and run the command again."),
         )
         .with_details(json!({ "path": path, "reason": reason }))
+    }
+
+    #[must_use]
+    pub fn io_failure(
+        action: impl Into<String>,
+        path: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        let action = action.into();
+        let path = path.into();
+        let reason = reason.into();
+        Self::new(
+            ErrorCode::IoFailure,
+            format!("Cannot {action} {path}: {reason}"),
+            false,
+            "Check the path, permissions, and available storage, then run the command again.",
+        )
+        .with_details(json!({ "action": action, "path": path, "reason": reason }))
     }
 }

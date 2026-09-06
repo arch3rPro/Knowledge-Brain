@@ -448,7 +448,6 @@ Run `git add crates/kb-core crates/kb-cli/tests/vault_discovery.rs && git commit
 - Create: `crates/kb-app/src/storage.rs`
 - Create: `crates/kb-app/src/init.rs`
 - Modify: `crates/kb-app/src/lib.rs`
-- Create: `crates/kb-app/tests/init.rs`
 - Create: `crates/kb-cli/tests/init.rs`
 
 **Interfaces:**
@@ -542,14 +541,9 @@ Add tests for an existing non-empty target, target file, link target, and a targ
 
 - [ ] **Step 6: Run init tests through both module and binary paths**
 
-Run:
+Run `cargo test -p kb-cli --test init`.
 
-```bash
-cargo test -p kb-app --test init
-cargo test -p kb-cli --test init
-```
-
-Expected: both pass and the e2e test reopens `.kb/config.yml` to verify the UUID and schema version.
+Expected: the real-entry test passes and reopens `.kb/config.yml` to verify the UUID and schema version.
 
 - [ ] **Step 7: Commit minimum Vault initialization**
 
