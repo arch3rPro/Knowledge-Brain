@@ -106,7 +106,7 @@ Expected: each of the nine files has all five required markers; proposals may us
 Run:
 
 ```bash
-rg -n 'previously|now|no longer|reviewer|this PR|本次讨论|刚才|此前' docs/decisions/proposed
+rg -n '\b(previously|now|reviewer)\b|no longer|this PR|本次讨论|刚才|此前' docs/decisions/proposed
 ```
 
 Expected: no matches.
