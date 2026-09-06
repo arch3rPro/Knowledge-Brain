@@ -1,0 +1,48 @@
+name: Stage 1 gate
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  native-gate:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            shell: bash
+            command: bash scripts/check-stage-1.sh
+          - name: macOS
+            os: macos-latest
+            shell: bash
+            command: bash scripts/check-stage-1.sh
+          - name: Windows
+            os: windows-latest
+            shell: pwsh
+            command: ./scripts/check-stage-1.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Run native Stage 1 gate
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.command }}
+      - name: Upload diagnostics after failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage-1-${{ matrix.name }}-failure
+          if-no-files-found: ignore
+          path: |
+            target/release/kb*
+            target/stage-1-artifacts/*.json
