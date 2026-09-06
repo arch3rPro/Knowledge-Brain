@@ -1,8 +1,7 @@
 use std::{collections::BTreeMap, fs, path::Path, path::PathBuf};
 
 use kb_core::{
-    CURRENT_SCHEMA_VERSION, ErrorCode, KbError, SchemaVersion, ensure_not_link_or_reparse_point,
-    find_vault_root,
+    ErrorCode, KbError, SchemaVersion, ensure_not_link_or_reparse_point, find_vault_root,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -23,9 +22,9 @@ pub struct ResolvedVault {
 }
 
 #[derive(Debug, Deserialize)]
-struct VaultIdentity {
-    schema_version: SchemaVersion,
-    vault_id: Uuid,
+pub(crate) struct VaultIdentity {
+    pub schema_version: SchemaVersion,
+    pub vault_id: Uuid,
 }
 
 /// Select a Vault deterministically from explicit, environment, directory, or
@@ -72,23 +71,22 @@ pub(crate) fn inspect_vault(root: &Path) -> Result<VaultRecord, KbError> {
             absolute.display()
         )));
     }
-    let config_path = absolute.join(".kb/config.yml");
+    let identity = read_vault_identity(&absolute)?;
+    Ok(VaultRecord {
+        vault_id: identity.vault_id,
+        path: absolute,
+    })
+}
+
+pub(crate) fn read_vault_identity(root: &Path) -> Result<VaultIdentity, KbError> {
+    let config_path = root.join(".kb/config.yml");
     let bytes = fs::read(&config_path).map_err(|error| {
         KbError::io_failure("read", config_path.display().to_string(), error.to_string())
     })?;
     let identity: VaultIdentity = serde_yaml_ng::from_slice(&bytes).map_err(|error| {
         KbError::invalid_config(config_path.display().to_string(), error.to_string())
     })?;
-    if identity.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(KbError::invalid_config(
-            config_path.display().to_string(),
-            format!("unsupported schema version {}", identity.schema_version),
-        ));
-    }
-    Ok(VaultRecord {
-        vault_id: identity.vault_id,
-        path: absolute,
-    })
+    Ok(identity)
 }
 
 fn resolve_selector(

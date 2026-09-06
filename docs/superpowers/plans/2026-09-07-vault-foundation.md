@@ -878,6 +878,7 @@ Run `git add crates/kb-core crates/kb-app crates/kb-cli/tests/adopt.rs && git co
 - Create: `crates/kb-app/src/doctor.rs`
 - Create: `crates/kb-app/src/capabilities.rs`
 - Create: `crates/kb-app/src/lock.rs`
+- Create: `crates/kb-app/src/app.rs`
 - Modify: `crates/kb-app/src/lib.rs`
 - Create: `crates/kb-cli/src/args.rs`
 - Create: `crates/kb-cli/src/render.rs`
@@ -885,6 +886,8 @@ Run `git add crates/kb-core crates/kb-app crates/kb-cli/tests/adopt.rs && git co
 - Create: `crates/kb-cli/tests/json_contract.rs`
 - Create: `crates/kb-cli/tests/doctor.rs`
 - Modify: `crates/kb-cli/tests/vault_discovery.rs`
+- Create: `crates/kb-app/tests/lock.rs`
+- Modify: `crates/kb-core/src/error.rs`
 
 **Interfaces:**
 

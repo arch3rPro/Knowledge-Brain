@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use kb_core::{
     CURRENT_SCHEMA_VERSION, ConfigSource, EffectiveConfig, KbError, PartialConfig, PartialFiles,
-    PartialLimits, PartialOperations, PartialSearch, SearchMode,
+    PartialLimits, PartialOperations, PartialSearch, SchemaCompatibility, SearchMode,
 };
 
 use crate::UserPaths;
@@ -64,6 +64,9 @@ fn load_effective_config_inner(
             "vault_id is required in Vault configuration",
         )
     })?;
+    let vault_schema = vault
+        .schema_version
+        .ok_or_else(|| KbError::invalid_config(".kb/config.yml", "schema_version is required"))?;
     let local = replacement_layer(replacement, ConfigSource::VaultLocal).map_or_else(
         || {
             load_optional(
@@ -78,6 +81,7 @@ fn load_effective_config_inner(
     reject_non_vault_identity(&local, ".kb/config.local.yml")?;
 
     let mut effective = EffectiveConfig::built_in(vault_id);
+    effective.schema_version = vault_schema;
     effective.apply(user, ConfigSource::User);
     effective.apply(vault, ConfigSource::Vault);
     effective.apply(local, ConfigSource::VaultLocal);
@@ -117,16 +121,36 @@ fn load_optional(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbE
     load_file(path, source)
 }
 
-fn load_file(path: &Path, _source: ConfigSource) -> Result<PartialConfig, KbError> {
+fn load_file(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError> {
     let bytes = fs::read(path).map_err(|error| {
         KbError::io_failure("read", path.display().to_string(), error.to_string())
     })?;
-    parse_config_text(
-        std::str::from_utf8(&bytes).map_err(|error| {
-            KbError::invalid_config(path.display().to_string(), error.to_string())
-        })?,
-        &path.display().to_string(),
-    )
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|error| KbError::invalid_config(path.display().to_string(), error.to_string()))?;
+    let parsed: PartialConfig = serde_yaml_ng::from_str(text)
+        .map_err(|error| KbError::invalid_config(path.display().to_string(), error.to_string()))?;
+    let version = parsed.schema_version.ok_or_else(|| {
+        KbError::invalid_config(path.display().to_string(), "schema_version is required")
+    })?;
+    let compatibility = version.compatibility_with(CURRENT_SCHEMA_VERSION);
+    let accepted = match source {
+        ConfigSource::Vault => matches!(
+            compatibility,
+            SchemaCompatibility::Current | SchemaCompatibility::OlderMigratable
+        ),
+        ConfigSource::User | ConfigSource::VaultLocal => {
+            compatibility == SchemaCompatibility::Current
+        }
+        ConfigSource::BuiltIn | ConfigSource::Environment | ConfigSource::Cli => false,
+    };
+    if accepted {
+        Ok(parsed)
+    } else {
+        Err(KbError::invalid_config(
+            path.display().to_string(),
+            format!("schema {version} is {compatibility:?} for this configuration layer"),
+        ))
+    }
 }
 
 pub(crate) fn parse_config_text(input: &str, path: &str) -> Result<PartialConfig, KbError> {
