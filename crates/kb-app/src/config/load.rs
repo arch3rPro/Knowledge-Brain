@@ -25,20 +25,53 @@ pub fn load_effective_config(
     user_paths: &UserPaths,
     overrides: &ConfigOverrides,
 ) -> Result<EffectiveConfig, KbError> {
-    let user = load_optional(
-        &user_paths.config_dir.join("config.yml"),
-        ConfigSource::User,
+    load_effective_config_inner(vault_root, user_paths, overrides, None)
+}
+
+pub(crate) fn load_effective_config_replacing(
+    vault_root: &Path,
+    user_paths: &UserPaths,
+    overrides: &ConfigOverrides,
+    source: ConfigSource,
+    replacement: PartialConfig,
+) -> Result<EffectiveConfig, KbError> {
+    let replacement = (source, replacement);
+    load_effective_config_inner(vault_root, user_paths, overrides, Some(&replacement))
+}
+
+fn load_effective_config_inner(
+    vault_root: &Path,
+    user_paths: &UserPaths,
+    overrides: &ConfigOverrides,
+    replacement: Option<&(ConfigSource, PartialConfig)>,
+) -> Result<EffectiveConfig, KbError> {
+    let user = replacement_layer(replacement, ConfigSource::User).map_or_else(
+        || {
+            load_optional(
+                &user_paths.config_dir.join("config.yml"),
+                ConfigSource::User,
+            )
+        },
+        Ok,
     )?;
-    let vault = load_required(&vault_root.join(".kb/config.yml"), ConfigSource::Vault)?;
+    let vault = replacement_layer(replacement, ConfigSource::Vault).map_or_else(
+        || load_required(&vault_root.join(".kb/config.yml"), ConfigSource::Vault),
+        Ok,
+    )?;
     let vault_id = vault.vault_id.ok_or_else(|| {
         KbError::invalid_config(
             ".kb/config.yml",
             "vault_id is required in Vault configuration",
         )
     })?;
-    let local = load_optional(
-        &vault_root.join(".kb/config.local.yml"),
-        ConfigSource::VaultLocal,
+    let local = replacement_layer(replacement, ConfigSource::VaultLocal).map_or_else(
+        || {
+            load_optional(
+                &vault_root.join(".kb/config.local.yml"),
+                ConfigSource::VaultLocal,
+            )
+        },
+        Ok,
     )?;
 
     reject_non_vault_identity(&user, "user config")?;
@@ -55,6 +88,16 @@ pub fn load_effective_config(
     effective.apply(cli_layer(&overrides.cli)?, ConfigSource::Cli);
     validate_effective(&effective)?;
     Ok(effective)
+}
+
+fn replacement_layer(
+    replacement: Option<&(ConfigSource, PartialConfig)>,
+    source: ConfigSource,
+) -> Option<PartialConfig> {
+    replacement
+        .as_ref()
+        .filter(|(candidate_source, _)| *candidate_source == source)
+        .map(|(_, config)| config.clone())
 }
 
 fn load_required(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError> {
@@ -78,18 +121,24 @@ fn load_file(path: &Path, _source: ConfigSource) -> Result<PartialConfig, KbErro
     let bytes = fs::read(path).map_err(|error| {
         KbError::io_failure("read", path.display().to_string(), error.to_string())
     })?;
-    let parsed: PartialConfig = serde_yaml_ng::from_slice(&bytes)
-        .map_err(|error| KbError::invalid_config(path.display().to_string(), error.to_string()))?;
+    parse_config_text(
+        std::str::from_utf8(&bytes).map_err(|error| {
+            KbError::invalid_config(path.display().to_string(), error.to_string())
+        })?,
+        &path.display().to_string(),
+    )
+}
+
+pub(crate) fn parse_config_text(input: &str, path: &str) -> Result<PartialConfig, KbError> {
+    let parsed: PartialConfig = serde_yaml_ng::from_str(input)
+        .map_err(|error| KbError::invalid_config(path, error.to_string()))?;
     match parsed.schema_version {
         Some(version) if version == CURRENT_SCHEMA_VERSION => Ok(parsed),
         Some(version) => Err(KbError::invalid_config(
-            path.display().to_string(),
+            path,
             format!("schema {version} requires a compatibility workflow"),
         )),
-        None => Err(KbError::invalid_config(
-            path.display().to_string(),
-            "schema_version is required",
-        )),
+        None => Err(KbError::invalid_config(path, "schema_version is required")),
     }
 }
 

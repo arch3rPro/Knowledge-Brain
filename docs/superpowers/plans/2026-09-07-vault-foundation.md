@@ -199,7 +199,7 @@ sha2 = "0.10"
 thiserror = "2"
 unicode-normalization = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
-yaml-edit = "0.2"
+yaml-edit = "0.3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -643,8 +643,6 @@ Run `git add crates/kb-core crates/kb-app tests/fixtures/config && git commit -m
 - Create: `crates/kb-app/src/config/commands.rs`
 - Modify: `crates/kb-app/src/config/mod.rs`
 - Create: `crates/kb-app/tests/config_edit.rs`
-- Create: `tests/fixtures/config/comments/config.yml`
-- Create: `tests/fixtures/config/comments/admission.yml`
 - Create: `crates/kb-cli/tests/config.rs`
 
 **Interfaces:**
@@ -673,7 +671,7 @@ Expected: the editor is absent.
 
 - [ ] **Step 3: Implement parse-validate-edit-validate-write**
 
-Parse semantics with `serde_yaml_ng` and edit the concrete syntax tree with `yaml_edit::Document`. Before writing:
+Parse semantics with `serde_yaml_ng` and edit the concrete syntax tree with `yaml_edit::YamlFile`, which retains stream-level comments. Before writing:
 
 1. reject duplicate target keys or unsupported YAML constructs at the target node;
 2. calculate and return a line-oriented preview;

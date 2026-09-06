@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, path::Path};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     CURRENT_SCHEMA_VERSION, ErrorCode, KbError, SchemaVersion, ensure_not_link_or_reparse_point,
@@ -10,13 +10,13 @@ use crate::{
 const DEFAULT_INCLUDE: [&str; 3] = ["**/*.md", "**/*.txt", "**/*.pdf"];
 const DEFAULT_EXCLUDE: [&str; 2] = ["**/.git/**", "**/.kb/**"];
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdmissionDocument {
     pub schema_version: SchemaVersion,
     pub directories: Vec<AdmissionEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdmissionEntry {
     pub id: String,
     pub path: String,
