@@ -36,7 +36,31 @@ async fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => render::error(error, false),
         },
+        args::ParsedCommand::Mcp(command) => match run_mcp(command, context) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => render::error(error, false),
+        },
     }
+}
+
+fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError> {
+    let selected = kb_app::run(
+        kb_app::AppRequest::Paths {
+            vault: command.vault,
+        },
+        &context,
+    )?;
+    let vault_id = selected["vault_id"]
+        .as_str()
+        .ok_or_else(|| KbError::invalid_config("selected Vault", "missing vault_id"))?
+        .to_owned();
+    let mut server = kb_mcp::McpServer::new(context, vault_id, command.allow_write);
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    kb_mcp::serve_frames(stdin.lock(), stdout.lock(), |request| {
+        server.handle(request)
+    })
+    .map_err(|error| KbError::io_failure("serve MCP stdio", "stdin/stdout", error.to_string()))
 }
 
 async fn run_server(command: args::ServeCommand, context: AppContext) -> Result<(), KbError> {

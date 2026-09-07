@@ -869,6 +869,7 @@ dependencies = [
  "clap",
  "kb-app",
  "kb-core",
+ "kb-mcp",
  "kb-protocol",
  "kb-server",
  "predicates",

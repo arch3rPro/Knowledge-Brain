@@ -29,7 +29,7 @@ pub fn capabilities() -> Capabilities {
             "builtin-epub".into(),
             "builtin-docx".into(),
         ],
-        mcp: false,
+        mcp: true,
         http: true,
         sse: true,
         commands: vec![

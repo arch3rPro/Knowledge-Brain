@@ -13,6 +13,7 @@ path = "src/main.rs"
 clap.workspace = true
 kb-app = { path = "../kb-app" }
 kb-core = { path = "../kb-core" }
+kb-mcp = { path = "../kb-mcp" }
 kb-protocol = { path = "../kb-protocol" }
 kb-server = { path = "../kb-server" }
 serde.workspace = true

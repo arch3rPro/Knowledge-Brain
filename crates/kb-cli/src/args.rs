@@ -15,6 +15,12 @@ pub(crate) enum ParsedCommand {
         fail_on_findings: bool,
     },
     Serve(ServeCommand),
+    Mcp(McpCommand),
+}
+
+pub(crate) struct McpCommand {
+    pub allow_write: bool,
+    pub vault: Option<String>,
 }
 
 pub(crate) struct ServeCommand {
@@ -41,6 +47,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Serve one fixed Vault over MCP stdio.
+    Mcp {
+        /// Permit the explicit apply tool in addition to read and planning tools.
+        #[arg(long)]
+        allow_write: bool,
+        /// Vault path or registered stable ID.
+        #[arg(long)]
+        vault: Option<String>,
+    },
     /// Serve the selected Vault over an optional HTTP adapter.
     Serve {
         /// Address to listen on; non-loopback addresses require a token file.
@@ -457,6 +472,9 @@ impl LayerSelection {
 impl Cli {
     fn into_command(self) -> ParsedCommand {
         match self.command {
+            Commands::Mcp { allow_write, vault } => {
+                ParsedCommand::Mcp(McpCommand { allow_write, vault })
+            }
             Commands::Serve {
                 bind,
                 token_file,
