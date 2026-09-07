@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use serde_json::Value;
 use std::{
+    collections::BTreeMap,
     fs,
     io::{Cursor, Write},
     path::Path,
@@ -448,6 +449,53 @@ fn receipt_retry_clears_leftover_marker_and_unblocks_queries() {
 }
 
 #[test]
+fn unsupported_schema_source_apply_retry_preserves_vault_bytes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let vault_text = vault.to_str().unwrap();
+    run(base, &["init", vault_text, "--json"]);
+    fs::create_dir(vault.join("Notes")).unwrap();
+    run(
+        base,
+        &[
+            "config",
+            "admission",
+            "add",
+            "notes",
+            "Notes",
+            "--vault",
+            vault_text,
+            "--yes",
+            "--json",
+        ],
+    );
+    fs::write(vault.join("Notes/a.md"), "needle").unwrap();
+    let review = run(base, &["review", "--vault", vault_text, "--json"]);
+    let operation_id = review["data"]["operation_id"].as_str().unwrap();
+    run(base, &["apply", operation_id, "--json"]);
+
+    fs::write(vault.join(".kb/cache/catalog.json"), b"catalog sentinel").unwrap();
+    fs::write(vault.join(".kb/cache/bm25.json"), b"bm25 sentinel").unwrap();
+    fs::write(
+        vault.join(".kb/runtime/source-pending.json"),
+        serde_json::to_vec(operation_id).unwrap(),
+    )
+    .unwrap();
+    let config_path = vault.join(".kb/config.yml");
+    let unsupported_config = fs::read_to_string(&config_path)
+        .unwrap()
+        .replacen("v1.0", "v0.9", 1);
+    fs::write(&config_path, unsupported_config).unwrap();
+    let before = snapshot_vault(&vault);
+
+    let error = failed(base, &["apply", operation_id, "--json"]);
+
+    assert_eq!(error["error"]["code"], "migration_unavailable");
+    assert_eq!(snapshot_vault(&vault), before);
+}
+
+#[test]
 fn document_sources_survive_review_apply_query_and_reopening() {
     let temporary = tempfile::tempdir().unwrap();
     let base = temporary.path();
@@ -559,6 +607,29 @@ fn failed(base: &Path, args: &[&str]) -> Value {
     assert!(!o.status.success());
     assert!(o.stderr.is_empty());
     serde_json::from_slice(&o.stdout).unwrap()
+}
+
+fn snapshot_vault(root: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn visit(root: &Path, directory: &Path, files: &mut BTreeMap<String, Vec<u8>>) {
+        for entry in fs::read_dir(directory).unwrap().map(Result::unwrap) {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(root, &path, files);
+            } else {
+                files.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    fs::read(path).unwrap(),
+                );
+            }
+        }
+    }
+
+    let mut files = BTreeMap::new();
+    visit(root, root, &mut files);
+    files
 }
 #[test]
 // This single journey deliberately keeps sequential filesystem assertions together.

@@ -779,7 +779,18 @@ fn to_value(value: impl Serialize) -> Result<Value, KbError> {
 }
 
 fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result<Value, KbError> {
-    match inspect_operation(context.user_paths()?, operation_id)? {
+    let operation = inspect_operation(context.user_paths()?, operation_id)?;
+    match &operation {
+        OperationState::PlannedSource(plan) => ensure_mutation_allowed(&plan.target)?,
+        OperationState::AppliedSource(result) => ensure_mutation_allowed(&result.target)?,
+        OperationState::PlannedKnowledge(plan) => ensure_mutation_allowed(&plan.target)?,
+        OperationState::AppliedKnowledge(result) => ensure_mutation_allowed(&result.target)?,
+        OperationState::Planned(_)
+        | OperationState::Applied(_)
+        | OperationState::PlannedSkill(_)
+        | OperationState::AppliedSkill(_) => {}
+    }
+    match operation {
         OperationState::PlannedSource(_) | OperationState::AppliedSource(_) => {
             to_value(crate::source_apply::apply_capture(
                 context.user_paths()?,

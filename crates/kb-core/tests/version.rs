@@ -57,6 +57,33 @@ fn migration_catalog_requires_a_complete_forward_path() {
 }
 
 #[test]
+fn migration_catalog_accepts_a_direct_route_to_current() {
+    let current = SchemaVersion::new(1, 2);
+    let catalog =
+        MigrationCatalog::new([MigrationStep::new(SchemaVersion::new(1, 0), current)]).unwrap();
+
+    assert_eq!(
+        catalog.classify(SchemaVersion::new(1, 0), current),
+        SchemaCompatibility::OlderMigratable,
+    );
+}
+
+#[test]
+fn migration_catalog_rejects_a_route_missing_its_final_intermediate() {
+    let current = SchemaVersion::new(1, 2);
+    let catalog = MigrationCatalog::new([MigrationStep::new(
+        SchemaVersion::new(1, 0),
+        SchemaVersion::new(1, 1),
+    )])
+    .unwrap();
+
+    assert_eq!(
+        catalog.classify(SchemaVersion::new(1, 0), current),
+        SchemaCompatibility::OlderUnsupported,
+    );
+}
+
+#[test]
 fn migration_catalog_rejects_non_deterministic_or_non_forward_steps() {
     let v1_0 = SchemaVersion::new(1, 0);
     let v1_1 = SchemaVersion::new(1, 1);

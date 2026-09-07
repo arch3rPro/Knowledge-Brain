@@ -43,16 +43,6 @@ impl SchemaVersion {
             SchemaRelation::NewerMajor
         }
     }
-
-    #[must_use]
-    pub const fn compatibility_with(self, current: Self) -> SchemaCompatibility {
-        match self.relation_to(current) {
-            SchemaRelation::Current => SchemaCompatibility::Current,
-            SchemaRelation::Older => SchemaCompatibility::OlderMigratable,
-            SchemaRelation::NewerMinor => SchemaCompatibility::NewerMinorReadOnly,
-            SchemaRelation::NewerMajor => SchemaCompatibility::NewerMajorDiagnosticOnly,
-        }
-    }
 }
 
 impl fmt::Display for SchemaVersion {
