@@ -16,25 +16,25 @@
 
 ### Task 2: Backup collection and creation
 
-- [ ] Write failing tests for exact include/exclude scope, disabled and empty directories, compact source evidence, collisions, links, output collision and file changes.
-- [ ] Collect only the specified Vault roots without applying source include/exclude globs.
-- [ ] Stream a temporary standard ZIP and publish it without replacing an existing file.
+- [x] Write failing tests for exact include/exclude scope, disabled and empty directories, compact source evidence, collisions, links and output boundaries.
+- [x] Collect only the specified Vault roots without applying source include/exclude globs.
+- [x] Stream a temporary standard ZIP, detect changed input and publish without replacing an existing file.
 
 ### Task 3: Hostile archive verification and staged restore
 
-- [ ] Write failing tests for valid archives, changed bytes, missing/extra/duplicate entries, traversal, links, collisions and invalid targets.
-- [ ] Validate metadata and stream every digest before reporting success.
-- [ ] Extract into a private sibling staging directory and publish only after complete revalidation.
+- [x] Write failing tests for valid archives, changed bytes, extra/traversal/link entries, collisions and invalid targets.
+- [x] Validate metadata, required/missing/duplicate entries and stream every digest before reporting success.
+- [x] Extract into a private sibling staging directory and publish only after complete revalidation.
 
 ### Task 4: Shared application and CLI journey
 
-- [ ] Add backup requests to `AppRequest` and preserve Vault lock/recovery boundaries.
-- [ ] Add `kb backup create|verify|restore` and a real CLI JSON journey.
-- [ ] Verify restore after moving the archive and without machine registration.
+- [x] Add backup requests to `AppRequest` and preserve Vault lock/recovery boundaries.
+- [x] Add `kb backup create|verify|restore` and a real CLI JSON journey.
+- [x] Verify restore after moving the archive and without machine registration.
 
 ### Task 5: Documentation and focused verification
 
-- [ ] Publish backup reference, command/README links and Stage 5B status.
-- [ ] Move ADR 0009 to accepted with consequences and alternatives.
-- [ ] Run format, related crate Clippy, focused core/app/CLI tests and diff checks.
-- [ ] Record unverified platform/release/full-suite limits explicitly.
+- [x] Publish backup reference, command/README links and Stage 5B status.
+- [x] Move ADR 0009 to accepted with consequences and alternatives.
+- [x] Run format, related crate Clippy, focused core/app/CLI tests and diff checks.
+- [x] Record unverified platform/release/full-suite limits explicitly.

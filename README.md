@@ -12,6 +12,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Reviewable changes** — 采用已有目录等多文件操作先生成计划，再由用户明确执行。
 - **Traceable sources** — 保留原始文件副本和精确版本，来源变更不覆盖旧证据。
 - **Layered search** — 默认直接查询真实文件；可选 BM25F 提供字段加权、中文检索和可解释评分。
+- **Verified backups** — 生成带逐文件 SHA-256 清单的标准 ZIP，并只向空目录恢复。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
 - **Tool-independent core** — CLI 与未来的 MCP、HTTP、WebUI 和 GUI 共用同一应用层。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
@@ -120,6 +121,7 @@ kb apply <operation-id> --json
 | `kb query` | 查询 Wiki 或已保存来源 |
 | `kb cache rebuild` | 重建轻量目录及已启用的搜索索引 |
 | `kb source verify` | 核对已保存来源的完整性 |
+| `kb backup` | 创建、校验和恢复标准 ZIP 备份 |
 | `kb config` | 查看、校验和修改配置或准入清单 |
 | `kb vault` | 管理本机 Vault 注册和路径绑定 |
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
@@ -171,6 +173,7 @@ Windows PowerShell：
 - [保存与查询来源](docs/guides/capture-and-query-sources.md)
 - [来源格式](docs/reference/sources.md)
 - [搜索规则](docs/reference/search.md)
+- [备份、校验与恢复](docs/reference/backup.md)
 - [知识计划与安全保存](docs/reference/knowledge-plans.md)
 - [命令参考](docs/reference/commands.md)
 - [配置参考](docs/reference/configuration.md)

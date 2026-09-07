@@ -15,6 +15,16 @@ kb operation show <OPERATION_ID> [--json]
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
 
+## 备份与恢复
+
+```text
+kb backup create [--output <PATH.zip>] [--without-source-objects] [--vault <PATH_OR_ID>] [--json]
+kb backup verify <PATH.zip> [--json]
+kb backup restore <PATH.zip> --target <EMPTY_DIRECTORY> [--json]
+```
+
+`create` 不覆盖输出文件，也不在 Vault 内创建归档。默认包含全部来源对象；`--without-source-objects` 生成明确标记为不含完整来源证据的较小归档。`verify` 不解压到目标，`restore` 只接受不存在或真实空目录，并在私有临时目录中复核全部字节后放入目标。详细范围、清单和失败边界见[备份参考](backup.md)。
+
 ## 知识计划与保存
 
 ```text

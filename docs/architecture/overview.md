@@ -17,7 +17,7 @@ CLI / future GUI / future WebUI / future MCP / future HTTP
 ## Workspace 职责
 
 - `kb-core`：schema 版本、稳定错误码、可移植路径、准入模型和操作计划类型。它不处理界面呈现。
-- `kb-app`：完整用例、Vault 选择、配置合并、无损编辑、注册、锁、采用计划、来源保存、直接搜索、状态和诊断。所有入口应调用这里的 `AppRequest → AppResponse`。
+- `kb-app`：完整用例、Vault 选择、配置合并、无损编辑、注册、锁、采用计划、来源保存、搜索、备份、状态和诊断。所有入口应调用这里的 `AppRequest → AppResponse`。
 - `kb-protocol`：带 `schema_version` 的成功与错误 JSON 信封。
 - `kb-cli`：解析命令参数并渲染人类或 JSON 输出；不直接读写 Vault 文件。
 
@@ -52,3 +52,7 @@ Vault 注册表可以保存本机绝对路径；Vault 内生成的相对路径�
 来源保存也使用独立 review/apply 流程。记录、对象和日志共同恢复，读取入口在未完成保存时拒绝读取混合状态。来源快照与恢复规则由[来源参考](../reference/sources.md)定义；目录缓存及查询行为由[搜索参考](../reference/search.md)定义。
 
 CLI 和未来应用入口消费同一个 `LintReport`。文档规则和 CLI 的 strict 退出策略由 [Wiki lint 参考](../reference/lint.md)定义。
+
+## 备份边界
+
+备份只迁移 Vault 共享内容，不携带本机配置、缓存、恢复状态或注册表。`kb-app` 统一收集准入目录、生成和验证逐文件清单，并把已完整复核的 ZIP 暂存恢复到空目标；入口适配器不自行解压。完整契约见[备份参考](../reference/backup.md)。

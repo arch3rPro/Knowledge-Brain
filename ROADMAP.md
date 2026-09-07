@@ -94,7 +94,7 @@
 
 - 完整、可选的 BM25F（Stage 5A implemented）
 - 索引缺失、损坏、版本不兼容或陈旧后的 direct 回退（Stage 5A implemented）
-- 标准 ZIP 备份、校验和恢复
+- 标准 ZIP 备份、校验和恢复（Stage 5B implemented）
 - schema 迁移
 - Windows、macOS 和 Linux 发布产物
 - 安装包、签名和升级流程
@@ -108,3 +108,11 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。
 
 排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](docs/superpowers/plans/2026-09-07-bm25f-search.md)。
+
+### Stage 5B — 可校验 ZIP 备份
+
+**Status:** implemented（定向本地测试）。`kb backup create|verify|restore` 使用标准 ZIP 和逐文件 SHA-256 清单，完整保存 Wiki、共享配置、schema 及启用或停用的准入主题目录；本机配置、缓存、恢复状态和 Git 内部目录不迁移。可选精简归档明确标记缺少完整来源证据。恢复只面向不存在或真实空目录，并经过不可信归档校验、私有同级暂存和写入时二次哈希核对。
+
+本阶段验证了清单结构、空目录、完整/精简范围、链接和路径穿越拒绝、可移植路径冲突、哈希篡改、已有输出、Vault 内输出、非空目标、待恢复状态阻断，以及真实 CLI 创建 → 移动归档 → 独立状态目录校验 → 恢复 → 显式路径重开查询。只运行相关 crate 的定向测试、格式和 Clippy；未运行 workspace 全量测试、release 二进制流程、断电测试或 Windows/Linux 原生跨系统恢复。
+
+使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](docs/superpowers/plans/2026-09-07-verified-zip-backup.md)。

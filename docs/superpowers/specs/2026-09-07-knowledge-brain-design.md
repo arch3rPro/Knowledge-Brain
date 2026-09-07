@@ -730,7 +730,7 @@ kb backup verify <path.zip>
 kb backup restore <path.zip> --target <empty-directory>
 ```
 
-备份是普通 ZIP，包含 `manifest.json`。清单记录 `schema_version`、`vault_id`、创建时间、程序版本和每个文件的相对路径、大小、SHA-256。
+备份是普通 ZIP，包含 `manifest.json`。清单记录清单 `schema_version`、`vault_schema_version`、`vault_id`、创建时间、程序版本、来源证据完整性、目录，以及每个文件的相对路径、大小和 SHA-256。
 
 默认包含来源原始对象。`--without-source-objects` 可以生成较小快照，但清单必须标记为“不包含完整来源证据”，不能显示为完整备份。
 

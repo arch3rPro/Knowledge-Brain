@@ -16,6 +16,8 @@ OS file locks decide concurrent ownership. `.kb/runtime/vault-lock-info.json` is
 
 Source capture saves original objects, source records and managed log entries together. An unfinished capture blocks knowledge reads and configuration writes until its operation is retried. Keep the user-state plan and progress journal, and the Vault recovery marker, until recovery finishes; they are not disposable caches. SHA-256 detects changed bytes, not source authenticity. Current source queries verify object hashes; history verification is explicit. Process-exit recovery is tested separately from power-loss durability, which depends on the filesystem and is not guaranteed across all storage devices.
 
+Backup archives are untrusted input. Verification rejects path traversal, links and special entries, duplicate or undeclared ZIP entries, portable path collisions, out-of-scope content, mismatched Vault identity, sizes and hashes. Restore writes only through a private sibling staging directory and publishes only to a nonexistent or empty real target. SHA-256 detects bytes changed after backup creation; it does not authenticate who created an archive. Backups are not encrypted, so protect ZIP files with the same access controls as the Vault.
+
 ## Network and privacy
 
 The binary has no telemetry, automatic networking, HTTP server, MCP server, cloud account, built-in LLM, source downloader or synchronization. Future LAN access is an optional capability and must require explicit binding, authentication and transport policy; it is not enabled by the current binary.
