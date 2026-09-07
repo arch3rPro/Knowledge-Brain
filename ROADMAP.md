@@ -9,6 +9,12 @@
 - **planned**：设计已确定，尚未进入实现。
 - **future**：保留方向，进入实施前仍需独立设计。
 
+## 跨阶段使用体验
+
+**Status:** planned
+
+真实 Vault 工作流需要缩短 Hash 的默认展示、把确认集中到最终写入，并将来源保存、查询和知识整理表达为三条独立路径。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
+
 ## Stage 1 — Vault 基础
 
 **Status:** implemented；macOS 工作流已验证，Windows 和 Linux 等待原生 CI 证据。
@@ -51,6 +57,8 @@
 ### Stage 2B — 文档提取器
 
 **Status:** implemented（定向本地测试）。内置 HTML、EPUB 和 DOCX 提取器使用纯 Rust 依赖，实现正文、标题、链接和可引用位置。PDF 正文提取与 OCR 保持 future。全量回归、release 二进制及 Windows/Linux 原生验证未在本阶段运行。
+
+另使用非 Git 测试 Vault 和实际 debug 二进制完成三种格式的 `review → apply → direct query → cache rebuild → strict BM25F query` 流程。重新打开 Vault 后，HTML 可见正文、EPUB spine 章节顺序与资源位置、DOCX 标题/段落/表格行/超链接、提取缓存及来源对象校验均符合预期；HTML 脚本中的不可拆分标识未进入搜索结果。脚本-only HTML 和损坏的 EPUB、DOCX 经真实来源保存流程降级为 `metadata_only` 并报告具体原因，删除源文件后记录保留为 `present: false`，原始对象继续通过完整性校验。
 
 ## Stage 3 — 知识形成与安全保存
 
@@ -103,11 +111,15 @@
 
 **Status:** implemented（定向本地测试）。`kb serve` 默认回环只读；局域网监听和 operation apply 要求 token 文件及显式权限。服务固定到启动时解析的 Vault ID，路由通过 `kb-app` 复用状态、诊断、查询、lint、来源 review、知识计划、operation 查看与 apply，不接受任意 Vault 或文件路径。CLI 子进程和真实 TCP 测试覆盖启动信封、鉴权、请求限制、只读拒绝、跨 Vault 拒绝及显式保存。
 
+macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回环只读、Bearer token、来源 review/apply、写入后的 direct 回退、重建后的严格 BM25，以及 HTTP 与 CLI 的结果一致性。非回环 `0.0.0.0` 监听在无 token 时拒绝启动，提供 token 后启动成功并拒绝未鉴权请求。
+
 当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。未运行 workspace 全量测试、release 二进制流程、浏览器 WebUI、拒绝服务加固或 Windows/Linux 原生验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
 
 ### Stage 4B — Operation 事件与 SSE
 
 **Status:** implemented（定向本地测试）。采用、来源保存和知识保存会原子维护机器本地的有序事件日志，覆盖 planned、applying、progress、recovering、applied 和 failed。进程中断后的重试保留并续写事件；完成后重复 apply 不产生重复完成事件。`GET /operations/{id}/events` 使用相同鉴权和固定 Vault 边界，支持 `Last-Event-ID`，终态发送后关闭，断线不重复执行。
+
+真实 HTTP 进程测试观察到来源保存的 `planned → applying → progress → applied` 完整序列和终态自动关闭；使用倒数第二个事件 ID 重连时只返回最终事件，使用超前游标时返回 `invalid_config`。
 
 本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载、跨机器事件同步、release 二进制或 Windows/Linux 原生网络行为。事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](docs/superpowers/plans/2026-09-07-operation-events-sse.md)。
 
@@ -137,5 +149,9 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 **Status:** implemented（定向本地测试）。`kb backup create|verify|restore` 使用标准 ZIP 和逐文件 SHA-256 清单，完整保存 Wiki、共享配置、schema 及启用或停用的准入主题目录；本机配置、缓存、恢复状态和 Git 内部目录不迁移。可选精简归档明确标记缺少完整来源证据。恢复只面向不存在或真实空目录，并经过不可信归档校验、私有同级暂存和写入时二次哈希核对。
 
 本阶段验证了清单结构、空目录、完整/精简范围、链接和路径穿越拒绝、可移植路径冲突、哈希篡改、已有输出、Vault 内输出、非空目标、待恢复状态阻断，以及真实 CLI 创建 → 移动归档 → 独立状态目录校验 → 恢复 → 显式路径重开查询。只运行相关 crate 的定向测试、格式和 Clippy；未运行 workspace 全量测试、release 二进制流程、断电测试或 Windows/Linux 原生跨系统恢复。
+
+macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 配置的非 Git Vault 完成完整 ZIP 创建、独立校验、恢复、direct 回退、索引重建、严格 BM25 查询、lint 和来源对象校验。恢复目录不包含原 Vault 的缓存、运行状态或 Git 元数据，并使用独立机器配置和状态目录完成验证。
+
+同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 将归档校验错误编码为 `restore_failed` 的接口命名问题记录在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)。
 
 使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](docs/superpowers/plans/2026-09-07-verified-zip-backup.md)。

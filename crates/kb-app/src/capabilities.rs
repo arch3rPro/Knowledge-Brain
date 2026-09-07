@@ -52,6 +52,7 @@ pub fn capabilities() -> Capabilities {
             "paths",
             "version",
             "capabilities",
+            "mcp",
             "serve",
         ],
     }

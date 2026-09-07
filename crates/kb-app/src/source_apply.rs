@@ -109,10 +109,15 @@ fn apply_inner(
             return Err(recovery("Receipt identity mismatch."));
         }
         // A durable receipt means knowledge was saved; only housekeeping remains.
+        let housekeeping_pending = marker.exists() || progress_path.exists();
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
         record_source_complete(paths, id)?;
-        return finish_housekeeping(root, &result_path, result);
+        return if housekeeping_pending {
+            finish_housekeeping(root, &result_path, result)
+        } else {
+            Ok(result)
+        };
     }
     record_source_start(paths, id)?;
     let config = load_effective_config(root, paths, overrides)?;
@@ -721,6 +726,30 @@ mod tests {
                 event_count
             );
         }
+    }
+    #[test]
+    fn completed_replay_preserves_existing_search_caches() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (user, plan) = setup(temporary.path());
+        let first = apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap();
+        fs::write(
+            plan.target.join(".kb/cache/catalog.json"),
+            "rebuilt catalog",
+        )
+        .unwrap();
+        fs::write(plan.target.join(".kb/cache/bm25.json"), "rebuilt index").unwrap();
+
+        let second = apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap();
+
+        assert_eq!(second, first);
+        assert_eq!(
+            fs::read_to_string(plan.target.join(".kb/cache/catalog.json")).unwrap(),
+            "rebuilt catalog"
+        );
+        assert_eq!(
+            fs::read_to_string(plan.target.join(".kb/cache/bm25.json")).unwrap(),
+            "rebuilt index"
+        );
     }
     #[test]
     fn knowledge_pending_blocks_source_apply() {

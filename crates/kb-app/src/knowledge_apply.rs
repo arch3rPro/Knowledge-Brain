@@ -83,6 +83,7 @@ fn apply_inner(
         {
             return Err(recovery("Knowledge receipt identity mismatch."));
         }
+        let housekeeping_pending = marker.exists() || progress_path.exists();
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
         crate::operation_events::record_operation_event_now(
@@ -92,7 +93,11 @@ fn apply_inner(
             Some((plan.writes.len() as u64, plan.writes.len() as u64)),
             "Knowledge save is complete.",
         )?;
-        return finish_housekeeping(root, &result_path, result);
+        return if housekeeping_pending {
+            finish_housekeeping(root, &result_path, result)
+        } else {
+            Ok(result)
+        };
     }
 
     crate::operation_events::record_operation_event_now(

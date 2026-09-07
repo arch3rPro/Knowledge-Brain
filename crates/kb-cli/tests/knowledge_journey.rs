@@ -3,6 +3,8 @@ use serde_json::{Value, json};
 use std::{fs, path::Path};
 
 #[test]
+// This journey keeps cache bytes and the replay that must preserve them in one flow.
+#[allow(clippy::too_many_lines)]
 fn plan_review_apply_query_and_reopen_are_one_real_workflow() {
     let temporary = tempfile::tempdir().unwrap();
     let base = temporary.path();
@@ -54,8 +56,32 @@ fn plan_review_apply_query_and_reopen_are_one_real_workflow() {
     assert_eq!(shown["data"]["plan"]["kind"], "save_knowledge");
 
     let first = run(base, &["apply", operation_id, "--json"]);
+    run(
+        base,
+        &[
+            "config",
+            "set",
+            "search.mode",
+            "bm25",
+            "--vault",
+            vault_text,
+            "--yes",
+            "--json",
+        ],
+    );
+    run(base, &["cache", "rebuild", "--vault", vault_text, "--json"]);
+    let catalog_before_replay = fs::read(vault.join(".kb/cache/catalog.json")).unwrap();
+    let bm25_before_replay = fs::read(vault.join(".kb/cache/bm25.json")).unwrap();
     let second = run(base, &["apply", operation_id, "--json"]);
     assert_eq!(second["data"], first["data"]);
+    assert_eq!(
+        fs::read(vault.join(".kb/cache/catalog.json")).unwrap(),
+        catalog_before_replay
+    );
+    assert_eq!(
+        fs::read(vault.join(".kb/cache/bm25.json")).unwrap(),
+        bm25_before_replay
+    );
     assert!(
         fs::read_to_string(vault.join("Wiki/index.md"))
             .unwrap()
@@ -75,6 +101,7 @@ fn plan_review_apply_query_and_reopen_are_one_real_workflow() {
             "reopenable-needle",
             "--vault",
             vault_text,
+            "--strict-backend",
             "--json",
         ],
     );
@@ -82,6 +109,7 @@ fn plan_review_apply_query_and_reopen_are_one_real_workflow() {
         query["data"]["groups"][0]["results"][0]["path"],
         "Wiki/articles/portable.md"
     );
+    assert_eq!(query["data"]["groups"][0]["results"][0]["backend"], "bm25f");
     let lint = run(base, &["lint", "--strict", "--vault", vault_text, "--json"]);
     assert_eq!(lint["data"]["findings"], json!([]));
 }
