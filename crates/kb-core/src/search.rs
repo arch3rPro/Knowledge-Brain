@@ -7,7 +7,7 @@ pub enum SearchScope {
     Sources,
     All,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
     pub scope: SearchScope,

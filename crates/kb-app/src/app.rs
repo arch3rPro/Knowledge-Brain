@@ -75,6 +75,10 @@ pub enum AppRequest {
     Apply {
         operation_id: OperationId,
     },
+    ApplyForVault {
+        vault: String,
+        operation_id: OperationId,
+    },
     Operation(OperationRequest),
     Config(ConfigRequest),
     Status {
@@ -107,9 +111,15 @@ pub enum BackupRequest {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum OperationRequest {
-    Show { operation_id: OperationId },
+    Show {
+        operation_id: OperationId,
+    },
+    ShowForVault {
+        vault: String,
+        operation_id: OperationId,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +240,13 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             to_value(create_adoption_plan(&target, context.user_paths()?)?)
         }
         AppRequest::Apply { operation_id } => run_apply(context, operation_id),
+        AppRequest::ApplyForVault {
+            vault,
+            operation_id,
+        } => {
+            ensure_operation_vault(context, &vault, operation_id)?;
+            run_apply(context, operation_id)
+        }
         AppRequest::Operation(request) => run_operation(request, context),
         AppRequest::Config(request) => run_config(request, context),
         AppRequest::Status { vault } => {
@@ -393,7 +410,39 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
                 }
             }
         }
+        OperationRequest::ShowForVault {
+            vault,
+            operation_id,
+        } => {
+            ensure_operation_vault(context, &vault, operation_id)?;
+            run_operation(OperationRequest::Show { operation_id }, context)
+        }
     }
+}
+
+fn ensure_operation_vault(
+    context: &AppContext,
+    vault: &str,
+    operation_id: OperationId,
+) -> Result<(), KbError> {
+    let selected = select_vault(context, Some(vault.to_owned()))?;
+    let operation_vault_id = match inspect_operation(context.user_paths()?, operation_id)? {
+        OperationState::Planned(value) => value.vault_id,
+        OperationState::Applied(value) => value.vault_id,
+        OperationState::PlannedSource(value) => value.vault_id,
+        OperationState::AppliedSource(value) => value.vault_id,
+        OperationState::PlannedKnowledge(value) => value.vault_id,
+        OperationState::AppliedKnowledge(value) => value.vault_id,
+    };
+    if operation_vault_id != selected.vault_id {
+        return Err(KbError::new(
+            ErrorCode::AuthDenied,
+            "Operation does not belong to the selected Vault.",
+            false,
+            "Use an operation created for the selected Vault.",
+        ));
+    }
+    Ok(())
 }
 
 fn run_config(request: ConfigRequest, context: &AppContext) -> Result<Value, KbError> {
