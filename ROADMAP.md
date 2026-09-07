@@ -89,6 +89,16 @@
 - 可选局域网访问策略
 - WebUI 和 GUI 共用的应用接口
 
+### Stage 4C — Portable Agent Skill 与 MCP stdio
+
+**Status:** implemented（定向本地测试）。内置 Agent Skill 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改会阻止覆盖或删除。
+
+`kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
+
+本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、部分完成后重试和真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。只运行相关 crate 的定向测试；Windows/Linux 原生路径、Rust 1.85 原生构建及四种外部 Agent 的实际加载行为仍待 CI 或对应宿主环境验证。
+
+参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](docs/superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](docs/superpowers/plans/2026-09-07-mcp-stdio.md)。
+
 ### Stage 4A — 可选 HTTP 适配器
 
 **Status:** implemented（定向本地测试）。`kb serve` 默认回环只读；局域网监听和 operation apply 要求 token 文件及显式权限。服务固定到启动时解析的 Vault ID，路由通过 `kb-app` 复用状态、诊断、查询、lint、来源 review、知识计划、operation 查看与 apply，不接受任意 Vault 或文件路径。CLI 子进程和真实 TCP 测试覆盖启动信封、鉴权、请求限制、只读拒绝、跨 Vault 拒绝及显式保存。

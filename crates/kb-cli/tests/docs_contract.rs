@@ -60,12 +60,49 @@ fn command_reference_names_every_real_top_level_command() {
         "paths",
         "version",
         "capabilities",
+        "skills",
+        "mcp",
     ] {
         assert!(help.contains(&format!("  {command}")), "{command}");
         assert!(
             COMMAND_REFERENCE.contains(&format!("kb {command}")),
             "{command}"
         );
+    }
+}
+
+#[test]
+fn agent_skill_and_mcp_references_own_their_public_contracts() {
+    let skill = include_str!("../../../docs/reference/agent-skill.md");
+    for contract in [
+        "kb skills detect",
+        "kb skills install",
+        "kb skills status",
+        "kb skills uninstall",
+        "Codex",
+        "Claude Code",
+        "Gemini CLI",
+        "OpenCode",
+        "operation",
+    ] {
+        assert!(
+            skill.contains(contract),
+            "missing Skill contract: {contract}"
+        );
+    }
+
+    let mcp = include_str!("../../../docs/reference/mcp.md");
+    for contract in [
+        "kb mcp",
+        "--allow-write",
+        "kb_query",
+        "kb_plan_knowledge",
+        "kb_apply_operation",
+        "固定 Vault",
+        "stdin",
+        "stdout",
+    ] {
+        assert!(mcp.contains(contract), "missing MCP contract: {contract}");
     }
 }
 

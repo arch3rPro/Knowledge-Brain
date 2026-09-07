@@ -107,3 +107,22 @@ kb serve [--bind <IP:PORT>] [--token-file <PATH>] [--allow-write] [--vault <PATH
 ```
 
 默认回环、只读且无需 token；局域网监听和 HTTP apply 都要求 token 文件。服务固定使用启动时选中的 Vault，不能从请求切换路径。路由、鉴权和明文网络边界见 [HTTP 参考](http.md)。
+
+## Portable Agent Skill
+
+```text
+kb skills detect [--vault <PATH_OR_ID>] [--json]
+kb skills install [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--mode copy|symlink] [--vault <PATH_OR_ID>] [--json]
+kb skills status [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
+kb skills uninstall [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
+```
+
+安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。宿主路径、检测歧义、复制与链接模式见 [Portable Agent Skill 参考](agent-skill.md)。
+
+## MCP stdio
+
+```text
+kb mcp [--vault <PATH_OR_ID>] [--allow-write]
+```
+
+服务固定使用启动时选中的 Vault，默认只暴露读取和计划工具。`--allow-write` 才注册 apply 工具；operation 归属和旧状态仍由应用层复核。工具列表、客户端配置和协议输出边界见 [MCP 参考](mcp.md)。

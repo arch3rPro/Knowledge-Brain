@@ -15,6 +15,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Verified backups** — 生成带逐文件 SHA-256 清单的标准 ZIP，并只向空目录恢复。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
 - **Tool-independent core** — CLI 与未来的 MCP、HTTP、WebUI 和 GUI 共用同一应用层。
+- **Agent-ready interfaces** — 内置跨宿主 Agent Skill，并提供固定 Vault、默认只读的 MCP stdio 入口。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
 
 ## Vault 如何组织
@@ -129,6 +130,8 @@ kb apply <operation-id> --json
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
 | `kb doctor` | 运行独立诊断 |
 | `kb capabilities` | 查询当前二进制公开的能力 |
+| `kb skills` | 检测、安装、检查或安全卸载可移植 Agent Skill |
+| `kb mcp` | 为一个固定 Vault 启动 MCP stdio 服务 |
 | `kb serve` | 按需启动固定 Vault 的可选 HTTP/SSE 接口 |
 
 完整语法见[命令参考](docs/reference/commands.md)，配置层级和 `admission.yml` 格式见[配置参考](docs/reference/configuration.md)。
@@ -136,7 +139,7 @@ kb apply <operation-id> --json
 ## 架构
 
 ```text
-CLI / HTTP / future adapters
+CLI / MCP / HTTP / future adapters
           │
           ▼
        kb-app
@@ -178,6 +181,8 @@ Windows PowerShell：
 - [搜索规则](docs/reference/search.md)
 - [备份、校验与恢复](docs/reference/backup.md)
 - [知识计划与安全保存](docs/reference/knowledge-plans.md)
+- [Portable Agent Skill](docs/reference/agent-skill.md)
+- [MCP stdio](docs/reference/mcp.md)
 - [命令参考](docs/reference/commands.md)
 - [配置参考](docs/reference/configuration.md)
 - [架构概览](docs/architecture/overview.md)
