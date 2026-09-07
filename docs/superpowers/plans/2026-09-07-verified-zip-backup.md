@@ -10,9 +10,9 @@
 
 ### Task 1: Manifest and request contracts
 
-- [ ] Add versioned manifest entries and create/verify/restore reports.
-- [ ] Define stable validation for sorted unique portable paths, sizes and hashes.
-- [ ] Cover serialization and malformed contracts with focused core tests.
+- [x] Add versioned manifest entries and create/verify/restore reports.
+- [x] Define stable validation for sorted unique portable paths, sizes and hashes.
+- [x] Cover serialization and malformed contracts with focused core tests.
 
 ### Task 2: Backup collection and creation
 

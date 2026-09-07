@@ -1,6 +1,7 @@
 //! Domain types and deterministic rules shared by every Knowledge-Brain entry point.
 
 mod admission;
+mod backup;
 mod config;
 mod error;
 mod extraction;
@@ -22,6 +23,9 @@ pub use search::{
 pub use source::{SourceId, SourceVersion};
 
 pub use admission::{AdmissionDocument, AdmissionEntry};
+pub use backup::{
+    BackupCreateReport, BackupFile, BackupManifest, BackupRestoreReport, BackupVerifyReport,
+};
 pub use config::{
     ConfigSource, EffectiveConfig, EffectiveFiles, EffectiveLimits, EffectiveOperations,
     EffectiveSearch, PartialConfig, PartialFiles, PartialLimits, PartialOperations, PartialSearch,
