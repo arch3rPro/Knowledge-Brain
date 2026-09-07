@@ -3,6 +3,7 @@ use std::path::Path;
 
 mod html;
 mod archive;
+mod docx;
 mod epub;
 #[must_use]
 pub fn classify_media_type(path: &Path) -> MediaType {
@@ -33,6 +34,7 @@ pub fn extract_bytes(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
         match media {
             MediaType::Html => html::extract(bytes),
             MediaType::Epub => epub::extract(bytes),
+            MediaType::Docx => docx::extract(bytes),
             _ => unavailable(media),
         }
     }

@@ -152,6 +152,67 @@ fn epub_rejects_invalid_or_excessively_expanded_archives() {
     assert!(document.warnings[0].contains("limit"));
 }
 
+#[test]
+fn docx_extracts_title_headings_paragraphs_tables_and_links() {
+    let docx = zip_bytes(&[
+        (
+            "docProps/core.xml",
+            br#"<?xml version="1.0"?><cp:coreProperties xmlns:cp="x" xmlns:dc="y"><dc:title>Team Guide</dc:title></cp:coreProperties>"#,
+        ),
+        (
+            "word/styles.xml",
+            br#"<?xml version="1.0"?><w:styles xmlns:w="w"><w:style w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>"#,
+        ),
+        (
+            "word/_rels/document.xml.rels",
+            br#"<?xml version="1.0"?><Relationships><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/guide" TargetMode="External"/></Relationships>"#,
+        ),
+        (
+            "word/document.xml",
+            br#"<?xml version="1.0"?><w:document xmlns:w="w" xmlns:r="r"><w:body>
+            <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Getting </w:t></w:r><w:r><w:t>Started</w:t></w:r></w:p>
+            <w:p><w:r><w:t>Read </w:t></w:r><w:hyperlink r:id="rId5"><w:r><w:t>this guide</w:t></w:r></w:hyperlink><w:r><w:t>.</w:t></w:r></w:p>
+            <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Name</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+            </w:body></w:document>"#,
+        ),
+    ]);
+
+    let document = extract_bytes(MediaType::Docx, &docx);
+
+    assert_eq!(document.status, ExtractionStatus::TextReady);
+    assert_eq!(document.extractor_id, "builtin-docx");
+    assert_eq!(document.title.as_deref(), Some("Team Guide"));
+    assert_eq!(document.blocks.len(), 3);
+    assert_eq!(document.blocks[0].heading.as_deref(), Some("Getting Started"));
+    assert_eq!(document.blocks[0].text, "Getting Started");
+    assert_eq!(document.blocks[1].text, "Read this guide.");
+    assert_eq!(document.blocks[2].text, "Name | Value");
+    assert_eq!(
+        document.blocks[2].location,
+        Some(SourceLocation::Docx {
+            paragraph: 3,
+            table: Some(1),
+            row: Some(1),
+        })
+    );
+    assert_eq!(document.links.len(), 1);
+    assert_eq!(document.links[0].text.as_deref(), Some("this guide"));
+    assert_eq!(document.links[0].target, "https://example.com/guide");
+    assert_eq!(document.links[0].location, document.blocks[1].location);
+}
+
+#[test]
+fn docx_rejects_corrupt_or_incomplete_packages() {
+    let corrupt = extract_bytes(MediaType::Docx, b"not a zip archive");
+    assert_eq!(corrupt.status, ExtractionStatus::MetadataOnly);
+    assert!(corrupt.warnings[0].contains("DOCX"));
+
+    let incomplete = zip_bytes(&[("docProps/core.xml", b"<core/>".as_slice())]);
+    let document = extract_bytes(MediaType::Docx, &incomplete);
+    assert_eq!(document.status, ExtractionStatus::MetadataOnly);
+    assert!(document.warnings[0].contains("word/document.xml"));
+}
+
 fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
