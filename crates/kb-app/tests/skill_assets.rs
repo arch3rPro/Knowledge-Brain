@@ -18,7 +18,10 @@ fn embedded_skill_is_portable_and_complete() {
         ])
     );
 
-    let entry = assets.iter().find(|asset| asset.path == "SKILL.md").unwrap();
+    let entry = assets
+        .iter()
+        .find(|asset| asset.path == "SKILL.md")
+        .unwrap();
     let text = std::str::from_utf8(entry.bytes).unwrap();
     assert!(text.starts_with("---\nname: knowledge-brain\n"));
     assert!(text.contains("references/query.md"));

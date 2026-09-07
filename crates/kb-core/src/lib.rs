@@ -10,6 +10,7 @@ mod operation;
 mod path;
 mod platform;
 mod search;
+mod skill;
 mod source;
 mod version;
 pub use extraction::{
@@ -20,6 +21,7 @@ pub use search::{
     Catalog, CatalogEntry, SearchBackend, SearchExplanation, SearchField, SearchFieldContribution,
     SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
 };
+pub use skill::{SkillAction, SkillHost, SkillInstallMode, SkillScope};
 pub use source::{SourceId, SourceVersion};
 
 pub use admission::{AdmissionDocument, AdmissionEntry};

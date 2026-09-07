@@ -20,7 +20,8 @@ pub fn skill_assets() -> &'static [SkillAsset] {
             ),
             (
                 "references/maintenance.md",
-                include_bytes!("../../../skills/knowledge-brain/references/maintenance.md").as_slice(),
+                include_bytes!("../../../skills/knowledge-brain/references/maintenance.md")
+                    .as_slice(),
             ),
             (
                 "references/query.md",
@@ -28,10 +29,8 @@ pub fn skill_assets() -> &'static [SkillAsset] {
             ),
             (
                 "references/review-and-save.md",
-                include_bytes!(
-                    "../../../skills/knowledge-brain/references/review-and-save.md"
-                )
-                .as_slice(),
+                include_bytes!("../../../skills/knowledge-brain/references/review-and-save.md")
+                    .as_slice(),
             ),
         ]
         .into_iter()
@@ -43,4 +42,3 @@ pub fn skill_assets() -> &'static [SkillAsset] {
         .collect()
     })
 }
-
