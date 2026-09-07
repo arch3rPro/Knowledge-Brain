@@ -54,6 +54,9 @@ pub enum AppRequest {
         vault: Option<String>,
         request: kb_core::SearchRequest,
     },
+    Lint {
+        vault: Option<String>,
+    },
     CacheRebuild {
         vault: Option<String>,
     },
@@ -172,6 +175,21 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
                 &context.overrides(),
             )?;
             to_value(crate::query(&selected.root, &request, &config)?)
+        }
+        AppRequest::Lint { vault } => {
+            let selected = select_vault(context, vault)?;
+            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "lint", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::lint(
+                &selected.root,
+                &config,
+                time::OffsetDateTime::now_utc(),
+            )?)
         }
         AppRequest::CacheRebuild { vault } => {
             let selected = select_vault(context, vault)?;
