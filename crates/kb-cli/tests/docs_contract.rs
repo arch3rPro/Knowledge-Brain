@@ -2,19 +2,22 @@ use assert_cmd::Command;
 
 const COMMAND_REFERENCE: &str = include_str!("../../../docs/reference/commands.md");
 const PROJECT_README: &str = include_str!("../../../README.md");
+const ROADMAP: &str = include_str!("../../../ROADMAP.md");
 
 #[test]
 fn project_readme_covers_the_first_run_contract() {
     for section in [
-        "## 为什么选择 Knowledge-Brain",
+        "## Features",
         "## Vault 如何组织",
         "## 快速开始",
-        "## 当前能力",
+        "## 架构",
         "## 开发",
         "## 文档",
     ] {
         assert!(PROJECT_README.contains(section), "missing {section}");
     }
+
+    assert!(!PROJECT_README.contains("## 当前能力"));
 
     for contract in [
         "admission.yml",
@@ -23,8 +26,13 @@ fn project_readme_covers_the_first_run_contract() {
         "Wiki/articles",
         "docs/reference/commands.md",
         "docs/reference/configuration.md",
+        "ROADMAP.md",
     ] {
         assert!(PROJECT_README.contains(contract), "missing {contract}");
+    }
+
+    for stage in ["Stage 1", "Stage 2", "Stage 3", "Stage 4", "Stage 5"] {
+        assert!(ROADMAP.contains(stage), "missing {stage}");
     }
 }
 
