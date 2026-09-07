@@ -14,7 +14,8 @@ use crate::{
     config_get, config_set, config_show, config_unset, config_validate, create_adoption_plan,
     doctor, init_and_register_vault, init_vault, inspect_operation, list_vaults, load_admission,
     rebind_vault, register_vault, resolve_skill_host, resolve_vault, skill_target,
-    unregister_vault, vault_status,
+    summary_for_adoption_plan, summary_for_knowledge_plan, summary_for_skill_plan,
+    summary_for_state, unregister_vault, vault_status,
 };
 
 #[derive(Debug, Clone)]
@@ -226,11 +227,14 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
                 context.user_paths()?,
                 &context.overrides(),
             )?;
-            to_value(crate::review_sources(
-                &selected.root,
-                context.user_paths()?,
-                &config,
-            )?)
+            let report = crate::review_sources(&selected.root, context.user_paths()?, &config)?;
+            let response = to_value(&report)?;
+            if let Some(operation_id) = report.operation_id {
+                let state = inspect_operation(context.user_paths()?, operation_id)?;
+                crate::attach_operation_summary(response, summary_for_state(&state))
+            } else {
+                Ok(response)
+            }
         }
         AppRequest::Query { vault, request } => {
             request.validate()?;
@@ -385,13 +389,15 @@ fn run_plan_create(
     crate::source_apply::ensure_no_pending(&selected.root)?;
     let config =
         crate::load_effective_config(&selected.root, context.user_paths()?, &context.overrides())?;
-    to_value(crate::create_knowledge_plan(
+    let plan = crate::create_knowledge_plan(
         &selected.root,
         context.user_paths()?,
         &config,
         request,
         time::OffsetDateTime::now_utc(),
-    )?)
+    )?;
+    let summary = summary_for_knowledge_plan(&plan);
+    crate::attach_operation_summary(to_value(plan)?, summary)
 }
 
 fn run_init(request: &InitRequest, context: &AppContext) -> Result<Value, KbError> {
@@ -410,13 +416,17 @@ fn run_init(request: &InitRequest, context: &AppContext) -> Result<Value, KbErro
 }
 
 fn run_adopt(context: &AppContext, target: &std::path::Path) -> Result<Value, KbError> {
-    to_value(create_adoption_plan(target, context.user_paths()?)?)
+    let plan = create_adoption_plan(target, context.user_paths()?)?;
+    let summary = summary_for_adoption_plan(&plan);
+    crate::attach_operation_summary(to_value(plan)?, summary)
 }
 
 fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Value, KbError> {
     match request {
         OperationRequest::Show { operation_id } => {
-            match inspect_operation(context.user_paths()?, operation_id)? {
+            let state = inspect_operation(context.user_paths()?, operation_id)?;
+            let summary = summary_for_state(&state);
+            let response = match state {
                 OperationState::Planned(plan) => Ok(json!({ "state": "planned", "plan": plan })),
                 OperationState::Applied(result) => {
                     Ok(json!({ "state": "applied", "result": result }))
@@ -435,7 +445,8 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
                 OperationState::AppliedSkill(result) => {
                     Ok(json!({"state":"applied","result":result}))
                 }
-            }
+            }?;
+            crate::attach_operation_summary(response, summary)
         }
         OperationRequest::ShowForVault {
             vault,
@@ -636,7 +647,7 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
                 "create Skill install plan",
                 None,
             )?;
-            to_value(crate::create_skill_plan(&crate::SkillPlanRequest {
+            let plan = crate::create_skill_plan(&crate::SkillPlanRequest {
                 vault_root: &selected.root,
                 vault_id: selected.vault_id,
                 user_paths: context.user_paths()?,
@@ -645,7 +656,9 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
                 scope,
                 mode: *mode,
                 action: SkillAction::Install,
-            })?)
+            })?;
+            let summary = summary_for_skill_plan(&plan);
+            crate::attach_operation_summary(to_value(plan)?, summary)
         }
         SkillRequest::Uninstall { .. } => {
             ensure_mutation_allowed(&selected.root)?;
@@ -660,7 +673,7 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
                 "create Skill uninstall plan",
                 None,
             )?;
-            to_value(crate::create_skill_plan(&crate::SkillPlanRequest {
+            let plan = crate::create_skill_plan(&crate::SkillPlanRequest {
                 vault_root: &selected.root,
                 vault_id: selected.vault_id,
                 user_paths: context.user_paths()?,
@@ -669,7 +682,9 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
                 scope,
                 mode,
                 action: SkillAction::Uninstall,
-            })?)
+            })?;
+            let summary = summary_for_skill_plan(&plan);
+            crate::attach_operation_summary(to_value(plan)?, summary)
         }
         SkillRequest::Detect { .. } => unreachable!("detect returned before host resolution"),
     }

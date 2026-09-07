@@ -42,6 +42,7 @@ mod lock;
 mod managed_markdown;
 mod operation;
 mod operation_events;
+mod operation_summary;
 mod registry;
 mod schema;
 mod status;
@@ -70,6 +71,12 @@ pub use lint::{LintReport, lint};
 pub use lock::{LockMode, VaultLock};
 pub use operation::{AdoptionResult, OperationState, inspect_operation};
 pub use operation_events::operation_events;
+pub use operation_summary::{
+    OperationSummary, attach_operation_summary, summary_for_adoption_plan,
+    summary_for_adoption_result, summary_for_knowledge_plan, summary_for_knowledge_result,
+    summary_for_skill_plan, summary_for_skill_result, summary_for_source_plan,
+    summary_for_source_result, summary_for_state,
+};
 pub use registry::{
     VaultRecord, VaultRegistry, list_vaults, rebind_vault, register_vault, unregister_vault,
 };
