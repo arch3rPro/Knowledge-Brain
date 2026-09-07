@@ -10,7 +10,7 @@ Knowledge-Brain must expose its shared application operations over MCP stdio wit
 
 ## Decision
 
-A dedicated `kb-mcp` crate implements only the JSON-RPC lifecycle and tools required by the product. The adapter owns bounded stdio framing, tool schemas and protocol error conversion; every tool calls `kb-app`. The process fixes one Vault ID at startup, omits the apply tool unless `--allow-write` is explicit, and writes no diagnostics to protocol stdout.
+A dedicated `kb-mcp` crate implements only the JSON-RPC lifecycle and tools required by the product. The adapter owns bounded stdio framing, tool schemas and protocol error conversion; every tool calls `kb-app`. The CLI resolves and fixes one absolute Vault root at startup, and the application layer rechecks its identity for every call. The adapter omits the apply tool unless `--allow-write` is explicit and writes no diagnostics to protocol stdout.
 
 The wire and tool registry remain isolated from `kb-core` and `kb-app`, so a later official SDK implementation can replace the adapter without changing application requests or public tool names.
 

@@ -10,7 +10,10 @@ use std::{
 fn write_enabled_mcp_applies_an_approved_plan_and_the_result_survives_restart() {
     let temp = tempfile::tempdir().unwrap();
     let vault = temp.path().join("vault");
-    run_cli(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    run_cli(
+        &temp.path().join("separate-init-profile"),
+        &["init", vault.to_str().unwrap(), "--json"],
+    );
 
     let mut child = mcp_process(temp.path(), &vault, true);
     let mut stdin = child.stdin.take().unwrap();

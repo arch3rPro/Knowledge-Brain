@@ -9,16 +9,16 @@ const PROTOCOL_VERSION: &str = "2025-06-18";
 #[derive(Debug, Clone)]
 pub struct McpServer {
     context: AppContext,
-    vault: String,
+    vault_selector: String,
     allow_write: bool,
 }
 
 impl McpServer {
     #[must_use]
-    pub const fn new(context: AppContext, vault: String, allow_write: bool) -> Self {
+    pub const fn new(context: AppContext, vault_selector: String, allow_write: bool) -> Self {
         Self {
             context,
-            vault,
+            vault_selector,
             allow_write,
         }
     }
@@ -180,10 +180,10 @@ impl McpServer {
         match name {
             "kb_capabilities" => empty(&arguments).map(|()| AppRequest::Capabilities),
             "kb_status" => empty(&arguments).map(|()| AppRequest::Status {
-                vault: Some(self.vault.clone()),
+                vault: Some(self.vault_selector.clone()),
             }),
             "kb_query" => decode::<QueryArguments>(arguments).map(|args| AppRequest::Query {
-                vault: Some(self.vault.clone()),
+                vault: Some(self.vault_selector.clone()),
                 request: SearchRequest {
                     query: args.query,
                     scope: args.scope.into(),
@@ -192,21 +192,21 @@ impl McpServer {
                 },
             }),
             "kb_lint" => empty(&arguments).map(|()| AppRequest::Lint {
-                vault: Some(self.vault.clone()),
+                vault: Some(self.vault_selector.clone()),
             }),
             "kb_review_sources" => empty(&arguments).map(|()| AppRequest::Review {
-                vault: Some(self.vault.clone()),
+                vault: Some(self.vault_selector.clone()),
             }),
             "kb_plan_knowledge" => {
                 decode::<PlanArguments>(arguments).map(|args| AppRequest::PlanCreate {
-                    vault: Some(self.vault.clone()),
+                    vault: Some(self.vault_selector.clone()),
                     request: args.request,
                 })
             }
             "kb_operation_show" => decode::<OperationArguments>(arguments).and_then(|args| {
                 parse_operation_id(&args.operation_id).map(|operation_id| {
                     AppRequest::Operation(OperationRequest::ShowForVault {
-                        vault: self.vault.clone(),
+                        vault: self.vault_selector.clone(),
                         operation_id,
                     })
                 })
@@ -215,7 +215,7 @@ impl McpServer {
                 .and_then(|args| {
                     parse_operation_id(&args.operation_id).map(|operation_id| {
                         AppRequest::ApplyForVault {
-                            vault: self.vault.clone(),
+                            vault: self.vault_selector.clone(),
                             operation_id,
                         }
                     })

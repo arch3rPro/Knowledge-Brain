@@ -50,11 +50,11 @@ fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError
         },
         &context,
     )?;
-    let vault_id = selected["vault_id"]
+    let fixed_vault = selected["root"]
         .as_str()
-        .ok_or_else(|| KbError::invalid_config("selected Vault", "missing vault_id"))?
+        .ok_or_else(|| KbError::invalid_config("selected Vault", "missing root"))?
         .to_owned();
-    let mut server = kb_mcp::McpServer::new(context, vault_id, command.allow_write);
+    let mut server = kb_mcp::McpServer::new(context, fixed_vault, command.allow_write);
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     kb_mcp::serve_frames(stdin.lock(), stdout.lock(), |request| {
