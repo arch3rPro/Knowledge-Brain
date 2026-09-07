@@ -41,7 +41,7 @@ fn version_and_capabilities_are_explicit_contracts() {
     );
     assert_eq!(capabilities["data"]["bm25"], true);
     assert_eq!(capabilities["data"]["mcp"], false);
-    assert_eq!(capabilities["data"]["http"], false);
+    assert_eq!(capabilities["data"]["http"], true);
     assert!(
         capabilities["data"]["commands"]
             .as_array()
@@ -65,6 +65,12 @@ fn version_and_capabilities_are_explicit_contracts() {
             .as_array()
             .unwrap()
             .contains(&serde_json::Value::String("backup".to_owned()))
+    );
+    assert!(
+        capabilities["data"]["commands"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::Value::String("serve".to_owned()))
     );
 }
 

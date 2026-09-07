@@ -27,7 +27,7 @@ pub fn capabilities() -> Capabilities {
             "builtin-docx".into(),
         ],
         mcp: false,
-        http: false,
+        http: true,
         commands: vec![
             "backup",
             "init",
@@ -47,6 +47,7 @@ pub fn capabilities() -> Capabilities {
             "paths",
             "version",
             "capabilities",
+            "serve",
         ],
     }
 }

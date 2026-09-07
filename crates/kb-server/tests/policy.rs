@@ -1,5 +1,5 @@
 use kb_core::ErrorCode;
-use kb_server::ServerPolicy;
+use kb_server::{ServerPolicy, read_token_file};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 fn address(ip: [u8; 4]) -> SocketAddr {
@@ -34,4 +34,26 @@ fn empty_or_header_unsafe_tokens_are_rejected() {
             ServerPolicy::new(address([127, 0, 0, 1]), Some(token.into()), false).unwrap_err();
         assert_eq!(error.code, ErrorCode::AuthDenied);
     }
+}
+
+#[test]
+fn token_files_are_bounded_regular_files() {
+    let temporary = tempfile::tempdir().unwrap();
+    let valid = temporary.path().join("token");
+    std::fs::write(&valid, "secret\n").unwrap();
+    assert_eq!(read_token_file(&valid).unwrap(), "secret\n");
+
+    let directory = temporary.path().join("directory");
+    std::fs::create_dir(&directory).unwrap();
+    assert_eq!(
+        read_token_file(&directory).unwrap_err().code,
+        ErrorCode::AuthDenied
+    );
+
+    let large = temporary.path().join("large");
+    std::fs::write(&large, vec![b'x'; 4097]).unwrap();
+    assert_eq!(
+        read_token_file(&large).unwrap_err().code,
+        ErrorCode::AuthDenied
+    );
 }

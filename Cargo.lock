@@ -864,11 +864,13 @@ dependencies = [
  "kb-app",
  "kb-core",
  "kb-protocol",
+ "kb-server",
  "predicates",
  "serde",
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
+ "tokio",
  "uuid",
  "zip",
 ]

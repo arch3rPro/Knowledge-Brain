@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
@@ -8,10 +8,20 @@ use kb_app::{
 use kb_core::{KnowledgePlanRequest, OperationId};
 use uuid::Uuid;
 
-pub(crate) struct ParsedCommand {
-    pub request: Result<AppRequest, kb_core::KbError>,
-    pub json: bool,
-    pub fail_on_findings: bool,
+pub(crate) enum ParsedCommand {
+    App {
+        request: Result<AppRequest, kb_core::KbError>,
+        json: bool,
+        fail_on_findings: bool,
+    },
+    Serve(ServeCommand),
+}
+
+pub(crate) struct ServeCommand {
+    pub bind: SocketAddr,
+    pub token_file: Option<PathBuf>,
+    pub allow_write: bool,
+    pub vault: Option<String>,
 }
 
 pub(crate) fn parse() -> ParsedCommand {
@@ -31,6 +41,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Serve the selected Vault over an optional HTTP adapter.
+    Serve {
+        /// Address to listen on; non-loopback addresses require a token file.
+        #[arg(long, default_value = "127.0.0.1:9432")]
+        bind: SocketAddr,
+        /// File containing one Bearer token value.
+        #[arg(long)]
+        token_file: Option<PathBuf>,
+        /// Permit applying reviewed operations through HTTP.
+        #[arg(long)]
+        allow_write: bool,
+        /// Vault path or registered stable ID.
+        #[arg(long)]
+        vault: Option<String>,
+    },
     /// Create, verify, or restore portable ZIP backups.
     Backup {
         #[command(subcommand)]
@@ -389,6 +414,17 @@ impl LayerSelection {
 impl Cli {
     fn into_command(self) -> ParsedCommand {
         match self.command {
+            Commands::Serve {
+                bind,
+                token_file,
+                allow_write,
+                vault,
+            } => ParsedCommand::Serve(ServeCommand {
+                bind,
+                token_file,
+                allow_write,
+                vault,
+            }),
             Commands::Backup { command } => backup_command(command),
             Commands::Review { context } => review_command(context),
             Commands::Query {
@@ -401,7 +437,7 @@ impl Cli {
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
-            } => ParsedCommand {
+            } => ParsedCommand::App {
                 request: match request {
                     KnowledgeRequestArg::Parsed(request) => Ok(AppRequest::PlanCreate {
                         vault: context.vault,
@@ -414,7 +450,7 @@ impl Cli {
             },
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
-            } => ParsedCommand {
+            } => ParsedCommand::App {
                 request: Ok(AppRequest::CacheRebuild {
                     vault: context.vault,
                 }),
@@ -423,30 +459,30 @@ impl Cli {
             },
             Commands::Source {
                 command: SourceCommands::Verify { context },
-            } => ParsedCommand {
+            } => ParsedCommand::App {
                 request: Ok(AppRequest::SourceVerify {
                     vault: context.vault,
                 }),
                 json: context.json,
                 fail_on_findings: false,
             },
-            Commands::Init { target, json } => ParsedCommand {
+            Commands::Init { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Init(InitRequest { target })),
                 json,
                 fail_on_findings: false,
             },
-            Commands::Adopt { target, json } => ParsedCommand {
+            Commands::Adopt { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Adopt { target }),
                 json,
                 fail_on_findings: false,
             },
-            Commands::Apply { operation_id, json } => ParsedCommand {
+            Commands::Apply { operation_id, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Apply { operation_id }),
                 json,
                 fail_on_findings: false,
             },
             Commands::Operation { command } => match command {
-                OperationCommands::Show { operation_id, json } => ParsedCommand {
+                OperationCommands::Show { operation_id, json } => ParsedCommand::App {
                     request: Ok(AppRequest::Operation(OperationRequest::Show {
                         operation_id,
                     })),
@@ -456,33 +492,33 @@ impl Cli {
             },
             Commands::Config { command } => config_command(command),
             Commands::Vault { command } => vault_command(command),
-            Commands::Paths { context } => ParsedCommand {
+            Commands::Paths { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Paths {
                     vault: context.vault,
                 }),
                 json: context.json,
                 fail_on_findings: false,
             },
-            Commands::Status { context } => ParsedCommand {
+            Commands::Status { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Status {
                     vault: context.vault,
                 }),
                 json: context.json,
                 fail_on_findings: false,
             },
-            Commands::Doctor { context } => ParsedCommand {
+            Commands::Doctor { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Doctor {
                     vault: context.vault,
                 }),
                 json: context.json,
                 fail_on_findings: false,
             },
-            Commands::Version { json } => ParsedCommand {
+            Commands::Version { json } => ParsedCommand::App {
                 request: Ok(AppRequest::Version),
                 json,
                 fail_on_findings: false,
             },
-            Commands::Capabilities { json } => ParsedCommand {
+            Commands::Capabilities { json } => ParsedCommand::App {
                 request: Ok(AppRequest::Capabilities),
                 json,
                 fail_on_findings: false,
@@ -512,7 +548,7 @@ fn backup_command(command: BackupCommands) -> ParsedCommand {
             json,
         } => (BackupRequest::Restore { archive, target }, json),
     };
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Backup(request)),
         json,
         fail_on_findings: false,
@@ -520,7 +556,7 @@ fn backup_command(command: BackupCommands) -> ParsedCommand {
 }
 
 fn review_command(context: VaultContext) -> ParsedCommand {
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Review {
             vault: context.vault,
         }),
@@ -536,7 +572,7 @@ fn query_command(
     strict_backend: bool,
     context: VaultContext,
 ) -> ParsedCommand {
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Query {
             vault: context.vault,
             request: kb_core::SearchRequest {
@@ -556,7 +592,7 @@ fn query_command(
 }
 
 fn lint_command(strict: bool, context: VaultContext) -> ParsedCommand {
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Lint {
             vault: context.vault,
         }),
@@ -619,7 +655,7 @@ fn config_command(command: ConfigCommands) -> ParsedCommand {
         ),
         ConfigCommands::Admission { command } => return admission_command(command),
     };
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Config(request)),
         json,
         fail_on_findings: false,
@@ -669,7 +705,7 @@ fn admission_command(command: AdmissionCommands) -> ParsedCommand {
             context.json,
         ),
     };
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Config(ConfigRequest::Admission {
             vault,
             request,
@@ -692,7 +728,7 @@ fn vault_command(command: VaultCommands) -> ParsedCommand {
             (VaultRequest::Unregister { vault_id }, json)
         }
     };
-    ParsedCommand {
+    ParsedCommand::App {
         request: Ok(AppRequest::Vault(request)),
         json,
         fail_on_findings: false,

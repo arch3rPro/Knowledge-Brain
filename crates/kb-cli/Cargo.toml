@@ -14,10 +14,12 @@ clap.workspace = true
 kb-app = { path = "../kb-app" }
 kb-core = { path = "../kb-core" }
 kb-protocol = { path = "../kb-protocol" }
+kb-server = { path = "../kb-server" }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 zip.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 assert_cmd = "2"

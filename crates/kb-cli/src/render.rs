@@ -1,4 +1,4 @@
-use std::process::ExitCode;
+use std::{io::Write, process::ExitCode};
 
 use kb_core::KbError;
 use kb_protocol::{Envelope, ErrorEnvelope};
@@ -43,4 +43,13 @@ pub(crate) fn error(error: KbError, json_output: bool) -> ExitCode {
         eprintln!("Error: {error}");
     }
     ExitCode::FAILURE
+}
+
+pub(crate) fn startup(value: &Value) -> Result<(), KbError> {
+    let text = serde_json::to_string(&Envelope::new(value))
+        .map_err(|error| KbError::invalid_config("server startup response", error.to_string()))?;
+    println!("{text}");
+    std::io::stdout().flush().map_err(|error| {
+        KbError::io_failure("flush server startup response", "stdout", error.to_string())
+    })
 }

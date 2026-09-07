@@ -1,6 +1,6 @@
 //! Optional HTTP transport over the shared Knowledge-Brain application layer.
 
-use std::{future::Future, net::SocketAddr, str::FromStr, sync::Arc};
+use std::{fs, future::Future, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -16,6 +16,36 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
 const MAX_JSON_BODY_BYTES: usize = 1024 * 1024;
+const MAX_TOKEN_FILE_BYTES: u64 = 4096;
+
+/// Read a bounded token from a regular, non-link file.
+///
+/// # Errors
+///
+/// Returns an IO, unsafe-path or authentication error for an unreadable,
+/// link-shaped, oversized or invalid token file.
+pub fn read_token_file(path: &Path) -> Result<String, KbError> {
+    kb_core::ensure_not_link_or_reparse_point(path)?;
+    let metadata = fs::metadata(path).map_err(|error| {
+        KbError::io_failure(
+            "inspect HTTP token file",
+            path.display().to_string(),
+            error.to_string(),
+        )
+    })?;
+    if !metadata.is_file() || metadata.len() > MAX_TOKEN_FILE_BYTES {
+        return Err(auth_error(
+            "HTTP token file must be a regular file no larger than 4096 bytes.",
+        ));
+    }
+    fs::read_to_string(path).map_err(|error| {
+        KbError::io_failure(
+            "read HTTP token file",
+            path.display().to_string(),
+            error.to_string(),
+        )
+    })
+}
 
 #[derive(Debug, Clone)]
 pub struct ServerPolicy {
