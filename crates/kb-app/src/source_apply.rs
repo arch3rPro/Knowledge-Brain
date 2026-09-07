@@ -11,6 +11,7 @@ use kb_core::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fs, path::Path};
 const MARKER: &str = ".kb/runtime/source-pending.json";
+const KNOWLEDGE_MARKER: &str = ".kb/runtime/knowledge-pending.json";
 #[derive(Debug, Serialize, Deserialize)]
 struct Progress {
     operation_id: OperationId,
@@ -52,6 +53,9 @@ pub(crate) fn ensure_no_pending(root: &Path) -> Result<(), KbError> {
     if safe_path(root, MARKER)?.exists() {
         return Err(recovery("An interrupted source capture needs recovery."));
     }
+    if safe_path(root, KNOWLEDGE_MARKER)?.exists() {
+        return Err(recovery("An interrupted knowledge save needs recovery."));
+    }
     Ok(())
 }
 fn apply_inner(
@@ -77,6 +81,11 @@ fn apply_inner(
     safe_path(root, ".kb/runtime")?;
     let _lock = VaultLock::acquire(root, LockMode::Exclusive, "apply source capture", Some(id))?;
     let marker = safe_path(root, MARKER)?;
+    if safe_path(root, KNOWLEDGE_MARKER)?.exists() {
+        return Err(recovery(
+            "An interrupted knowledge save needs recovery first.",
+        ));
+    }
     let progress_path = directory.join("source-progress.json");
     if marker.exists() {
         let pending: OperationId = read_json(&marker)?;

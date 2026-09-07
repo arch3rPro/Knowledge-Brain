@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 use kb_core::{
     CURRENT_SCHEMA_VERSION, EffectiveConfig, KbError, KnowledgeChangeRequest, KnowledgePlan,
@@ -11,7 +11,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{
     UserPaths,
     managed_markdown::{IndexEntry, LogEntry, render_index, render_log},
-    operation::{operation_directory, write_json},
+    operation::{create_private_directory_all, operation_directory, write_json},
     source_io::{Budget, hash, list_files, read_config_hash, safe_path},
     source_record,
 };
@@ -287,13 +287,7 @@ fn render_diff(
 
 fn persist_plan(user_paths: &UserPaths, plan: &KnowledgePlan) -> Result<(), KbError> {
     let directory = operation_directory(user_paths, plan.operation_id);
-    fs::create_dir_all(&directory).map_err(|error| {
-        KbError::io_failure(
-            "create operation directory",
-            directory.display().to_string(),
-            error.to_string(),
-        )
-    })?;
+    create_private_directory_all(&directory)?;
     write_json(&directory.join("plan.json"), plan)?;
     let bytes = serde_json::to_vec(plan)
         .map_err(|error| KbError::invalid_config("knowledge plan", error.to_string()))?;

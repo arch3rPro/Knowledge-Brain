@@ -105,7 +105,9 @@ fn validate_knowledge_change(
     let is_markdown = std::path::Path::new(path)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
-    let reserved = matches!(path.rsplit('/').next(), Some("index.md" | "log.md"));
+    let file_name = path.rsplit('/').next().unwrap_or_default();
+    let reserved =
+        file_name.eq_ignore_ascii_case("index.md") || file_name.eq_ignore_ascii_case("log.md");
     if !in_layer || !is_markdown || reserved {
         return Err(crate::KbError::invalid_config(
             "knowledge request path",

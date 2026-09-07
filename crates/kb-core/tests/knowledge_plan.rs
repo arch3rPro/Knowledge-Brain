@@ -28,6 +28,7 @@ fn request_rejects_targets_outside_knowledge_layers() {
         "log.md",
         "external-sources/record.md",
         "articles/index.md",
+        "articles/INDEX.md",
         "research/log.md",
         "articles/topic.txt",
     ] {

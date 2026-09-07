@@ -507,14 +507,9 @@ fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result
                 &context.overrides(),
             )?)
         }
-        OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_) => {
-            Err(KbError::new(
-                ErrorCode::CapabilityUnavailable,
-                "Knowledge apply is not available.",
-                false,
-                "Use a version that implements knowledge plan apply.",
-            ))
-        }
+        OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_) => to_value(
+            crate::apply_knowledge(context.user_paths()?, operation_id, &context.overrides())?,
+        ),
         _ => to_value(apply_operation(context.user_paths()?, operation_id)?),
     }
 }

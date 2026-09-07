@@ -123,7 +123,7 @@ pub(crate) fn write_json(path: &std::path::Path, value: &impl Serialize) -> Resu
     atomic_replace(path, &bytes)
 }
 
-fn create_private_directory_all(path: &std::path::Path) -> Result<(), KbError> {
+pub(crate) fn create_private_directory_all(path: &std::path::Path) -> Result<(), KbError> {
     fs::create_dir_all(path).map_err(|error| {
         KbError::io_failure(
             "create private directory",
