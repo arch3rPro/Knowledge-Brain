@@ -39,7 +39,7 @@ fn version_and_capabilities_are_explicit_contracts() {
             "builtin-docx"
         ])
     );
-    assert_eq!(capabilities["data"]["bm25"], false);
+    assert_eq!(capabilities["data"]["bm25"], true);
     assert_eq!(capabilities["data"]["mcp"], false);
     assert_eq!(capabilities["data"]["http"], false);
     assert!(

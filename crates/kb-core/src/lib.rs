@@ -16,7 +16,8 @@ pub use extraction::{
     SourceLocation,
 };
 pub use search::{
-    Catalog, CatalogEntry, SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
+    Catalog, CatalogEntry, SearchBackend, SearchExplanation, SearchField, SearchFieldContribution,
+    SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
 };
 pub use source::{SourceId, SourceVersion};
 

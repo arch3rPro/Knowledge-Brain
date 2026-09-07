@@ -10,16 +10,16 @@ use kb_core::{
     SearchScope,
 };
 use std::{cmp::Reverse, collections::BTreeSet, fs, path::Path};
-struct Document {
-    path: PortableRelativePath,
-    content_path: PortableRelativePath,
-    source_uri: Option<String>,
-    title: String,
-    media: MediaType,
-    bytes: Vec<u8>,
-    annotation: Option<String>,
+pub(crate) struct Document {
+    pub(crate) path: PortableRelativePath,
+    pub(crate) content_path: PortableRelativePath,
+    pub(crate) source_uri: Option<String>,
+    pub(crate) title: String,
+    pub(crate) media: MediaType,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) annotation: Option<String>,
 }
-fn documents(
+pub(crate) fn documents(
     root: &Path,
     scope: SearchScope,
     c: &EffectiveConfig,
@@ -92,14 +92,31 @@ pub fn query(
     };
     let phrase = r.query.trim().to_lowercase();
     let terms = phrase.split_whitespace().collect::<BTreeSet<_>>();
-    let groups = scopes
-        .into_iter()
-        .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
-        .collect::<Result<_, _>>()?;
-    let warnings = if c.search.mode.value == SearchMode::Bm25 {
-        vec!["BM25 is unavailable; results use direct search.".into()]
+    let (groups, warnings) = if c.search.mode.value == SearchMode::Bm25 {
+        match scopes
+            .iter()
+            .copied()
+            .map(|scope| crate::bm25::search(root, scope, c, &r.query, r.limit))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(groups) => (groups, Vec::new()),
+            Err(error) if error.code == kb_core::ErrorCode::IndexStale && !r.strict_backend => (
+                scopes
+                    .into_iter()
+                    .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
+                    .collect::<Result<_, _>>()?,
+                vec![format!("{} Results use direct search.", error.message)],
+            ),
+            Err(error) => return Err(error),
+        }
     } else {
-        Vec::new()
+        (
+            scopes
+                .into_iter()
+                .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
+                .collect::<Result<_, _>>()?,
+            Vec::new(),
+        )
     };
     Ok(SearchResponse {
         schema_version: CURRENT_SCHEMA_VERSION,
@@ -157,6 +174,9 @@ fn search_scope(
                 location: block.location,
                 snippet: snippet(&block.text, phrase),
                 match_count: count as u64,
+                backend: Some(kb_core::SearchBackend::Direct),
+                score_micros: None,
+                explanation: None,
             };
             hits.push((Reverse(count), Reverse(distinct), Reverse(title_match), hit));
         }
@@ -175,6 +195,9 @@ fn search_scope(
                     location: None,
                     snippet: document_title,
                     match_count: 1,
+                    backend: Some(kb_core::SearchBackend::Direct),
+                    score_micros: None,
+                    explanation: None,
                 },
             ));
         }
@@ -203,6 +226,24 @@ fn snippet(text: &str, phrase: &str) -> String {
         .find(|l| l.to_lowercase().contains(phrase))
         .unwrap_or(text);
     line.chars().take(240).collect()
+}
+
+pub(crate) fn invalidate_caches(root: &Path) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for relative in [".kb/cache/catalog.json", ".kb/cache/bm25.json"] {
+        let outcome = safe_path(root, relative).and_then(|path| match fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(io("remove derived search cache", &path, error)),
+        });
+        if let Err(error) = outcome {
+            warnings.push(format!(
+                "Content saved; search cache invalidation failed: {}",
+                error.message
+            ));
+        }
+    }
+    warnings
 }
 /// Rebuild navigation metadata from authoritative content.
 /// # Errors
@@ -235,5 +276,8 @@ pub fn rebuild_catalog(root: &Path, c: &EffectiveConfig) -> Result<Catalog, KbEr
     let parent = safe_path(root, ".kb/cache")?;
     fs::create_dir_all(&parent).map_err(|e| io("create cache directory", &parent, e))?;
     crate::operation::write_json(&p, &catalog)?;
+    if c.search.mode.value == SearchMode::Bm25 {
+        crate::bm25::update(root, c)?;
+    }
     Ok(catalog)
 }

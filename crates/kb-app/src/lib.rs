@@ -17,6 +17,7 @@ pub use search::{query, rebuild_catalog};
 pub use source_plan::{ReviewReport, SourceCapturePlan, SourceCaptureResult};
 pub use source_verify::{Verification, VerificationItem, verify_sources};
 mod app;
+mod bm25;
 mod capabilities;
 mod config;
 mod doctor;

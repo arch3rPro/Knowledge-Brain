@@ -106,7 +106,7 @@ fn apply_inner(
         // A durable receipt means knowledge was saved; only housekeeping remains.
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
-        return Ok(result);
+        return finish_housekeeping(root, &result_path, result);
     }
     let config = load_effective_config(root, paths, overrides)?;
     if config.schema_version != CURRENT_SCHEMA_VERSION || config.vault_id != plan.vault_id {
@@ -150,6 +150,26 @@ fn apply_inner(
     crash_for_test("receipt");
     fs::remove_file(&marker).map_err(|e| io("remove marker", &marker, e))?;
     fs::remove_file(&progress_path).map_err(|e| io("remove progress", &progress_path, e))?;
+    finish_housekeeping(root, &result_path, result)
+}
+
+fn finish_housekeeping(
+    root: &Path,
+    result_path: &Path,
+    mut result: SourceCaptureResult,
+) -> Result<SourceCaptureResult, KbError> {
+    let warnings = crate::search::invalidate_caches(root);
+    let changed = warnings
+        .iter()
+        .any(|warning| !result.warnings.contains(warning));
+    for warning in warnings {
+        if !result.warnings.contains(&warning) {
+            result.warnings.push(warning);
+        }
+    }
+    if changed {
+        write_json(result_path, &result)?;
+    }
     Ok(result)
 }
 #[cfg(test)]
@@ -584,10 +604,14 @@ mod tests {
         for point in ["write-1", "write-2", "write-3", "receipt"] {
             let t = tempfile::tempdir().unwrap();
             let (user, plan) = setup(t.path());
+            fs::write(plan.target.join(".kb/cache/catalog.json"), "stale catalog").unwrap();
+            fs::write(plan.target.join(".kb/cache/bm25.json"), "stale index").unwrap();
             crash(t.path(), plan.operation_id, point);
             assert!(ensure_no_pending(&plan.target).is_err());
             apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap();
             assert!(!plan.target.join(MARKER).exists());
+            assert!(!plan.target.join(".kb/cache/catalog.json").exists());
+            assert!(!plan.target.join(".kb/cache/bm25.json").exists());
             for write in &plan.writes {
                 assert_eq!(
                     fs::read_to_string(plan.target.join(write.path.as_str())).unwrap(),

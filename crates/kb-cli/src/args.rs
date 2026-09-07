@@ -43,6 +43,9 @@ enum Commands {
         scope: String,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Fail instead of falling back when the selected backend is unavailable.
+        #[arg(long)]
+        strict_backend: bool,
         #[command(flatten)]
         context: VaultContext,
     },
@@ -358,8 +361,9 @@ impl Cli {
                 query,
                 scope,
                 limit,
+                strict_backend,
                 context,
-            } => query_command(query, &scope, limit, context),
+            } => query_command(query, &scope, limit, strict_backend, context),
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
@@ -463,13 +467,20 @@ fn review_command(context: VaultContext) -> ParsedCommand {
     }
 }
 
-fn query_command(query: String, scope: &str, limit: usize, context: VaultContext) -> ParsedCommand {
+fn query_command(
+    query: String,
+    scope: &str,
+    limit: usize,
+    strict_backend: bool,
+    context: VaultContext,
+) -> ParsedCommand {
     ParsedCommand {
         request: Ok(AppRequest::Query {
             vault: context.vault,
             request: kb_core::SearchRequest {
                 query,
                 limit,
+                strict_backend,
                 scope: match scope {
                     "sources" => kb_core::SearchScope::Sources,
                     "all" => kb_core::SearchScope::All,

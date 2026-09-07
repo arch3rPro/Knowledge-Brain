@@ -122,17 +122,16 @@ fn finish_housekeeping(
     result_path: &Path,
     mut result: KnowledgePlanResult,
 ) -> Result<KnowledgePlanResult, KbError> {
-    // Catalog content is derived. Failure to remove it cannot roll back saved
-    // knowledge, so report it as a warning while preserving the receipt.
-    let catalog = safe_path(root, ".kb/cache/catalog.json")?;
-    if let Err(error) = remove_if_present(&catalog) {
-        let warning = format!(
-            "Knowledge saved; search catalog invalidation failed: {}",
-            error.message
-        );
+    let warnings = crate::search::invalidate_caches(root);
+    let changed = warnings
+        .iter()
+        .any(|warning| !result.warnings.contains(warning));
+    for warning in warnings {
         if !result.warnings.contains(&warning) {
             result.warnings.push(warning);
         }
+    }
+    if changed {
         write_json(result_path, &result)?;
     }
     Ok(result)
@@ -489,6 +488,7 @@ mod tests {
             let temporary = tempfile::tempdir().unwrap();
             let (user_paths, plan) = setup(temporary.path());
             fs::write(plan.target.join(".kb/cache/catalog.json"), "stale catalog").unwrap();
+            fs::write(plan.target.join(".kb/cache/bm25.json"), "stale index").unwrap();
             crash(temporary.path(), plan.operation_id, point);
             assert!(plan.target.join(MARKER).exists());
             let result =
@@ -497,6 +497,7 @@ mod tests {
             assert_eq!(result.changed.len(), 3);
             assert!(!plan.target.join(MARKER).exists());
             assert!(!plan.target.join(".kb/cache/catalog.json").exists());
+            assert!(!plan.target.join(".kb/cache/bm25.json").exists());
             for write in &plan.writes {
                 assert_eq!(
                     fs::read_to_string(plan.target.join(write.path.as_str())).unwrap(),
