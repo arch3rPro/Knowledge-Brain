@@ -42,7 +42,16 @@ Vault 注册表可以保存本机绝对路径；Vault 内生成的相对路径�
 
 ## 兼容边界
 
-当前 schema 是 `v1.0`。旧且可迁移的 schema 可以诊断和读取，但写入返回 `migration_required`；同主版本的更新 schema 以及更新主版本只开放诊断路径，写入返回 `schema_too_new`。程序版本使用 SemVer，不能代替 schema 兼容判断。
+当前 schema 是 `v1.0`。数值版本关系和应用可用的迁移路径共同决定兼容性：
+
+| Vault schema | 兼容性 | 行为 |
+| --- | --- | --- |
+| 当前版本 | `current` | 正常读取和写入。 |
+| 旧版本且有完整、已注册的迁移路径 | `older_migratable` | `status` 和 `doctor` 可诊断；写入返回 `migration_required`。 |
+| 旧版本但没有完整迁移路径 | `older_unsupported` | `status` 和 `doctor` 可诊断；写入返回 `migration_unavailable`。 |
+| 同主版本更新或更新主版本 | `newer_minor_read_only` 或 `newer_major_diagnostic_only` | 只开放诊断路径；写入返回 `schema_too_new`。 |
+
+生产迁移目录目前为空：产品没有历史 schema 路径，也不提供 `kb migrate` 命令。迁移路径的决策和未来实现要求见 [ADR-0016](../decisions/accepted/architecture/0016-explicit-schema-migration-paths.md)。程序版本使用 SemVer，不能代替 schema 兼容判断。
 
 当前能力状态见 `kb capabilities --json`，实施状态见 [Roadmap](../../ROADMAP.md)。
 

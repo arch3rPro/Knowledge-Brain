@@ -130,11 +130,13 @@ macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回�
 - 完整、可选的 BM25F（Stage 5A implemented）
 - 索引缺失、损坏、版本不兼容或陈旧后的 direct 回退（Stage 5A implemented）
 - 标准 ZIP 备份、校验和恢复（Stage 5B implemented）
-- schema 迁移
+- 显式 schema 迁移路径分类（implemented；生产目录为空）
 - Windows、macOS 和 Linux 发布产物
 - 安装包、签名和升级流程
 
 Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足够收益且不成为知识库运行前提。
+
+首次实际 schema 变更必须同时提供可执行转换、`kb migrate` 命令和跨版本 fixture 测试；在此之前产品只对缺少完整路径的旧 schema 返回 `older_unsupported`。决策见 [ADR-0016](docs/decisions/accepted/architecture/0016-explicit-schema-migration-paths.md)。
 
 ### Stage 5A — 可选 BM25F
 

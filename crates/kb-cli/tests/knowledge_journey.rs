@@ -115,6 +115,68 @@ fn plan_review_apply_query_and_reopen_are_one_real_workflow() {
 }
 
 #[test]
+fn unsupported_schema_knowledge_apply_retry_preserves_vault_bytes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let vault_text = vault.to_str().unwrap();
+    run(base, &["init", vault_text, "--json"]);
+    let request_path = base.join("request.json");
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "path": "articles/retry.md",
+                "before_sha256": null,
+                "summary": "Exercise an unsupported apply retry.",
+                "content": "---\ntype: Article\ntitle: Retry\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com/source\nkb:\n  managed: true\n---\n\n# Retry\n"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let plan = run(
+        base,
+        &[
+            "plan",
+            "create",
+            request_path.to_str().unwrap(),
+            "--vault",
+            vault_text,
+            "--json",
+        ],
+    );
+    let operation_id = plan["data"]["operation_id"].as_str().unwrap();
+    run(base, &["apply", operation_id, "--json"]);
+
+    fs::write(vault.join(".kb/cache/catalog.json"), b"catalog sentinel").unwrap();
+    fs::write(vault.join(".kb/cache/bm25.json"), b"bm25 sentinel").unwrap();
+    fs::write(
+        vault.join(".kb/runtime/knowledge-pending.json"),
+        serde_json::to_vec(operation_id).unwrap(),
+    )
+    .unwrap();
+    let config_path = vault.join(".kb/config.yml");
+    let unsupported_config = fs::read_to_string(&config_path)
+        .unwrap()
+        .replacen("v1.0", "v0.9", 1);
+    fs::write(&config_path, unsupported_config).unwrap();
+    let before = snapshot(&vault);
+
+    let output = command(base)
+        .args(["apply", operation_id, "--json"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["error"]["code"], "migration_unavailable");
+    assert_eq!(snapshot(&vault), before);
+}
+
+#[test]
 fn malformed_request_uses_the_json_error_contract() {
     let temporary = tempfile::tempdir().unwrap();
     let request = temporary.path().join("broken.json");

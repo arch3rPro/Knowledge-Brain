@@ -10,6 +10,7 @@ pub enum ErrorCode {
     InvalidQuery,
     InvalidConfig,
     MigrationRequired,
+    MigrationUnavailable,
     SchemaTooNew,
     PathNotAdmitted,
     PlanStale,

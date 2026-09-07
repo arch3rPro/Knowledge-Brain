@@ -52,5 +52,6 @@ pub use path::{
 };
 pub use platform::ensure_not_link_or_reparse_point;
 pub use version::{
-    CURRENT_SCHEMA_VERSION, SchemaCompatibility, SchemaVersion, SchemaVersionParseError,
+    CURRENT_SCHEMA_VERSION, MigrationCatalog, MigrationCatalogError, MigrationStep,
+    SchemaCompatibility, SchemaRelation, SchemaVersion, SchemaVersionParseError,
 };

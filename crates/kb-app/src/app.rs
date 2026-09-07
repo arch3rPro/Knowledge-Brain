@@ -735,32 +735,42 @@ fn select_doctor_root(context: &AppContext, explicit: Option<String>) -> Result<
 
 pub(crate) fn ensure_mutation_allowed(root: &std::path::Path) -> Result<(), KbError> {
     let identity = crate::vault::read_vault_identity(root)?;
-    match identity
-        .schema_version
-        .compatibility_with(CURRENT_SCHEMA_VERSION)
-    {
+    match crate::schema::vault_schema_compatibility(identity.schema_version) {
         SchemaCompatibility::Current => Ok(()),
-        SchemaCompatibility::OlderMigratable => Err(KbError::new(
-            ErrorCode::MigrationRequired,
+        SchemaCompatibility::OlderMigratable => {
+            Err(migration_required_error(identity.schema_version))
+        }
+        SchemaCompatibility::OlderUnsupported => Err(KbError::new(
+            ErrorCode::MigrationUnavailable,
             format!(
-                "Vault schema {} must be migrated before writing.",
-                identity.schema_version
+                "Vault schema {} has no migration path to {}.",
+                identity.schema_version, CURRENT_SCHEMA_VERSION
             ),
             false,
-            "Run the migration workflow with a compatible Knowledge-Brain version.",
+            "Use a Knowledge-Brain version that explicitly supports this Vault schema, or preserve the Vault with an external byte-for-byte backup.",
         )),
         SchemaCompatibility::NewerMinorReadOnly | SchemaCompatibility::NewerMajorDiagnosticOnly => {
-            Err(KbError::new(
-                ErrorCode::SchemaTooNew,
-                format!(
-                    "Vault schema {} is newer than supported {}.",
-                    identity.schema_version, CURRENT_SCHEMA_VERSION
-                ),
-                false,
-                "Upgrade Knowledge-Brain; only status and doctor are available meanwhile.",
-            ))
+            Err(schema_too_new_error(identity.schema_version))
         }
     }
+}
+
+fn migration_required_error(version: kb_core::SchemaVersion) -> KbError {
+    KbError::new(
+        ErrorCode::MigrationRequired,
+        format!("Vault schema {version} must be migrated before writing."),
+        false,
+        "Run the migration workflow with a compatible Knowledge-Brain version.",
+    )
+}
+
+fn schema_too_new_error(version: kb_core::SchemaVersion) -> KbError {
+    KbError::new(
+        ErrorCode::SchemaTooNew,
+        format!("Vault schema {version} is newer than supported {CURRENT_SCHEMA_VERSION}."),
+        false,
+        "Upgrade Knowledge-Brain; only status and doctor are available meanwhile.",
+    )
 }
 
 fn to_value(value: impl Serialize) -> Result<Value, KbError> {
@@ -769,7 +779,18 @@ fn to_value(value: impl Serialize) -> Result<Value, KbError> {
 }
 
 fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result<Value, KbError> {
-    match inspect_operation(context.user_paths()?, operation_id)? {
+    let operation = inspect_operation(context.user_paths()?, operation_id)?;
+    match &operation {
+        OperationState::PlannedSource(plan) => ensure_mutation_allowed(&plan.target)?,
+        OperationState::AppliedSource(result) => ensure_mutation_allowed(&result.target)?,
+        OperationState::PlannedKnowledge(plan) => ensure_mutation_allowed(&plan.target)?,
+        OperationState::AppliedKnowledge(result) => ensure_mutation_allowed(&result.target)?,
+        OperationState::Planned(_)
+        | OperationState::Applied(_)
+        | OperationState::PlannedSkill(_)
+        | OperationState::AppliedSkill(_) => {}
+    }
+    match operation {
         OperationState::PlannedSource(_) | OperationState::AppliedSource(_) => {
             to_value(crate::source_apply::apply_capture(
                 context.user_paths()?,

@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{
     ConfigOverrides, UserPaths, load_admission, load_effective_config, lock::probe_exclusive_lock,
-    status::pending_operations,
+    schema::vault_schema_compatibility, status::pending_operations,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,28 +48,38 @@ pub fn doctor(
     checks.push(vault_writability(root));
     checks.push(check_result("path_portability", check_portability(root)));
     checks.push(match identity {
-        Ok(identity)
-            if identity
-                .schema_version
-                .compatibility_with(CURRENT_SCHEMA_VERSION)
-                == SchemaCompatibility::Current =>
-        {
-            check_result(
-                "configuration",
-                check_configuration(root, user_paths, overrides),
-            )
-        }
         Ok(identity) => {
-            let compatibility = identity
-                .schema_version
-                .compatibility_with(CURRENT_SCHEMA_VERSION);
-            DoctorCheck {
-                id: "configuration",
-                status: CheckStatus::Warn,
-                message: format!(
-                    "Schema {} is {compatibility:?}; current fields were not interpreted.",
-                    identity.schema_version
+            let compatibility = vault_schema_compatibility(identity.schema_version);
+            match compatibility {
+                SchemaCompatibility::Current => check_result(
+                    "configuration",
+                    check_configuration(root, user_paths, overrides),
                 ),
+                SchemaCompatibility::OlderUnsupported => DoctorCheck {
+                    id: "configuration",
+                    status: CheckStatus::Warn,
+                    message: format!(
+                        "Schema {} has no migration path to {}; current fields were not interpreted.",
+                        identity.schema_version, CURRENT_SCHEMA_VERSION
+                    ),
+                },
+                SchemaCompatibility::OlderMigratable => DoctorCheck {
+                    id: "configuration",
+                    status: CheckStatus::Warn,
+                    message: format!(
+                        "Schema {} has a migration path to {}; current fields were not interpreted.",
+                        identity.schema_version, CURRENT_SCHEMA_VERSION
+                    ),
+                },
+                SchemaCompatibility::NewerMinorReadOnly
+                | SchemaCompatibility::NewerMajorDiagnosticOnly => DoctorCheck {
+                    id: "configuration",
+                    status: CheckStatus::Warn,
+                    message: format!(
+                        "Schema {} is {compatibility:?}; current fields were not interpreted.",
+                        identity.schema_version
+                    ),
+                },
             }
         }
         Err(error) => DoctorCheck {
