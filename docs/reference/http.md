@@ -30,6 +30,7 @@ Authorization: Bearer <token>
 | `POST /review` | 无 | 审查准入来源并创建计划 |
 | `POST /plans` | `KnowledgePlanRequest` JSON | 创建知识保存计划 |
 | `GET /operations/{id}` | 无 | 查看计划或完成结果 |
+| `GET /operations/{id}/events` | 无 | 订阅可重连的 operation SSE |
 | `POST /operations/{id}/apply` | 无 | 应用计划，仅 `--allow-write` |
 
 `SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit` 和 `strict_backend`。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
@@ -40,4 +41,4 @@ Authorization: Bearer <token>
 
 当前实现是明文 HTTP，不提供 TLS，也不发送宽松 CORS 头。局域网监听是明确允许的可选项，但只适用于受信任网络，或放在用户管理的 TLS 反向代理之后。把 token 放进 URL、Vault 配置或版本库会泄露凭据。
 
-服务收到 Ctrl-C 后停止接受新连接并结束。当前没有 daemon 安装、后台自启动或 SSE；后续只有在 operation 具备可持久化进度事件和断线续传语义后才增加 SSE。
+服务收到 Ctrl-C 后停止接受新连接并结束。当前没有 daemon 安装或后台自启动。operation SSE 使用持久事件 ID 和 `Last-Event-ID` 续传，完整语义见 [Operation 事件参考](operation-events.md)。

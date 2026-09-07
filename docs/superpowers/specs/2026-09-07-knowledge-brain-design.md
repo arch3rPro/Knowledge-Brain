@@ -567,7 +567,7 @@ CLI 默认显示人类可读文本，`--json` 返回稳定机器结构。默认�
 
 ### 14.5 HTTP 与 SSE
 
-`kb serve` 提供可选 HTTP 接口。API 路径不包含版本前缀；请求和响应内容携带 schema 版本。SSE 延后到 operation 具有可持久化进度事件后实现；事件必须按 `operation_id` 归属，客户端断线重连不能导致操作重复执行。
+`kb serve` 提供可选 HTTP 接口。API 路径不包含版本前缀；请求和响应内容携带 schema 版本。SSE 读取机器本地的持久 operation 事件，事件按 `operation_id` 归属，并使用连续事件 ID 支持断线续传；重连不提交或重复执行操作。
 
 ## 15. WebUI 与 GUI
 

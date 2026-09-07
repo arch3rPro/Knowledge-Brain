@@ -34,6 +34,6 @@
 
 ### Task 5: Documentation and focused verification
 
-- [ ] Publish the event/SSE reference, security boundary, capability and Stage 4B status.
-- [ ] Run format, related crate Clippy, focused app/server/CLI tests and diff checks.
-- [ ] Record unverified browser/load/platform/full-suite limits explicitly.
+- [x] Publish the event/SSE reference, security boundary, capability and Stage 4B status.
+- [x] Run format, related crate Clippy, focused app/server/CLI tests and diff checks.
+- [x] Record unverified browser/load/platform/full-suite limits explicitly.

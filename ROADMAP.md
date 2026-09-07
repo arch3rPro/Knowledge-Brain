@@ -84,7 +84,8 @@
 
 - 可移植 Agent Skill
 - MCP 适配器
-- 本机/局域网可选 HTTP（Stage 4A implemented）；SSE planned
+- 本机/局域网可选 HTTP（Stage 4A implemented）
+- 可恢复 operation 事件与 SSE（Stage 4B implemented）
 - 可选局域网访问策略
 - WebUI 和 GUI 共用的应用接口
 
@@ -92,7 +93,13 @@
 
 **Status:** implemented（定向本地测试）。`kb serve` 默认回环只读；局域网监听和 operation apply 要求 token 文件及显式权限。服务固定到启动时解析的 Vault ID，路由通过 `kb-app` 复用状态、诊断、查询、lint、来源 review、知识计划、operation 查看与 apply，不接受任意 Vault 或文件路径。CLI 子进程和真实 TCP 测试覆盖启动信封、鉴权、请求限制、只读拒绝、跨 Vault 拒绝及显式保存。
 
-当前没有 TLS、daemon、自启动或 SSE。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。未运行 workspace 全量测试、release 二进制流程、浏览器 WebUI、拒绝服务加固或 Windows/Linux 原生验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
+当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。未运行 workspace 全量测试、release 二进制流程、浏览器 WebUI、拒绝服务加固或 Windows/Linux 原生验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
+
+### Stage 4B — Operation 事件与 SSE
+
+**Status:** implemented（定向本地测试）。采用、来源保存和知识保存会原子维护机器本地的有序事件日志，覆盖 planned、applying、progress、recovering、applied 和 failed。进程中断后的重试保留并续写事件；完成后重复 apply 不产生重复完成事件。`GET /operations/{id}/events` 使用相同鉴权和固定 Vault 边界，支持 `Last-Event-ID`，终态发送后关闭，断线不重复执行。
+
+本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载、跨机器事件同步、release 二进制或 Windows/Linux 原生网络行为。事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](docs/superpowers/plans/2026-09-07-operation-events-sse.md)。
 
 ## Stage 5 — 搜索、备份与发布
 

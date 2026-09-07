@@ -58,6 +58,8 @@ CLI 和未来应用入口消费同一个 `LintReport`。文档规则和 CLI 的 
 
 `kb serve` 在同一可执行文件中按需启动，不把 CLI 变成 daemon 客户端。服务启动时把一个 Vault 解析为稳定 ID，之后每个路由只构造该 Vault 的 typed `AppRequest`。HTTP 的 token、监听地址和写入开关属于进程启动策略，不进入可迁移 Vault 配置。完整路由与网络限制见 [HTTP 参考](../reference/http.md)。
 
+操作计划、恢复和完成路径同时维护机器本地的有序事件日志。应用层返回事件快照，HTTP 适配器只负责按 cursor 转换为 SSE；断线不会重新提交或拥有操作。事件契约见 [Operation 事件参考](../reference/operation-events.md)。
+
 ## 备份边界
 
 备份只迁移 Vault 共享内容，不携带本机配置、缓存、恢复状态或注册表。`kb-app` 统一收集准入目录、生成和验证逐文件清单，并把已完整复核的 ZIP 暂存恢复到空目标；入口适配器不自行解压。完整契约见[备份参考](../reference/backup.md)。

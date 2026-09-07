@@ -24,6 +24,8 @@ The binary has no telemetry, automatic outbound networking, MCP server, cloud ac
 
 The HTTP adapter is plain text and sends no permissive CORS headers. Use non-loopback binding only on a trusted network or behind a user-managed TLS reverse proxy. A bearer token protects application access but does not encrypt Vault content, URLs, headers or responses in transit. Keep token files outside the Vault and version control, protect them with operating-system permissions, and do not pass tokens in command arguments or URLs. HTTP request bodies are bounded, but the service has not undergone denial-of-service hardening or hostile-network testing. See the [HTTP reference](docs/reference/http.md).
 
+Operation SSE exposes only the selected Vault's machine-local event metadata after the same authentication check. Event logs exclude content, diffs, tokens and target paths; operation IDs and timing can still be sensitive usage metadata. Reconnect cursors never execute or cancel an operation. Corrupt logs are rejected rather than partially streamed.
+
 Do not include private Vault content, credentials, personal paths or source documents in a vulnerability report. Provide the smallest synthetic reproduction, affected version, operating system, expected boundary and observed result. Until a private reporting channel is published, do not open a public report containing sensitive data.
 
 ## Current assurance boundary

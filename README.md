@@ -127,7 +127,7 @@ kb apply <operation-id> --json
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
 | `kb doctor` | 运行独立诊断 |
 | `kb capabilities` | 查询当前二进制公开的能力 |
-| `kb serve` | 按需启动固定 Vault 的可选 HTTP 接口 |
+| `kb serve` | 按需启动固定 Vault 的可选 HTTP/SSE 接口 |
 
 完整语法见[命令参考](docs/reference/commands.md)，配置层级和 `admission.yml` 格式见[配置参考](docs/reference/configuration.md)。
 
