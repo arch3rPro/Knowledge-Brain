@@ -1,6 +1,6 @@
 # ADR-0003: Admission list
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,7 +8,7 @@
 
 Knowledge-Brain needs a human-readable declaration of which user directories may be inspected. Combining this authorization with a processing queue or scanning the whole Vault would obscure the user's intended read boundary.
 
-## Proposal
+## Decision
 
 Use root-level `admission.yml` as the sole source of admitted top-level directories. Each entry has a stable ID, a one-component relative path, an enabled state, and optional include/exclude filters. Runtime progress and discovered changes remain outside this file.
 

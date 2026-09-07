@@ -1,6 +1,6 @@
 # ADR-0004: Three-layer Wiki
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,7 +8,7 @@
 
 Original evidence, developing analysis, and reusable knowledge have different durability and confidence semantics. Storing them together makes provenance and maturity difficult for people and tools to interpret.
 
-## Proposal
+## Decision
 
 Use `Wiki/external-sources/`, `Wiki/research/`, and `Wiki/articles/` as the three fixed content layers. Use `Wiki/index.md` for human navigation and `Wiki/log.md` for successfully saved knowledge changes. Topic classification remains inside documents and user-defined directories rather than framework-created topic folders.
 

@@ -1,6 +1,6 @@
 # ADR-0005: No built-in LLM
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,7 +8,7 @@
 
 Embedding model clients in the core would require provider selection, credentials, network policy, and nondeterministic behavior in workflows that must remain portable and inspectable.
 
-## Proposal
+## Decision
 
 Keep the Knowledge-Brain core deterministic and offline-capable. External Agents may query content and submit structured suggestions through CLI JSON, MCP, or HTTP, but the core validates every suggestion and controls all Vault changes.
 

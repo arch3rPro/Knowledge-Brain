@@ -1,6 +1,6 @@
 # ADR-0001: Independent Rust core
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,7 +8,7 @@
 
 Knowledge-Brain must expose the same local knowledge behavior on Windows, macOS, and Linux without requiring users to install a language runtime or keep a service running. Building on a product-specific application or scripting runtime would make installation, embedding, and host-Agent support depend on that upstream stack.
 
-## Proposal
+## Decision
 
 Build Knowledge-Brain as an independent Rust workspace that produces one self-contained `kb` executable. The executable directly hosts the CLI and later dispatches MCP and HTTP adapters; core Vault behavior remains available without a daemon.
 
@@ -24,6 +24,8 @@ Build Knowledge-Brain as an independent Rust workspace that produces one self-co
 
 - A release-built `kb` binary performs every core workflow without Node.js, Python, Java, or a daemon.
 - The same Vault format and command semantics pass native Windows, macOS, and Linux tests.
+
+The Rust workspace and self-contained CLI are implemented. Native Windows and Linux acceptance evidence remains pending and is tracked in the Roadmap; accepting this architectural choice does not claim that platform verification has completed.
 
 ## Risks
 

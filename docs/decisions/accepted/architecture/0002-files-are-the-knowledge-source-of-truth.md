@@ -1,6 +1,6 @@
 # ADR-0002: Files are the knowledge source of truth
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,7 +8,7 @@
 
 A knowledge system can become unreadable or unrecoverable when its durable meaning exists only in a proprietary database or index. Users must be able to inspect, edit, copy, and recover their knowledge with ordinary file tools.
 
-## Proposal
+## Decision
 
 Store portable knowledge and configuration in Markdown, YAML, and JSON. Treat search indexes and extraction outputs as derived state that can be deleted and rebuilt. Keep original source bytes as content-addressed files inside the Vault. Unfinished operation journals and recovery markers are machine-local recovery dependencies, not disposable caches; finish recovery before discarding or moving them.
 

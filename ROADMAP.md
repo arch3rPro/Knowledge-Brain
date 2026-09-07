@@ -1,6 +1,6 @@
 # Knowledge-Brain Roadmap
 
-本文档记录实现阶段和验证状态。产品语义由[设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)定义，具体开发步骤由各阶段的 implementation plan 定义。
+本文档记录实现阶段和验证状态，是进度的唯一归属。产品语义由[设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)定义，具体开发步骤由各阶段的 implementation plan 定义；旧计划中保留的未勾选步骤不代表当前实现状态。
 
 状态含义：
 
@@ -24,7 +24,7 @@
 
 ## Stage 2 — 来源与读取
 
-**Status:** in progress
+**Status:** implemented（定向本地测试）；跨平台验收仍待原生 CI。
 
 当前实施计划：[Source Discovery and Direct Search](docs/superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
 
@@ -46,7 +46,7 @@
 
 本地验证使用 Rust/Cargo 1.95.0：格式、Clippy、workspace 测试、release 构建，以及 release 二进制的真实 CLI 工作流。覆盖新增/修改/移动/删除、规则排除、陈旧计划、版本完整性、缓存缺失/损坏/写入失败、中文查询、移动后重开及独立用户状态。另有子进程在对象、记录、日志和回执写入后直接退出的恢复测试，以及人工改动保护测试。
 
-未验证：Windows/Linux 原生运行、Rust 1.85 原生构建、断电恢复。CI 配置使用 Rust 1.85 和三平台原生任务，但尚不能当作通过证据。Stage 2 整体尚未完成。
+未验证：Windows/Linux 原生运行、Rust 1.85 原生构建、断电恢复。CI 配置使用 Rust 1.85 和三平台原生任务，但尚不能当作通过证据。
 
 ### Stage 2B — 文档提取器
 
@@ -54,7 +54,7 @@
 
 ## Stage 3 — 知识形成与安全保存
 
-**Status:** in progress
+**Status:** implemented（定向本地测试）；跨平台验收仍待原生 CI。
 
 - OKF v0.2 Producer Profile
 - 来源、research 和 article 之间的引用关系
