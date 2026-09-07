@@ -5,7 +5,7 @@ use kb_core::{
     PartialLimits, PartialOperations, PartialSearch, SchemaCompatibility, SearchMode,
 };
 
-use crate::UserPaths;
+use crate::{UserPaths, schema::vault_schema_compatibility};
 
 #[derive(Debug, Clone, Default)]
 pub struct ConfigOverrides {
@@ -46,18 +46,11 @@ fn load_effective_config_inner(
     replacement: Option<&(ConfigSource, PartialConfig)>,
 ) -> Result<EffectiveConfig, KbError> {
     let user = replacement_layer(replacement, ConfigSource::User).map_or_else(
-        || {
-            load_optional(
-                &user_paths.config_dir.join("config.yml"),
-                ConfigSource::User,
-            )
-        },
+        || load_optional(&user_paths.config_dir.join("config.yml")),
         Ok,
     )?;
-    let vault = replacement_layer(replacement, ConfigSource::Vault).map_or_else(
-        || load_required(&vault_root.join(".kb/config.yml"), ConfigSource::Vault),
-        Ok,
-    )?;
+    let vault = replacement_layer(replacement, ConfigSource::Vault)
+        .map_or_else(|| load_required(&vault_root.join(".kb/config.yml")), Ok)?;
     let vault_id = vault.vault_id.ok_or_else(|| {
         KbError::invalid_config(
             ".kb/config.yml",
@@ -68,12 +61,7 @@ fn load_effective_config_inner(
         .schema_version
         .ok_or_else(|| KbError::invalid_config(".kb/config.yml", "schema_version is required"))?;
     let local = replacement_layer(replacement, ConfigSource::VaultLocal).map_or_else(
-        || {
-            load_optional(
-                &vault_root.join(".kb/config.local.yml"),
-                ConfigSource::VaultLocal,
-            )
-        },
+        || load_optional(&vault_root.join(".kb/config.local.yml")),
         Ok,
     )?;
 
@@ -104,24 +92,24 @@ fn replacement_layer(
         .map(|(_, config)| config.clone())
 }
 
-fn load_required(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError> {
+fn load_required(path: &Path) -> Result<PartialConfig, KbError> {
     if !path.is_file() {
         return Err(KbError::invalid_config(
             path.display().to_string(),
             "required configuration file is missing",
         ));
     }
-    load_file(path, source)
+    load_file(path)
 }
 
-fn load_optional(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError> {
+fn load_optional(path: &Path) -> Result<PartialConfig, KbError> {
     if !path.exists() {
         return Ok(PartialConfig::default());
     }
-    load_file(path, source)
+    load_file(path)
 }
 
-fn load_file(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError> {
+fn load_file(path: &Path) -> Result<PartialConfig, KbError> {
     let bytes = fs::read(path).map_err(|error| {
         KbError::io_failure("read", path.display().to_string(), error.to_string())
     })?;
@@ -132,18 +120,8 @@ fn load_file(path: &Path, source: ConfigSource) -> Result<PartialConfig, KbError
     let version = parsed.schema_version.ok_or_else(|| {
         KbError::invalid_config(path.display().to_string(), "schema_version is required")
     })?;
-    let compatibility = version.compatibility_with(CURRENT_SCHEMA_VERSION);
-    let accepted = match source {
-        ConfigSource::Vault => matches!(
-            compatibility,
-            SchemaCompatibility::Current | SchemaCompatibility::OlderMigratable
-        ),
-        ConfigSource::User | ConfigSource::VaultLocal => {
-            compatibility == SchemaCompatibility::Current
-        }
-        ConfigSource::BuiltIn | ConfigSource::Environment | ConfigSource::Cli => false,
-    };
-    if accepted {
+    let compatibility = vault_schema_compatibility(version);
+    if compatibility == SchemaCompatibility::Current {
         Ok(parsed)
     } else {
         Err(KbError::invalid_config(

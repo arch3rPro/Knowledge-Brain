@@ -1,10 +1,13 @@
 use std::{fs, path::Path};
 
-use kb_core::{CURRENT_SCHEMA_VERSION, KbError, SchemaCompatibility, SchemaVersion};
+use kb_core::{KbError, SchemaCompatibility, SchemaVersion};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{ConfigOverrides, UserPaths, load_admission, load_effective_config};
+use crate::{
+    ConfigOverrides, UserPaths, load_admission, load_effective_config,
+    schema::vault_schema_compatibility,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusReport {
@@ -61,9 +64,7 @@ pub fn vault_status(
     overrides: &ConfigOverrides,
 ) -> Result<StatusReport, KbError> {
     let identity = crate::vault::read_vault_identity(root)?;
-    let compatibility = identity
-        .schema_version
-        .compatibility_with(CURRENT_SCHEMA_VERSION);
+    let compatibility = vault_schema_compatibility(identity.schema_version);
     let (configuration, admission) = if compatibility == SchemaCompatibility::Current {
         load_effective_config(root, user_paths, overrides)?;
         let admission = load_admission(root)?;
