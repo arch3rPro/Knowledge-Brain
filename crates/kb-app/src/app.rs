@@ -120,6 +120,10 @@ pub enum OperationRequest {
         vault: String,
         operation_id: OperationId,
     },
+    EventsForVault {
+        vault: String,
+        operation_id: OperationId,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -415,6 +419,16 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
         } => {
             ensure_operation_vault(context, &vault, operation_id)?;
             run_operation(OperationRequest::Show { operation_id }, context)
+        }
+        OperationRequest::EventsForVault {
+            vault,
+            operation_id,
+        } => {
+            ensure_operation_vault(context, &vault, operation_id)?;
+            to_value(crate::operation_events(
+                context.user_paths()?,
+                operation_id,
+            )?)
         }
     }
 }

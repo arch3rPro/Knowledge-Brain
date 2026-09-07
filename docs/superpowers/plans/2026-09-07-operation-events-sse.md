@@ -22,9 +22,9 @@
 
 ### Task 3: Shared read request
 
-- [ ] Add a fixed-Vault application request returning events and terminal state.
-- [ ] Reject operation IDs from another Vault without exposing their data.
-- [ ] Test plan, active and completed reports through the real application dispatcher.
+- [x] Add a fixed-Vault application request returning events and terminal state.
+- [x] Reject operation IDs from another Vault without exposing their data.
+- [x] Test plan, active and completed reports through the real application dispatcher.
 
 ### Task 4: SSE adapter
 
