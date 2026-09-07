@@ -111,35 +111,17 @@ fn apply_inner(
         // A durable receipt means knowledge was saved; only housekeeping remains.
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
-        crate::operation_events::record_operation_event_now(
-            paths,
-            id,
-            OperationEventKind::Applied,
-            Some((plan.writes.len() as u64, plan.writes.len() as u64)),
-            "Source capture is complete.",
-        )?;
+        record_source_complete(paths, id, plan.writes.len())?;
         return finish_housekeeping(root, &result_path, result);
     }
-    crate::operation_events::record_operation_event_now(
-        paths,
-        id,
-        OperationEventKind::Applying,
-        Some((0, plan.writes.len() as u64)),
-        "Source capture apply started.",
-    )?;
+    record_source_start(paths, id, plan.writes.len())?;
     let config = load_effective_config(root, paths, overrides)?;
     if config.schema_version != CURRENT_SCHEMA_VERSION || config.vault_id != plan.vault_id {
         return Err(stale("Vault schema or identity changed."));
     }
     validate_plan(&plan)?;
     if progress_path.exists() {
-        crate::operation_events::record_operation_event_now(
-            paths,
-            id,
-            OperationEventKind::Recovering,
-            None,
-            "Interrupted source capture is being restored.",
-        )?;
+        record_source_recovery(paths, id)?;
         let progress: Progress = read_json(&progress_path)?;
         validate_progress(&plan, &progress)?;
         restore(root, &progress, &config)?;
@@ -172,13 +154,7 @@ fn apply_inner(
     };
     // The receipt is the commit point. Until it exists, recovery restores the old knowledge.
     write_json(&result_path, &result)?;
-    crate::operation_events::record_operation_event_now(
-        paths,
-        id,
-        OperationEventKind::Applied,
-        Some((plan.writes.len() as u64, plan.writes.len() as u64)),
-        "Source capture is complete.",
-    )?;
+    record_source_complete(paths, id, plan.writes.len())?;
     #[cfg(test)]
     crash_for_test("receipt");
     fs::remove_file(&marker).map_err(|e| io("remove marker", &marker, e))?;
@@ -326,13 +302,7 @@ fn save_outputs(
             } else {
                 crate::atomic_replace(&dest, &bytes)?;
             }
-            crate::operation_events::record_operation_event_now(
-                paths,
-                id,
-                OperationEventKind::Progress,
-                Some((progress.entries.len() as u64, total)),
-                "Source capture progress was saved.",
-            )?;
+            record_source_progress(paths, id, progress.entries.len() as u64, total)?;
             #[cfg(test)]
             crash_for_test(&format!("write-{}", progress.entries.len()));
             if fail_after == Some(progress.entries.len()) {
@@ -361,6 +331,56 @@ fn save_outputs(
     }
     Ok(())
 }
+
+fn record_source_start(paths: &UserPaths, id: OperationId, total: usize) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applying,
+        Some((0, total as u64)),
+        "Source capture apply started.",
+    )?;
+    Ok(())
+}
+
+fn record_source_recovery(paths: &UserPaths, id: OperationId) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Recovering,
+        None,
+        "Interrupted source capture is being restored.",
+    )?;
+    Ok(())
+}
+
+fn record_source_progress(
+    paths: &UserPaths,
+    id: OperationId,
+    completed: u64,
+    total: u64,
+) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Progress,
+        Some((completed, total)),
+        "Source capture progress was saved.",
+    )?;
+    Ok(())
+}
+
+fn record_source_complete(paths: &UserPaths, id: OperationId, total: usize) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applied,
+        Some((total as u64, total as u64)),
+        "Source capture is complete.",
+    )?;
+    Ok(())
+}
+
 fn remove_if_present(path: &Path) -> Result<(), KbError> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),

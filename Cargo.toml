@@ -21,7 +21,8 @@ scraper = "=0.24.0"
 quick-xml = "=0.38.3"
 pulldown-cmark = "0.13"
 time = { version = "=0.3.45", features = ["formatting", "parsing"] }
-tokio = { version = "=1.47.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "=1.47.1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream = { version = "=0.1.17", default-features = false, features = ["sync"] }
 atomic-write-file = "0.3"
 axum = { version = "=0.8.6", default-features = false, features = ["http1", "json", "tokio"] }
 clap = { version = "4.6", features = ["derive"] }

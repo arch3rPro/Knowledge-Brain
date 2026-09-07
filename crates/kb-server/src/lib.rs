@@ -6,17 +6,21 @@ use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path as RoutePath, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
 use kb_app::{AppContext, AppRequest, OperationRequest};
-use kb_core::{ErrorCode, KbError, KnowledgePlanRequest, OperationId, SearchRequest};
+use kb_core::{
+    ErrorCode, KbError, KnowledgePlanRequest, OperationEventReport, OperationId, SearchRequest,
+};
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
+use tokio_stream::wrappers::ReceiverStream;
 
 const MAX_JSON_BODY_BYTES: usize = 1024 * 1024;
 const MAX_TOKEN_FILE_BYTES: u64 = 4096;
+const EVENT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Read a bounded token from a regular, non-link file.
 ///
@@ -188,6 +192,10 @@ fn router(state: ServerState) -> Router {
         .route("/review", post(review))
         .route("/plans", post(create_plan))
         .route("/operations/{operation_id}", get(operation))
+        .route(
+            "/operations/{operation_id}/events",
+            get(operation_event_stream),
+        )
         .route("/operations/{operation_id}/apply", post(apply))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
@@ -369,6 +377,112 @@ async fn apply(
         Ok(value) => success(value),
         Err(error) => failure(error),
     }
+}
+
+async fn operation_event_stream(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    RoutePath(operation_id): RoutePath<String>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    let operation_id = match parse_operation_id(&operation_id) {
+        Ok(operation_id) => operation_id,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    let initial = match event_report(&state, operation_id).await {
+        Ok(report) => report,
+        Err(error) => return failure(error),
+    };
+    let cursor = match event_cursor(&headers, &initial) {
+        Ok(cursor) => cursor,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    let (sender, receiver) = tokio::sync::mpsc::channel(32);
+    tokio::spawn(stream_operation_events(
+        state,
+        operation_id,
+        initial,
+        cursor,
+        sender,
+    ));
+    Sse::new(ReceiverStream::new(receiver))
+        .keep_alive(
+            axum::response::sse::KeepAlive::new()
+                .interval(std::time::Duration::from_secs(15))
+                .text("keepalive"),
+        )
+        .into_response()
+}
+
+async fn stream_operation_events(
+    state: ServerState,
+    operation_id: OperationId,
+    mut report: OperationEventReport,
+    mut cursor: u64,
+    sender: tokio::sync::mpsc::Sender<Result<Event, std::convert::Infallible>>,
+) {
+    loop {
+        let after = cursor;
+        for operation_event in report.events.iter().filter(|event| event.id > after) {
+            let Ok(event) = Event::default()
+                .id(operation_event.id.to_string())
+                .event("operation")
+                .json_data(operation_event)
+            else {
+                return;
+            };
+            if sender.send(Ok(event)).await.is_err() {
+                return;
+            }
+            cursor = operation_event.id;
+        }
+        if report.terminal {
+            return;
+        }
+        tokio::time::sleep(EVENT_POLL_INTERVAL).await;
+        report = match event_report(&state, operation_id).await {
+            Ok(report) => report,
+            Err(_) => return,
+        };
+    }
+}
+
+async fn event_report(
+    state: &ServerState,
+    operation_id: OperationId,
+) -> Result<OperationEventReport, KbError> {
+    let value = call(
+        state,
+        AppRequest::Operation(OperationRequest::EventsForVault {
+            vault: state.vault.clone(),
+            operation_id,
+        }),
+    )
+    .await?;
+    serde_json::from_value(value)
+        .map_err(|error| KbError::invalid_config("operation event report", error.to_string()))
+}
+
+fn event_cursor(headers: &HeaderMap, report: &OperationEventReport) -> Result<u64, KbError> {
+    let Some(value) = headers.get("last-event-id") else {
+        return Ok(0);
+    };
+    let value = value
+        .to_str()
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| KbError::invalid_config("Last-Event-ID", "expected a positive integer"))?;
+    let latest = report.events.last().map_or(0, |event| event.id);
+    if value > latest {
+        return Err(KbError::invalid_config(
+            "Last-Event-ID",
+            "cursor is newer than the durable operation event log",
+        ));
+    }
+    Ok(value)
 }
 
 async fn run_authenticated(

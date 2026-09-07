@@ -94,6 +94,27 @@ async fn request(
     (status, serde_json::from_str(body).unwrap())
 }
 
+async fn event_stream(
+    server: &RunningServer,
+    path: &str,
+    token: Option<&str>,
+    cursor: Option<u64>,
+) -> String {
+    let mut stream = TcpStream::connect(server.address).await.unwrap();
+    let authorization = token.map_or_else(String::new, |value| {
+        format!("Authorization: Bearer {value}\r\n")
+    });
+    let last_event = cursor.map_or_else(String::new, |value| format!("Last-Event-ID: {value}\r\n"));
+    let wire = format!(
+        "GET {path} HTTP/1.1\r\nHost: {}\r\nAccept: text/event-stream\r\nConnection: close\r\n{authorization}{last_event}\r\n",
+        server.address,
+    );
+    stream.write_all(wire.as_bytes()).await.unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.unwrap();
+    response
+}
+
 fn knowledge_request() -> Value {
     json!({
         "schema_version": "v1.0",
@@ -158,6 +179,11 @@ async fn token_protects_every_route_and_read_only_denies_apply() {
     assert_eq!(status, 401);
     assert_eq!(response["error"]["code"], "auth_denied");
 
+    let events_path = format!("/operations/{operation_id}/events");
+    let (status, response) = request(&server, "GET", &events_path, None, "").await;
+    assert_eq!(status, 401);
+    assert_eq!(response["error"]["code"], "auth_denied");
+
     let path = format!("/operations/{operation_id}/apply");
     let (status, response) = request(&server, "POST", &path, Some("secret"), "").await;
     assert_eq!(status, 403);
@@ -211,6 +237,7 @@ async fn operation_ids_from_another_vault_are_not_exposed_or_applied() {
 
     for (method, path) in [
         ("GET", format!("/operations/{operation_id}")),
+        ("GET", format!("/operations/{operation_id}/events")),
         ("POST", format!("/operations/{operation_id}/apply")),
     ] {
         let (status, response) = request(&server, method, &path, Some("secret"), "").await;
@@ -218,6 +245,104 @@ async fn operation_ids_from_another_vault_are_not_exposed_or_applied() {
         assert_eq!(response["error"]["code"], "auth_denied");
     }
     assert!(!second.join("Wiki/articles/http.md").exists());
+}
+
+#[tokio::test]
+async fn terminal_sse_stream_supports_reconnect_without_repeating_apply() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    initialize(&context, &vault);
+    let plan = kb_app::run(
+        AppRequest::PlanCreate {
+            vault: Some(vault.display().to_string()),
+            request: serde_json::from_value(knowledge_request()).unwrap(),
+        },
+        &context,
+    )
+    .unwrap();
+    let operation_id = plan["operation_id"].as_str().unwrap();
+    let operation_id_value = operation_id.parse().unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id_value,
+        },
+        &context,
+    )
+    .unwrap();
+    let report = kb_app::operation_events(
+        &kb_app::UserPaths::new(
+            temporary.path().join("config"),
+            temporary.path().join("state"),
+            temporary.path().join("cache"),
+        ),
+        operation_id_value,
+    )
+    .unwrap();
+    let latest = report.events.last().unwrap().id;
+    assert!(latest > 1);
+    let server = start(context, &vault, Some("secret"), false).await;
+    let path = format!("/operations/{operation_id}/events");
+
+    let response = event_stream(&server, &path, Some("secret"), None).await;
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("content-type: text/event-stream"));
+    assert!(response.contains("event: operation"));
+    assert!(response.contains("\"kind\":\"planned\""));
+    assert!(response.contains("\"kind\":\"applied\""));
+
+    let response = event_stream(&server, &path, Some("secret"), Some(latest - 1)).await;
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains(&format!("id: {latest}")));
+    assert!(!response.contains("\"kind\":\"planned\""));
+
+    let response = event_stream(&server, &path, Some("secret"), Some(latest + 1)).await;
+    assert!(response.starts_with("HTTP/1.1 400"), "{response}");
+    assert!(response.contains("invalid_config"));
+}
+
+#[tokio::test]
+async fn active_sse_stream_observes_apply_and_closes_on_completion() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let apply_context = context.clone();
+    let vault = temporary.path().join("vault");
+    initialize(&context, &vault);
+    let plan = kb_app::run(
+        AppRequest::PlanCreate {
+            vault: Some(vault.display().to_string()),
+            request: serde_json::from_value(knowledge_request()).unwrap(),
+        },
+        &context,
+    )
+    .unwrap();
+    let operation_id = plan["operation_id"].as_str().unwrap().to_owned();
+    let operation_id_value = operation_id.parse().unwrap();
+    let server = start(context, &vault, None, false).await;
+    let path = format!("/operations/{operation_id}/events");
+
+    let stream = event_stream(&server, &path, None, None);
+    let apply = async move {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::task::spawn_blocking(move || {
+            kb_app::run(
+                AppRequest::Apply {
+                    operation_id: operation_id_value,
+                },
+                &apply_context,
+            )
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    };
+    let (response, ()) = tokio::join!(stream, apply);
+
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("\"kind\":\"planned\""));
+    assert!(response.contains("\"kind\":\"applying\""));
+    assert!(response.contains("\"kind\":\"progress\""));
+    assert!(response.contains("\"kind\":\"applied\""));
 }
 
 #[tokio::test]

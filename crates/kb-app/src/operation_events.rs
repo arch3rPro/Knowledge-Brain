@@ -91,6 +91,12 @@ pub(crate) fn record_failed_if_known(user_paths: &UserPaths, operation_id: Opera
     }
 }
 
+/// Read validated durable events or a synthetic legacy-operation snapshot.
+///
+/// # Errors
+///
+/// Returns an operation, IO or validation error when the operation is unknown
+/// or its persisted event log cannot be trusted.
 pub fn operation_events(
     user_paths: &UserPaths,
     operation_id: OperationId,

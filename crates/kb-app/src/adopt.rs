@@ -39,6 +39,11 @@ struct InstallState {
     fail_after_installed_file: Option<usize>,
 }
 
+enum AdoptionOperation {
+    Planned(AdoptionPlan),
+    Applied(AdoptionResult),
+}
+
 /// Review an existing directory and persist a read-only adoption plan.
 ///
 /// # Errors
@@ -115,49 +120,22 @@ fn apply_operation_inner(
     fail_after_installed_file: Option<usize>,
 ) -> Result<AdoptionResult, KbError> {
     let _lock = operation_lock(user_paths)?;
-    let plan = match inspect_operation(user_paths, operation_id)? {
-        OperationState::Applied(result) => {
-            crate::operation_events::record_operation_event_now(
-                user_paths,
-                operation_id,
-                OperationEventKind::Applied,
-                None,
-                "Vault adoption is complete.",
-            )?;
+    let plan = match load_adoption_operation(user_paths, operation_id)? {
+        AdoptionOperation::Applied(result) => {
+            record_adoption_complete(user_paths, operation_id)?;
             return Ok(result);
         }
-        OperationState::Planned(plan) => plan,
-        OperationState::PlannedSource(_)
-        | OperationState::AppliedSource(_)
-        | OperationState::PlannedKnowledge(_)
-        | OperationState::AppliedKnowledge(_) => {
-            return Err(KbError::invalid_config(
-                "operation",
-                "expected adoption plan",
-            ));
-        }
+        AdoptionOperation::Planned(plan) => plan,
     };
     validate_plan_identity(&plan, operation_id)?;
-    crate::operation_events::record_operation_event_now(
-        user_paths,
-        operation_id,
-        OperationEventKind::Applying,
-        Some((0, plan.creates.len() as u64)),
-        "Vault adoption started.",
-    )?;
+    record_adoption_start(user_paths, &plan)?;
 
     let receipt_path = vault_receipt_path(&plan);
     if receipt_path.is_file() {
         let result: AdoptionResult = read_json(&receipt_path)?;
         verify_result(&plan, &result)?;
         save_result(user_paths, &result)?;
-        crate::operation_events::record_operation_event_now(
-            user_paths,
-            operation_id,
-            OperationEventKind::Applied,
-            None,
-            "Vault adoption is complete.",
-        )?;
+        record_adoption_complete(user_paths, operation_id)?;
         return Ok(result);
     }
 
@@ -165,13 +143,7 @@ fn apply_operation_inner(
     verify_planned_files(&plan, &generated)?;
     let progress_path = progress_path(user_paths, operation_id);
     if progress_path.is_file() {
-        crate::operation_events::record_operation_event_now(
-            user_paths,
-            operation_id,
-            OperationEventKind::Recovering,
-            None,
-            "Interrupted Vault adoption is being restored.",
-        )?;
+        record_adoption_recovery(user_paths, operation_id)?;
         let progress: ApplyProgress = read_json(&progress_path)?;
         validate_progress(&plan, &progress, &generated)?;
         if generated_is_complete(&plan.target, &generated)? {
@@ -254,6 +226,23 @@ fn apply_operation_inner(
     finish_adoption(user_paths, &plan)
 }
 
+fn load_adoption_operation(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
+) -> Result<AdoptionOperation, KbError> {
+    match inspect_operation(user_paths, operation_id)? {
+        OperationState::Applied(result) => Ok(AdoptionOperation::Applied(result)),
+        OperationState::Planned(plan) => Ok(AdoptionOperation::Planned(plan)),
+        OperationState::PlannedSource(_)
+        | OperationState::AppliedSource(_)
+        | OperationState::PlannedKnowledge(_)
+        | OperationState::AppliedKnowledge(_) => Err(KbError::invalid_config(
+            "operation",
+            "expected adoption plan",
+        )),
+    }
+}
+
 fn finish_adoption(user_paths: &UserPaths, plan: &AdoptionPlan) -> Result<AdoptionResult, KbError> {
     let mut warnings = Vec::new();
     if let Err(error) = register_vault(user_paths, &plan.target) {
@@ -283,13 +272,7 @@ fn finish_adoption(user_paths: &UserPaths, plan: &AdoptionPlan) -> Result<Adopti
     }
     write_json(&receipt_path, &result)?;
     save_result(user_paths, &result)?;
-    crate::operation_events::record_operation_event_now(
-        user_paths,
-        plan.operation_id,
-        OperationEventKind::Applied,
-        None,
-        "Vault adoption is complete.",
-    )?;
+    record_adoption_complete(user_paths, plan.operation_id)?;
     Ok(result)
 }
 
@@ -323,15 +306,11 @@ fn install_generated(
         fs::remove_file(&source)
             .map_err(|error| io_error("remove staged file", &source, &error))?;
         tracking.installed_files.push(destination);
-        crate::operation_events::record_operation_event_now(
+        record_adoption_progress(
             user_paths,
             operation_id,
-            OperationEventKind::Progress,
-            Some((
-                tracking.installed_files.len() as u64,
-                generated.len() as u64,
-            )),
-            "Vault adoption progress was recorded.",
+            tracking.installed_files.len(),
+            generated.len(),
         )?;
         if tracking.fail_after_installed_file == Some(tracking.installed_files.len()) {
             return Err(KbError::io_failure(
@@ -341,6 +320,61 @@ fn install_generated(
             ));
         }
     }
+    Ok(())
+}
+
+fn record_adoption_start(user_paths: &UserPaths, plan: &AdoptionPlan) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        plan.operation_id,
+        OperationEventKind::Applying,
+        Some((0, plan.creates.len() as u64)),
+        "Vault adoption started.",
+    )?;
+    Ok(())
+}
+
+fn record_adoption_recovery(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
+) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        operation_id,
+        OperationEventKind::Recovering,
+        None,
+        "Interrupted Vault adoption is being restored.",
+    )?;
+    Ok(())
+}
+
+fn record_adoption_progress(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
+    completed: usize,
+    total: usize,
+) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        operation_id,
+        OperationEventKind::Progress,
+        Some((completed as u64, total as u64)),
+        "Vault adoption progress was recorded.",
+    )?;
+    Ok(())
+}
+
+fn record_adoption_complete(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
+) -> Result<(), KbError> {
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        operation_id,
+        OperationEventKind::Applied,
+        None,
+        "Vault adoption is complete.",
+    )?;
     Ok(())
 }
 

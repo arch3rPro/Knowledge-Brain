@@ -28,9 +28,9 @@
 
 ### Task 4: SSE adapter
 
-- [ ] Add authenticated `GET /operations/{id}/events`.
-- [ ] Support `Last-Event-ID`, terminal close and transport-only keepalive comments.
-- [ ] Test real TCP SSE framing, reconnect filtering, auth and fixed-Vault rejection.
+- [x] Add authenticated `GET /operations/{id}/events`.
+- [x] Support `Last-Event-ID`, terminal close and transport-only keepalive comments.
+- [x] Test real TCP SSE framing, reconnect filtering, auth and fixed-Vault rejection.
 
 ### Task 5: Documentation and focused verification
 
