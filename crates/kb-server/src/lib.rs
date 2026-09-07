@@ -196,8 +196,8 @@ fn router(state: ServerState) -> Router {
 }
 
 async fn capabilities(State(state): State<ServerState>, headers: HeaderMap) -> Response {
-    if let Err(response) = authenticate(&state, &headers) {
-        return response;
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
     }
     match call(&state, AppRequest::Capabilities).await {
         Ok(mut value) => {
@@ -222,7 +222,7 @@ async fn status(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         &state,
         &headers,
         AppRequest::Status {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
         },
     )
     .await
@@ -233,7 +233,7 @@ async fn doctor(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         &state,
         &headers,
         AppRequest::Doctor {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
         },
     )
     .await
@@ -244,17 +244,17 @@ async fn query(
     headers: HeaderMap,
     request: Result<Json<SearchRequest>, JsonRejection>,
 ) -> Response {
-    if let Err(response) = authenticate(&state, &headers) {
-        return response;
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
     }
     let request = match json_request(request) {
         Ok(request) => request,
-        Err(response) => return response,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
     };
     match call(
         &state,
         AppRequest::Query {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
             request,
         },
     )
@@ -270,7 +270,7 @@ async fn lint(State(state): State<ServerState>, headers: HeaderMap) -> Response 
         &state,
         &headers,
         AppRequest::Lint {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
         },
     )
     .await
@@ -281,7 +281,7 @@ async fn review(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         &state,
         &headers,
         AppRequest::Review {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
         },
     )
     .await
@@ -292,17 +292,17 @@ async fn create_plan(
     headers: HeaderMap,
     request: Result<Json<KnowledgePlanRequest>, JsonRejection>,
 ) -> Response {
-    if let Err(response) = authenticate(&state, &headers) {
-        return response;
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
     }
     let request = match json_request(request) {
         Ok(request) => request,
-        Err(response) => return response,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
     };
     match call(
         &state,
         AppRequest::PlanCreate {
-            vault: selected(&state),
+            vault: Some(selected(&state)),
             request,
         },
     )
@@ -318,19 +318,25 @@ async fn operation(
     headers: HeaderMap,
     RoutePath(operation_id): RoutePath<String>,
 ) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
     let operation_id = match parse_operation_id(&operation_id) {
         Ok(operation_id) => operation_id,
-        Err(response) => return response,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
     };
-    run_authenticated(
+    match call(
         &state,
-        &headers,
         AppRequest::Operation(OperationRequest::ShowForVault {
             vault: state.vault.clone(),
             operation_id,
         }),
     )
     .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
 }
 
 async fn apply(
@@ -338,8 +344,8 @@ async fn apply(
     headers: HeaderMap,
     RoutePath(operation_id): RoutePath<String>,
 ) -> Response {
-    if let Err(response) = authenticate(&state, &headers) {
-        return response;
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
     }
     if !state.policy.allow_write() {
         return failure_with_status(
@@ -349,7 +355,7 @@ async fn apply(
     }
     let operation_id = match parse_operation_id(&operation_id) {
         Ok(operation_id) => operation_id,
-        Err(response) => return response,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
     };
     match call(
         &state,
@@ -370,8 +376,8 @@ async fn run_authenticated(
     headers: &HeaderMap,
     request: AppRequest,
 ) -> Response {
-    if let Err(response) = authenticate(state, headers) {
-        return response;
+    if let Err(error) = authenticate(state, headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
     }
     match call(state, request).await {
         Ok(value) => success(value),
@@ -388,40 +394,30 @@ async fn call(state: &ServerState, request: AppRequest) -> Result<Value, KbError
         })?
 }
 
-fn authenticate(state: &ServerState, headers: &HeaderMap) -> Result<(), Response> {
+fn authenticate(state: &ServerState, headers: &HeaderMap) -> Result<(), KbError> {
     let authorization = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
     if state.policy.authorize(authorization) {
         Ok(())
     } else {
-        Err(failure_with_status(
-            StatusCode::UNAUTHORIZED,
-            auth_error("A valid Bearer token is required."),
-        ))
+        Err(auth_error("A valid Bearer token is required."))
     }
 }
 
-fn json_request<T>(request: Result<Json<T>, JsonRejection>) -> Result<T, Response> {
-    request.map(|Json(value)| value).map_err(|error| {
-        failure_with_status(
-            StatusCode::BAD_REQUEST,
-            KbError::invalid_config("HTTP JSON body", error.body_text()),
-        )
-    })
+fn json_request<T>(request: Result<Json<T>, JsonRejection>) -> Result<T, KbError> {
+    request
+        .map(|Json(value)| value)
+        .map_err(|error| KbError::invalid_config("HTTP JSON body", error.body_text()))
 }
 
-fn parse_operation_id(value: &str) -> Result<OperationId, Response> {
-    OperationId::from_str(value).map_err(|error| {
-        failure_with_status(
-            StatusCode::BAD_REQUEST,
-            KbError::invalid_config("operation_id", error.to_string()),
-        )
-    })
+fn parse_operation_id(value: &str) -> Result<OperationId, KbError> {
+    OperationId::from_str(value)
+        .map_err(|error| KbError::invalid_config("operation_id", error.to_string()))
 }
 
-fn selected(state: &ServerState) -> Option<String> {
-    Some(state.vault.clone())
+fn selected(state: &ServerState) -> String {
+    state.vault.clone()
 }
 
 fn success(value: Value) -> Response {
@@ -446,7 +442,10 @@ fn failure_with_status(status: StatusCode, error: KbError) -> Response {
     (status, Json(ErrorEnvelope::from(error))).into_response()
 }
 
-async fn not_found() -> Response {
+async fn not_found(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
     failure_with_status(
         StatusCode::NOT_FOUND,
         KbError::new(
@@ -458,7 +457,10 @@ async fn not_found() -> Response {
     )
 }
 
-async fn method_not_allowed() -> Response {
+async fn method_not_allowed(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
     failure_with_status(
         StatusCode::METHOD_NOT_ALLOWED,
         KbError::new(

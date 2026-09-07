@@ -419,12 +419,7 @@ impl Cli {
                 token_file,
                 allow_write,
                 vault,
-            } => ParsedCommand::Serve(ServeCommand {
-                bind,
-                token_file,
-                allow_write,
-                vault,
-            }),
+            } => serve_command(bind, token_file, allow_write, vault),
             Commands::Backup { command } => backup_command(command),
             Commands::Review { context } => review_command(context),
             Commands::Query {
@@ -437,17 +432,7 @@ impl Cli {
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
-            } => ParsedCommand::App {
-                request: match request {
-                    KnowledgeRequestArg::Parsed(request) => Ok(AppRequest::PlanCreate {
-                        vault: context.vault,
-                        request,
-                    }),
-                    KnowledgeRequestArg::Invalid(error) => Err(error),
-                },
-                json: context.json,
-                fail_on_findings: false,
-            },
+            } => plan_command(request, context),
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand::App {
@@ -524,6 +509,34 @@ impl Cli {
                 fail_on_findings: false,
             },
         }
+    }
+}
+
+fn serve_command(
+    bind: SocketAddr,
+    token_file: Option<PathBuf>,
+    allow_write: bool,
+    vault: Option<String>,
+) -> ParsedCommand {
+    ParsedCommand::Serve(ServeCommand {
+        bind,
+        token_file,
+        allow_write,
+        vault,
+    })
+}
+
+fn plan_command(request: KnowledgeRequestArg, context: VaultContext) -> ParsedCommand {
+    ParsedCommand::App {
+        request: match request {
+            KnowledgeRequestArg::Parsed(request) => Ok(AppRequest::PlanCreate {
+                vault: context.vault,
+                request,
+            }),
+            KnowledgeRequestArg::Invalid(error) => Err(error),
+        },
+        json: context.json,
+        fail_on_findings: false,
     }
 }
 

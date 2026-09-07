@@ -219,3 +219,17 @@ async fn operation_ids_from_another_vault_are_not_exposed_or_applied() {
     }
     assert!(!second.join("Wiki/articles/http.md").exists());
 }
+
+#[tokio::test]
+async fn shutdown_signal_finishes_the_listener_cleanly() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    initialize(&context, &vault);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let policy = ServerPolicy::new(address, None, false).unwrap();
+    let state = ServerState::new(context, vault.display().to_string(), policy);
+
+    serve(listener, state, async {}).await.unwrap();
+}

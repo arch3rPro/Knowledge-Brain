@@ -236,17 +236,12 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             to_value(crate::verify_sources(&selected.root, &config)?)
         }
         AppRequest::Init(request) => run_init(&request, context),
-        AppRequest::Adopt { target } => {
-            to_value(create_adoption_plan(&target, context.user_paths()?)?)
-        }
+        AppRequest::Adopt { target } => run_adopt(context, &target),
         AppRequest::Apply { operation_id } => run_apply(context, operation_id),
         AppRequest::ApplyForVault {
             vault,
             operation_id,
-        } => {
-            ensure_operation_vault(context, &vault, operation_id)?;
-            run_apply(context, operation_id)
-        }
+        } => run_apply_for_vault(context, &vault, operation_id),
         AppRequest::Operation(request) => run_operation(request, context),
         AppRequest::Config(request) => run_config(request, context),
         AppRequest::Status { vault } => {
@@ -388,6 +383,10 @@ fn run_init(request: &InitRequest, context: &AppContext) -> Result<Value, KbErro
         }
     };
     to_value(report)
+}
+
+fn run_adopt(context: &AppContext, target: &std::path::Path) -> Result<Value, KbError> {
+    to_value(create_adoption_plan(target, context.user_paths()?)?)
 }
 
 fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Value, KbError> {
@@ -661,4 +660,13 @@ fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result
         ),
         _ => to_value(apply_operation(context.user_paths()?, operation_id)?),
     }
+}
+
+fn run_apply_for_vault(
+    context: &AppContext,
+    vault: &str,
+    operation_id: OperationId,
+) -> Result<Value, KbError> {
+    ensure_operation_vault(context, vault, operation_id)?;
+    run_apply(context, operation_id)
 }

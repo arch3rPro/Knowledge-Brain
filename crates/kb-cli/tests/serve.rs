@@ -65,6 +65,30 @@ fn serve_reports_its_port_and_enforces_auth_on_real_requests() {
     drop(child);
 }
 
+#[test]
+fn non_loopback_startup_without_a_token_is_rejected_before_binding() {
+    let temporary = tempfile::tempdir().unwrap();
+    let vault = temporary.path().join("vault");
+    run(
+        temporary.path(),
+        &["init", vault.to_str().unwrap(), "--json"],
+    );
+
+    let output = command(temporary.path())
+        .args([
+            "serve",
+            "--bind",
+            "0.0.0.0:0",
+            "--vault",
+            vault.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("token file"));
+}
+
 fn http(address: &str, token: Option<&str>) -> (u16, serde_json::Value) {
     let mut stream = TcpStream::connect(address).unwrap();
     let authorization = token.map_or_else(String::new, |value| {
