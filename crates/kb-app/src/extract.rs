@@ -14,13 +14,20 @@ pub fn classify_media_type(path: &Path) -> MediaType {
         "yaml" | "yml" => MediaType::Yaml,
         "json" => MediaType::Json,
         "csv" => MediaType::Csv,
+        "html" | "htm" => MediaType::Html,
+        "epub" => MediaType::Epub,
+        "docx" => MediaType::Docx,
         "pdf" => MediaType::Pdf,
         _ => MediaType::Other,
     }
 }
 #[must_use]
 pub fn extract_bytes(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
-    BuiltinTextExtractor.extract(media, bytes)
+    if BuiltinTextExtractor.supports(media) {
+        BuiltinTextExtractor.extract(media, bytes)
+    } else {
+        unavailable(media)
+    }
 }
 pub struct BuiltinTextExtractor;
 impl Extractor for BuiltinTextExtractor {
@@ -31,7 +38,14 @@ impl Extractor for BuiltinTextExtractor {
         "v1"
     }
     fn supports(&self, media: MediaType) -> bool {
-        !matches!(media, MediaType::Pdf | MediaType::Other)
+        matches!(
+            media,
+            MediaType::Markdown
+                | MediaType::PlainText
+                | MediaType::Yaml
+                | MediaType::Json
+                | MediaType::Csv
+        )
     }
     fn extract(&self, media: MediaType, bytes: &[u8]) -> ExtractedDocument {
         extract_text(media, bytes)
@@ -42,13 +56,11 @@ fn extract_text(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
         status: ExtractionStatus::TextReady,
         extractor_id: "builtin-text".into(),
         extractor_version: "v1".into(),
+        title: None,
+        links: Vec::new(),
         blocks: Vec::new(),
         warnings: Vec::new(),
     };
-    if matches!(media, MediaType::Pdf | MediaType::Other) {
-        result.status = ExtractionStatus::Unsupported;
-        return result;
-    }
     let Ok(text) = std::str::from_utf8(bytes) else {
         result.status = ExtractionStatus::MetadataOnly;
         result.warnings.push("Expected UTF-8 text.".into());
@@ -79,6 +91,7 @@ fn extract_text(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
             heading: None,
             text: text.to_owned(),
             line_start: Some(1),
+            location: None,
         });
     }
     result
@@ -99,6 +112,7 @@ fn markdown_blocks(text: &str) -> Vec<ExtractedBlock> {
         heading: None,
         text: String::new(),
         line_start: Some((start + 1) as u64),
+        location: None,
     };
     let mut fence: Option<(char, usize)> = None;
     for (i, line) in lines.iter().enumerate().skip(start) {
@@ -123,6 +137,7 @@ fn markdown_blocks(text: &str) -> Vec<ExtractedBlock> {
                 heading: Some(trim[hashes..].trim().trim_end_matches('#').trim().into()),
                 text: String::new(),
                 line_start: Some((i + 1) as u64),
+                location: None,
             };
         }
         current.text.push_str(line);
@@ -132,4 +147,32 @@ fn markdown_blocks(text: &str) -> Vec<ExtractedBlock> {
         blocks.push(current);
     }
     blocks
+}
+
+fn unavailable(media: MediaType) -> ExtractedDocument {
+    let (status, warning) = match media {
+        MediaType::Pdf => (
+            ExtractionStatus::MetadataOnly,
+            Some("PDF text extraction is a future extension."),
+        ),
+        MediaType::Html | MediaType::Epub | MediaType::Docx => (
+            ExtractionStatus::MetadataOnly,
+            Some("The built-in document extractor is unavailable."),
+        ),
+        MediaType::Other => (ExtractionStatus::Unsupported, None),
+        MediaType::Markdown
+        | MediaType::PlainText
+        | MediaType::Yaml
+        | MediaType::Json
+        | MediaType::Csv => unreachable!("text formats are routed to BuiltinTextExtractor"),
+    };
+    ExtractedDocument {
+        status,
+        extractor_id: "none".into(),
+        extractor_version: "v1".into(),
+        title: None,
+        links: Vec::new(),
+        blocks: Vec::new(),
+        warnings: warning.into_iter().map(str::to_owned).collect(),
+    }
 }

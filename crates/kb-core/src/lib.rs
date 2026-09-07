@@ -10,7 +10,10 @@ mod platform;
 mod search;
 mod source;
 mod version;
-pub use extraction::{ExtractedBlock, ExtractedDocument, ExtractionStatus, Extractor, MediaType};
+pub use extraction::{
+    ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, Extractor, MediaType,
+    SourceLocation,
+};
 pub use search::{
     Catalog, CatalogEntry, SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
 };
