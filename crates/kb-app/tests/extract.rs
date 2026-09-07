@@ -46,6 +46,52 @@ fn extraction_contract_serializes_document_metadata_and_locations() {
     assert_eq!(value["blocks"][0]["location"]["resource"], "chapter-1.xhtml");
     assert_eq!(value["blocks"][0]["location"]["block"], 1);
 }
+
+#[test]
+fn html_extracts_visible_sections_title_and_links() {
+    let document = extract_bytes(
+        MediaType::Html,
+        br#"<!doctype html><html><head><title>Rust &amp; Notes</title>
+        <style>.secret { content: 'style noise'; }</style></head><body>
+        <main><h1>Overview</h1><p>Visible &amp; searchable.</p>
+        <script>script noise</script><h2>Next</h2>
+        <p>Open <a href="chapter-2.html">chapter two</a>.</p></main>
+        </body></html>"#,
+    );
+
+    assert_eq!(document.status, ExtractionStatus::TextReady);
+    assert_eq!(document.extractor_id, "builtin-html");
+    assert_eq!(document.title.as_deref(), Some("Rust & Notes"));
+    assert_eq!(document.blocks.len(), 2);
+    assert_eq!(document.blocks[0].heading.as_deref(), Some("Overview"));
+    assert!(document.blocks[0].text.contains("Visible & searchable."));
+    assert!(!document.blocks[0].text.contains("script noise"));
+    assert!(!document.blocks[0].text.contains("style noise"));
+    assert_eq!(document.blocks[1].heading.as_deref(), Some("Next"));
+    assert_eq!(
+        document.blocks[1].location,
+        Some(SourceLocation::Html { block: 2 })
+    );
+    assert_eq!(
+        document.links,
+        vec![ExtractedLink {
+            text: Some("chapter two".into()),
+            target: "chapter-2.html".into(),
+            location: None,
+        }]
+    );
+}
+
+#[test]
+fn html_without_reliable_text_is_metadata_only() {
+    let invalid = extract_bytes(MediaType::Html, &[0xff]);
+    assert_eq!(invalid.status, ExtractionStatus::MetadataOnly);
+    assert!(invalid.warnings[0].contains("UTF-8"));
+
+    let empty = extract_bytes(MediaType::Html, b"<script>nothing visible</script>");
+    assert_eq!(empty.status, ExtractionStatus::MetadataOnly);
+    assert!(empty.blocks.is_empty());
+}
 #[test]
 fn headings_inside_fences_are_not_sections_and_lines_remain_original() {
     let d=extract_bytes(MediaType::Markdown,b"---\ntitle: Setup\n---\n# Install\nRun cargo.\n\n```text\n# fake\n```\n## Verify\nRun tests.\n");

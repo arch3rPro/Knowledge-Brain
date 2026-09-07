@@ -1,5 +1,7 @@
 use kb_core::{ExtractedBlock, ExtractedDocument, ExtractionStatus, Extractor, MediaType};
 use std::path::Path;
+
+mod html;
 #[must_use]
 pub fn classify_media_type(path: &Path) -> MediaType {
     match path
@@ -26,7 +28,10 @@ pub fn extract_bytes(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
     if BuiltinTextExtractor.supports(media) {
         BuiltinTextExtractor.extract(media, bytes)
     } else {
-        unavailable(media)
+        match media {
+            MediaType::Html => html::extract(bytes),
+            _ => unavailable(media),
+        }
     }
 }
 pub struct BuiltinTextExtractor;
@@ -96,7 +101,7 @@ fn extract_text(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
     }
     result
 }
-fn markdown_blocks(text: &str) -> Vec<ExtractedBlock> {
+pub(super) fn markdown_blocks(text: &str) -> Vec<ExtractedBlock> {
     let lines = text.lines().collect::<Vec<_>>();
     let start = if lines.first() == Some(&"---") {
         lines

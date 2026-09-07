@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 tempfile = "3"
 globset.workspace = true
+html2text.workspace = true
+scraper.workspace = true
 time.workspace = true
 atomic-write-file.workspace = true
 directories.workspace = true
