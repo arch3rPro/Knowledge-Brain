@@ -897,6 +897,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kb-mcp"
+version = "0.1.0"
+dependencies = [
+ "kb-app",
+ "kb-core",
+ "kb-protocol",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "kb-protocol"
 version = "0.1.0"
 dependencies = [

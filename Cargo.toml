@@ -3,8 +3,9 @@ members = [
   "crates/kb-core",
   "crates/kb-app",
   "crates/kb-protocol",
-    "crates/kb-cli",
-    "crates/kb-server",
+  "crates/kb-cli",
+  "crates/kb-mcp",
+  "crates/kb-server",
 ]
 resolver = "3"
 
