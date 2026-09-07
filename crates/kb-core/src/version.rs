@@ -157,6 +157,9 @@ pub struct MigrationCatalog {
 }
 
 impl MigrationCatalog {
+    /// # Errors
+    ///
+    /// Returns an error for a self step, a backward step, or duplicate source steps.
     pub fn new(
         steps: impl IntoIterator<Item = MigrationStep>,
     ) -> Result<Self, MigrationCatalogError> {
