@@ -10,6 +10,14 @@ use crate::{OperationState, UserPaths, inspect_operation, operation::operation_d
 
 pub(crate) const MAX_OPERATION_EVENTS: usize = 10_100;
 
+pub(crate) fn should_record_progress(completed: u64, total: u64) -> bool {
+    if total == 0 {
+        return false;
+    }
+    let step = total / 100 + u64::from(total % 100 != 0);
+    completed == 1 || completed == total || completed % step == 0
+}
+
 pub(crate) fn record_operation_event(
     user_paths: &UserPaths,
     operation_id: OperationId,
@@ -271,5 +279,16 @@ mod tests {
             operation_events(&paths, operation_id).unwrap().events.len(),
             2
         );
+    }
+
+    #[test]
+    fn large_write_sets_emit_bounded_progress_milestones() {
+        let selected = (1..=10_000)
+            .filter(|completed| should_record_progress(*completed, 10_000))
+            .collect::<Vec<_>>();
+
+        assert_eq!(selected.first(), Some(&1));
+        assert_eq!(selected.last(), Some(&10_000));
+        assert!(selected.len() <= 102);
     }
 }

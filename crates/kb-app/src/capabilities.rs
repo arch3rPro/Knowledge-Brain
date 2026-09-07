@@ -11,6 +11,7 @@ pub struct Capabilities {
     pub extractors: Vec<String>,
     pub mcp: bool,
     pub http: bool,
+    pub sse: bool,
     pub commands: Vec<&'static str>,
 }
 
@@ -28,6 +29,7 @@ pub fn capabilities() -> Capabilities {
         ],
         mcp: false,
         http: true,
+        sse: true,
         commands: vec![
             "backup",
             "init",

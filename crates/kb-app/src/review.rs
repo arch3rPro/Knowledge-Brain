@@ -253,7 +253,7 @@ fn persist_plan(
             paths,
             id,
             kb_core::OperationEventKind::Planned,
-            Some((0, plan.writes.len() as u64)),
+            None,
             "Source capture plan is ready for review.",
         )?;
         Some(id)

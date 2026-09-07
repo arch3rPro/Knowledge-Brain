@@ -111,10 +111,10 @@ fn apply_inner(
         // A durable receipt means knowledge was saved; only housekeeping remains.
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
-        record_source_complete(paths, id, plan.writes.len())?;
+        record_source_complete(paths, id)?;
         return finish_housekeeping(root, &result_path, result);
     }
-    record_source_start(paths, id, plan.writes.len())?;
+    record_source_start(paths, id)?;
     let config = load_effective_config(root, paths, overrides)?;
     if config.schema_version != CURRENT_SCHEMA_VERSION || config.vault_id != plan.vault_id {
         return Err(stale("Vault schema or identity changed."));
@@ -154,7 +154,7 @@ fn apply_inner(
     };
     // The receipt is the commit point. Until it exists, recovery restores the old knowledge.
     write_json(&result_path, &result)?;
-    record_source_complete(paths, id, plan.writes.len())?;
+    record_source_complete(paths, id)?;
     #[cfg(test)]
     crash_for_test("receipt");
     fs::remove_file(&marker).map_err(|e| io("remove marker", &marker, e))?;
@@ -302,7 +302,10 @@ fn save_outputs(
             } else {
                 crate::atomic_replace(&dest, &bytes)?;
             }
-            record_source_progress(paths, id, progress.entries.len() as u64, total)?;
+            if crate::operation_events::should_record_progress(progress.entries.len() as u64, total)
+            {
+                record_source_progress(paths, id, progress.entries.len() as u64, total)?;
+            }
             #[cfg(test)]
             crash_for_test(&format!("write-{}", progress.entries.len()));
             if fail_after == Some(progress.entries.len()) {
@@ -332,12 +335,12 @@ fn save_outputs(
     Ok(())
 }
 
-fn record_source_start(paths: &UserPaths, id: OperationId, total: usize) -> Result<(), KbError> {
+fn record_source_start(paths: &UserPaths, id: OperationId) -> Result<(), KbError> {
     crate::operation_events::record_operation_event_now(
         paths,
         id,
         OperationEventKind::Applying,
-        Some((0, total as u64)),
+        None,
         "Source capture apply started.",
     )?;
     Ok(())
@@ -370,12 +373,12 @@ fn record_source_progress(
     Ok(())
 }
 
-fn record_source_complete(paths: &UserPaths, id: OperationId, total: usize) -> Result<(), KbError> {
+fn record_source_complete(paths: &UserPaths, id: OperationId) -> Result<(), KbError> {
     crate::operation_events::record_operation_event_now(
         paths,
         id,
         OperationEventKind::Applied,
-        Some((total as u64, total as u64)),
+        None,
         "Source capture is complete.",
     )?;
     Ok(())

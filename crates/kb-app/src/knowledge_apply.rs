@@ -328,13 +328,18 @@ fn save_writes(
             } else {
                 crate::storage::create_new(&destination, bytes)?;
             }
-            crate::operation_events::record_operation_event_now(
-                paths,
-                id,
-                OperationEventKind::Progress,
-                Some((progress.entries.len() as u64, plan.writes.len() as u64)),
-                "Knowledge save progress was recorded.",
-            )?;
+            if crate::operation_events::should_record_progress(
+                progress.entries.len() as u64,
+                plan.writes.len() as u64,
+            ) {
+                crate::operation_events::record_operation_event_now(
+                    paths,
+                    id,
+                    OperationEventKind::Progress,
+                    Some((progress.entries.len() as u64, plan.writes.len() as u64)),
+                    "Knowledge save progress was recorded.",
+                )?;
+            }
             #[cfg(test)]
             crash_for_test(&format!("write-{}", progress.entries.len()));
             if fail_after == Some(progress.entries.len()) {

@@ -137,21 +137,7 @@ fn failed_adoption_records_a_terminal_attempt_event() {
 #[test]
 fn application_event_request_is_fixed_to_the_selected_vault() {
     let temporary = tempfile::tempdir().unwrap();
-    let environment = BTreeMap::from([
-        (
-            "KB_CONFIG_DIR".to_owned(),
-            temporary.path().join("config").display().to_string(),
-        ),
-        (
-            "KB_STATE_DIR".to_owned(),
-            temporary.path().join("state").display().to_string(),
-        ),
-        (
-            "KB_CACHE_DIR".to_owned(),
-            temporary.path().join("cache").display().to_string(),
-        ),
-    ]);
-    let context = AppContext::new(environment, temporary.path().to_path_buf());
+    let context = application_context(temporary.path());
     let first = temporary.path().join("first");
     let second = temporary.path().join("second");
     for vault in [&first, &second] {
@@ -243,6 +229,24 @@ fn application_event_request_is_fixed_to_the_selected_vault() {
         completed["events"].as_array().unwrap().last().unwrap()["kind"],
         "applied"
     );
+}
+
+fn application_context(base: &std::path::Path) -> AppContext {
+    let environment = BTreeMap::from([
+        (
+            "KB_CONFIG_DIR".to_owned(),
+            base.join("config").display().to_string(),
+        ),
+        (
+            "KB_STATE_DIR".to_owned(),
+            base.join("state").display().to_string(),
+        ),
+        (
+            "KB_CACHE_DIR".to_owned(),
+            base.join("cache").display().to_string(),
+        ),
+    ]);
+    AppContext::new(environment, base.to_path_buf())
 }
 
 fn knowledge_request() -> KnowledgePlanRequest {
