@@ -36,7 +36,7 @@
 - 构建可重建的轻量目录
 - 查询真实 Markdown，并在目录缺失或损坏时继续工作
 
-当前计划先实现 Markdown、文本、YAML、JSON 和 CSV；HTML、EPUB、DOCX 与 PDF 使用独立的 Stage 2 提取器计划。BM25、Embedding、rerank、LLM 综合回答和联网 URL 抓取不属于本阶段。
+当前计划先实现 Markdown、文本、YAML、JSON 和 CSV；HTML、EPUB 与 DOCX 使用独立的 Stage 2 提取器计划。PDF 正文提取属于未来扩展。BM25、Embedding、rerank、LLM 综合回答和联网 URL 抓取不属于本阶段。
 
 ### Stage 2A — 本地来源与直接搜索
 
@@ -50,7 +50,7 @@
 
 ### Stage 2B — 文档提取器
 
-**Status:** planned。HTML、EPUB、DOCX、PDF 文本和 OCR 需要独立的依赖评估、输入限制、定位契约及真实样本文档测试。
+**Status:** implemented（定向本地测试）。内置 HTML、EPUB 和 DOCX 提取器使用纯 Rust 依赖，实现正文、标题、链接和可引用位置。PDF 正文提取与 OCR 保持 future。全量回归、release 二进制及 Windows/Linux 原生验证未在本阶段运行。
 
 ## Stage 3 — 知识形成与安全保存
 

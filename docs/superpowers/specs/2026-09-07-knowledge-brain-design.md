@@ -38,7 +38,7 @@ Knowledge-Brain 必须支持：
 - 内置 LLM 或特定模型 API 客户端
 - WebUI 或桌面 GUI
 - Embedding、向量数据库或 rerank
-- OCR、语音转写和复杂 Office 版式还原
+- PDF 正文提取、OCR、语音转写和复杂 Office 版式还原
 - 自有云服务或实时多端同步
 - 自动 Git 初始化、提交、拉取或推送
 - 通用 Skill 市场
@@ -324,8 +324,9 @@ kb source capture https://example.com/article
 - YAML、JSON、CSV：作为结构化文本读取，不推断业务含义。
 - HTML、EPUB：提取正文、标题和链接。
 - DOCX：提取段落、标题和表格文本，不承诺还原版式。
-- PDF：提取已有文本层并保留页码；扫描页标记为需要 OCR。
-- 图片、音频、视频、PPTX、XLSX：只保存原文件和元数据。
+- PDF、图片、音频、视频、PPTX、XLSX：只保存原文件和元数据。
+
+PDF 正文提取和 OCR 是未来扩展。扩展必须通过同一个 `Extractor` 接口接入，不能成为读取 Markdown、HTML、EPUB 或 DOCX 的前置依赖。
 
 提取结果保存在 `.kb/cache/extracted/<source-sha256>/<extractor-id>-<version>.json`，属于可重建缓存。提取器升级可以产生新的提取结果，但不能改变来源原始对象。
 

@@ -92,81 +92,10 @@ pub fn query(
     };
     let phrase = r.query.trim().to_lowercase();
     let terms = phrase.split_whitespace().collect::<BTreeSet<_>>();
-    let mut groups = Vec::new();
-    for scope in scopes {
-        let mut hits = Vec::new();
-        for d in documents(root, scope, c)? {
-            let mut blocks = extract_bytes(d.media, &d.bytes)
-                .blocks
-                .into_iter()
-                .map(|b| (b, d.content_path.clone()))
-                .collect::<Vec<_>>();
-            if let Some(annotation) = &d.annotation {
-                blocks.extend(
-                    extract_bytes(MediaType::Markdown, annotation.as_bytes())
-                        .blocks
-                        .into_iter()
-                        .map(|b| (b, d.path.clone())),
-                );
-            }
-            let before_hits = hits.len();
-            for (block, content_path) in blocks {
-                let folded = block.text.to_lowercase();
-                let count = folded.matches(&phrase).count();
-                let distinct = terms.iter().filter(|t| folded.contains(**t)).count();
-                if count == 0 && distinct == 0 {
-                    continue;
-                }
-                let title = block.heading.clone().unwrap_or_else(|| d.title.clone());
-                let title_match = title.to_lowercase().contains(&phrase);
-                let hit = SearchHit {
-                    path: d.path.clone(),
-                    content_path,
-                    source_uri: d.source_uri.clone(),
-                    title,
-                    heading: block.heading,
-                    line_start: block.line_start,
-                    snippet: snippet(&block.text, &phrase),
-                    match_count: count as u64,
-                };
-                hits.push((Reverse(count), Reverse(distinct), Reverse(title_match), hit));
-            }
-            if hits.len() == before_hits && d.title.to_lowercase().contains(&phrase) {
-                hits.push((
-                    Reverse(1),
-                    Reverse(terms.len()),
-                    Reverse(true),
-                    SearchHit {
-                        path: d.path.clone(),
-                        content_path: d.path,
-                        source_uri: d.source_uri,
-                        title: d.title.clone(),
-                        heading: None,
-                        line_start: None,
-                        snippet: d.title,
-                        match_count: 1,
-                    },
-                ));
-            }
-        }
-        hits.sort_by(|a, b| {
-            (&a.0, &a.1, &a.2, &a.3.path, &a.3.line_start).cmp(&(
-                &b.0,
-                &b.1,
-                &b.2,
-                &b.3.path,
-                &b.3.line_start,
-            ))
-        });
-        groups.push(SearchGroup {
-            scope,
-            results: hits
-                .into_iter()
-                .take(r.limit)
-                .map(|(_, _, _, hit)| hit)
-                .collect(),
-        });
-    }
+    let groups = scopes
+        .into_iter()
+        .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
+        .collect::<Result<_, _>>()?;
     let warnings = if c.search.mode.value == SearchMode::Bm25 {
         vec!["BM25 is unavailable; results use direct search.".into()]
     } else {
@@ -177,6 +106,95 @@ pub fn query(
         query: r.query.clone(),
         groups,
         warnings,
+    })
+}
+
+fn search_scope(
+    root: &Path,
+    scope: SearchScope,
+    config: &EffectiveConfig,
+    phrase: &str,
+    terms: &BTreeSet<&str>,
+    limit: usize,
+) -> Result<SearchGroup, KbError> {
+    let mut hits = Vec::new();
+    for document in documents(root, scope, config)? {
+        let extracted = extract_bytes(document.media, &document.bytes);
+        let document_title = extracted.title.unwrap_or_else(|| document.title.clone());
+        let mut blocks = extracted
+            .blocks
+            .into_iter()
+            .map(|block| (block, document.content_path.clone()))
+            .collect::<Vec<_>>();
+        if let Some(annotation) = &document.annotation {
+            blocks.extend(
+                extract_bytes(MediaType::Markdown, annotation.as_bytes())
+                    .blocks
+                    .into_iter()
+                    .map(|block| (block, document.path.clone())),
+            );
+        }
+        let before_hits = hits.len();
+        for (block, content_path) in blocks {
+            let folded = block.text.to_lowercase();
+            let count = folded.matches(phrase).count();
+            let distinct = terms.iter().filter(|term| folded.contains(**term)).count();
+            if count == 0 && distinct == 0 {
+                continue;
+            }
+            let title = block
+                .heading
+                .clone()
+                .unwrap_or_else(|| document_title.clone());
+            let title_match = title.to_lowercase().contains(phrase);
+            let hit = SearchHit {
+                path: document.path.clone(),
+                content_path,
+                source_uri: document.source_uri.clone(),
+                title,
+                heading: block.heading,
+                line_start: block.line_start,
+                location: block.location,
+                snippet: snippet(&block.text, phrase),
+                match_count: count as u64,
+            };
+            hits.push((Reverse(count), Reverse(distinct), Reverse(title_match), hit));
+        }
+        if hits.len() == before_hits && document_title.to_lowercase().contains(phrase) {
+            hits.push((
+                Reverse(1),
+                Reverse(terms.len()),
+                Reverse(true),
+                SearchHit {
+                    path: document.path.clone(),
+                    content_path: document.path,
+                    source_uri: document.source_uri,
+                    title: document_title.clone(),
+                    heading: None,
+                    line_start: None,
+                    location: None,
+                    snippet: document_title,
+                    match_count: 1,
+                },
+            ));
+        }
+    }
+    hits.sort_by(|a, b| {
+        (&a.0, &a.1, &a.2, &a.3.path, &a.3.line_start).cmp(&(
+            &b.0,
+            &b.1,
+            &b.2,
+            &b.3.path,
+            &b.3.line_start,
+        ))
+    });
+    Ok(SearchGroup {
+        scope,
+        results: hits
+            .into_iter()
+            .take(limit)
+            .map(|(_, _, _, hit)| hit)
+            .collect(),
     })
 }
 fn snippet(text: &str, phrase: &str) -> String {
@@ -202,7 +220,7 @@ pub fn rebuild_catalog(root: &Path, c: &EffectiveConfig) -> Result<Catalog, KbEr
                         .as_ref()
                         .map_or(d.bytes.as_slice(), |s| s.as_bytes()),
                 ),
-                title: d.title,
+                title: e.title.unwrap_or(d.title),
                 headings: e.blocks.into_iter().filter_map(|b| b.heading).collect(),
             });
         }

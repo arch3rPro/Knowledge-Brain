@@ -26,14 +26,18 @@ impl BoundedArchive {
                 .by_index(index)
                 .map_err(|error| format!("Cannot read {format} archive entry: {error}"))?;
             if file.encrypted() {
-                return Err(format!("Encrypted {format} archive entries are unsupported."));
+                return Err(format!(
+                    "Encrypted {format} archive entries are unsupported."
+                ));
             }
             if file.is_dir() {
                 continue;
             }
             let name = safe_name(file.name(), format)?;
             if file.size() > MAX_ENTRY_BYTES {
-                return Err(format!("{format} archive entry size limit exceeded: {name}"));
+                return Err(format!(
+                    "{format} archive entry size limit exceeded: {name}"
+                ));
             }
             expanded = expanded
                 .checked_add(file.size())
@@ -41,13 +45,17 @@ impl BoundedArchive {
             if expanded > MAX_EXPANDED_BYTES {
                 return Err(format!("{format} archive expansion limit exceeded."));
             }
-            let mut data = Vec::with_capacity(file.size() as usize);
+            let capacity = usize::try_from(file.size())
+                .map_err(|_| format!("{format} archive entry size does not fit this platform."))?;
+            let mut data = Vec::with_capacity(capacity);
             file.by_ref()
                 .take(MAX_ENTRY_BYTES + 1)
                 .read_to_end(&mut data)
                 .map_err(|error| format!("Cannot expand {format} archive entry {name}: {error}"))?;
             if data.len() as u64 > MAX_ENTRY_BYTES {
-                return Err(format!("{format} archive entry size limit exceeded: {name}"));
+                return Err(format!(
+                    "{format} archive entry size limit exceeded: {name}"
+                ));
             }
             if entries.insert(name.clone(), data).is_some() {
                 return Err(format!("{format} archive contains duplicate entry: {name}"));

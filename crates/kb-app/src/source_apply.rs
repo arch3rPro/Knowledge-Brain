@@ -312,8 +312,10 @@ fn cache_extractions(plan: &SourceCapturePlan, config: &EffectiveConfig) -> Vec<
             let path = safe_path(
                 &plan.target,
                 &format!(
-                    ".kb/cache/extracted/{}/builtin-text-v1-{}.json",
+                    ".kb/cache/extracted/{}/{}-{}-{}.json",
                     input.version.sha256(),
+                    extracted.extractor_id,
+                    extracted.extractor_version,
                     input.media_type.as_str()
                 ),
             )?;

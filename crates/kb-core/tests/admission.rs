@@ -9,11 +9,21 @@ fn admission_validates_disabled_entries_and_supplies_effective_filters() {
     )
     .unwrap();
     valid.validate(temp.path()).unwrap();
-    assert!(
-        valid.directories[0]
-            .effective_include()
-            .contains(&"**/*.md")
-    );
+    let includes = valid.directories[0].effective_include();
+    for pattern in [
+        "**/*.md",
+        "**/*.txt",
+        "**/*.html",
+        "**/*.htm",
+        "**/*.epub",
+        "**/*.docx",
+        "**/*.pdf",
+    ] {
+        assert!(
+            includes.contains(&pattern),
+            "missing default pattern {pattern}"
+        );
+    }
     assert!(
         valid.directories[0]
             .effective_exclude()

@@ -25,7 +25,7 @@ Markdown 按 ATX 标题分段，围栏代码内的 `#` 不产生新章节。每�
 
 正文没有命中时，文档文件名/来源标题可产生元数据结果。返回每组最多 `limit` 条，默认 10，允许 1–100。摘要不超过 240 个 Unicode 字符，不跨到相邻章节。这是确定性的直接搜索，不是 BM25 分数。
 
-结果中的 `path` 指向 Wiki 文档或来源记录；`content_path` 指向实际命中文本（文档、记录或原始对象），`line_start` 为该文件从 1 开始的章节行号。元数据命中的行号为 null。`source_uri` 提供精确版本引用；`heading`、`title`、`snippet` 和 `match_count` 供 CLI 或未来 UI 展示。
+结果中的 `path` 指向 Wiki 文档或来源记录；`content_path` 指向实际命中文本（文档、记录或原始对象）。`line_start` 是 Markdown 或文本从 1 开始的章节行号；HTML、EPUB 和 DOCX 使用 `location` 返回格式原生位置。元数据命中的两种位置都为空。`source_uri` 提供精确版本引用；`heading`、`title`、`snippet` 和 `match_count` 供 CLI 或未来 UI 展示。
 
 ## 轻量目录与提取缓存
 

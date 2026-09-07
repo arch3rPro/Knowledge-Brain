@@ -57,7 +57,7 @@ pub fn review_sources(
             continue;
         }
         let extraction = extract_bytes(item.media_type, &item.bytes);
-        let record = captured_record(item, old, &at);
+        let record = captured_record(item, old, &at, &extraction);
         let path = source_record::record_path_for(id)?;
         writes.push(RecordWrite {
             path,
@@ -127,6 +127,7 @@ fn captured_record(
     item: &crate::DiscoveredSource,
     old: Option<&source_record::StoredRecord>,
     at: &str,
+    extraction: &kb_core::ExtractedDocument,
 ) -> SourceRecord {
     let id = &item.version.source;
     let mut versions = old.map_or_else(Vec::new, |r| r.record.versions.clone());
@@ -140,16 +141,17 @@ fn captured_record(
     }
     SourceRecord {
         source: item.version.clone(),
-        title: id
-            .relative_path()
-            .as_str()
-            .rsplit('/')
-            .next()
-            .unwrap_or("source")
-            .into(),
+        title: extraction.title.clone().unwrap_or_else(|| {
+            id.relative_path()
+                .as_str()
+                .rsplit('/')
+                .next()
+                .unwrap_or("source")
+                .into()
+        }),
         size: item.size,
         media_type: item.media_type,
-        extraction_status: crate::extract_bytes(item.media_type, &item.bytes).status,
+        extraction_status: extraction.status,
         present: true,
         captured_at: at.to_owned(),
         versions,

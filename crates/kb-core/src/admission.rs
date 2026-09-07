@@ -7,7 +7,15 @@ use crate::{
     portability_key, validate_admission_directory,
 };
 
-const DEFAULT_INCLUDE: [&str; 3] = ["**/*.md", "**/*.txt", "**/*.pdf"];
+const DEFAULT_INCLUDE: [&str; 7] = [
+    "**/*.md",
+    "**/*.txt",
+    "**/*.html",
+    "**/*.htm",
+    "**/*.epub",
+    "**/*.docx",
+    "**/*.pdf",
+];
 const DEFAULT_EXCLUDE: [&str; 2] = ["**/.git/**", "**/.kb/**"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

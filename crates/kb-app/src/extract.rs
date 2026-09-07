@@ -1,10 +1,10 @@
 use kb_core::{ExtractedBlock, ExtractedDocument, ExtractionStatus, Extractor, MediaType};
 use std::path::Path;
 
-mod html;
 mod archive;
 mod docx;
 mod epub;
+mod html;
 #[must_use]
 pub fn classify_media_type(path: &Path) -> MediaType {
     match path

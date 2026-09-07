@@ -1,7 +1,5 @@
 use super::archive::BoundedArchive;
-use kb_core::{
-    ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, SourceLocation,
-};
+use kb_core::{ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, SourceLocation};
 use quick_xml::{Reader, events::Event};
 use std::collections::BTreeMap;
 
@@ -128,8 +126,9 @@ fn parse_relationships(xml: &[u8]) -> Result<BTreeMap<String, String>, String> {
                 if kind.ends_with("/hyperlink") {
                     let id = attribute(&reader, &element, b"Id")?
                         .ok_or_else(|| "DOCX hyperlink relationship has no Id.".to_owned())?;
-                    let target = attribute(&reader, &element, b"Target")?
-                        .ok_or_else(|| format!("DOCX hyperlink relationship {id} has no target."))?;
+                    let target = attribute(&reader, &element, b"Target")?.ok_or_else(|| {
+                        format!("DOCX hyperlink relationship {id} has no target.")
+                    })?;
                     relationships.insert(id, target);
                 }
             }
@@ -141,6 +140,8 @@ fn parse_relationships(xml: &[u8]) -> Result<BTreeMap<String, String>, String> {
     Ok(relationships)
 }
 
+// Keeping the XML event transitions together makes the parser state and nesting rules auditable.
+#[allow(clippy::too_many_lines)]
 fn parse_document(
     xml: &[u8],
     styles: &BTreeMap<String, String>,

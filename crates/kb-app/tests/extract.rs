@@ -3,7 +3,7 @@ use kb_core::{
     ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, MediaType, SourceLocation,
 };
 use std::path::Path;
-use std::{io::Write, io::Cursor};
+use std::{io::Cursor, io::Write};
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 #[test]
@@ -11,7 +11,10 @@ fn document_extensions_have_distinct_media_types() {
     assert_eq!(classify_media_type(Path::new("page.HTML")), MediaType::Html);
     assert_eq!(classify_media_type(Path::new("page.htm")), MediaType::Html);
     assert_eq!(classify_media_type(Path::new("book.epub")), MediaType::Epub);
-    assert_eq!(classify_media_type(Path::new("notes.DOCX")), MediaType::Docx);
+    assert_eq!(
+        classify_media_type(Path::new("notes.DOCX")),
+        MediaType::Docx
+    );
 }
 
 #[test]
@@ -45,7 +48,10 @@ fn extraction_contract_serializes_document_metadata_and_locations() {
     assert_eq!(value["title"], "Guide");
     assert_eq!(value["links"][0]["target"], "chapter-2.xhtml");
     assert_eq!(value["blocks"][0]["location"]["kind"], "epub");
-    assert_eq!(value["blocks"][0]["location"]["resource"], "chapter-1.xhtml");
+    assert_eq!(
+        value["blocks"][0]["location"]["resource"],
+        "chapter-1.xhtml"
+    );
     assert_eq!(value["blocks"][0]["location"]["block"], 1);
 }
 
@@ -183,7 +189,10 @@ fn docx_extracts_title_headings_paragraphs_tables_and_links() {
     assert_eq!(document.extractor_id, "builtin-docx");
     assert_eq!(document.title.as_deref(), Some("Team Guide"));
     assert_eq!(document.blocks.len(), 3);
-    assert_eq!(document.blocks[0].heading.as_deref(), Some("Getting Started"));
+    assert_eq!(
+        document.blocks[0].heading.as_deref(),
+        Some("Getting Started")
+    );
     assert_eq!(document.blocks[0].text, "Getting Started");
     assert_eq!(document.blocks[1].text, "Read this guide.");
     assert_eq!(document.blocks[2].text, "Name | Value");

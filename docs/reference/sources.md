@@ -16,7 +16,7 @@ URI 各路径段使用 UTF-8 百分号编码，`/` 保留为层级分隔符。�
 | 原始对象 | `Wiki/external-sources/.objects/sha256/<前两位>/<sha256>` |
 | 来源记录 | `Wiki/external-sources/records/<前两位>/<逻辑 URI 的 SHA-256>.md` |
 | 知识日志 | `Wiki/log.md` 的 managed 区域 |
-| 可丢弃提取缓存 | `.kb/cache/extracted/<sha256>/builtin-text-v1-<media-type>.json` |
+| 可丢弃提取缓存 | `.kb/cache/extracted/<sha256>/<extractor-id>-<version>-<media-type>.json` |
 
 对象按内容去重，只创建新对象或核对已有对象，不覆盖损坏对象。来源记录是持久的发现基准，不依赖扫描缓存。重命名路径产生新的逻辑身份，相同哈希可提供“可能移动”的线索，但不自动迁移身份。
 
@@ -32,17 +32,23 @@ URI 各路径段使用 UTF-8 百分号编码，`/` 保留为层级分隔符。�
 
 ## 内置提取器
 
-`builtin-text`、版本 `v1` 实现统一 `Extractor` 接口；输入是已限制大小的字节与媒体类型，不接触文件系统或网络。
+所有内置提取器使用版本 `v1` 并实现统一 `Extractor` 接口；输入是已限制大小的字节与媒体类型，不接触文件系统、网络或外部程序。`kb capabilities` 公布可用的提取器 ID。
 
 | 输入 | 处理 |
 | --- | --- |
 | `.md`、`.markdown` | UTF-8 Markdown，跳过 frontmatter，按 ATX 标题分段，保留原始行号 |
 | `.txt` | UTF-8 文本 |
 | `.yml`、`.yaml`、`.json`、`.csv` | 保留原文本；YAML/JSON 语法错误以警告报告 |
+| `.html`、`.htm` | HTML5 可见正文、文档标题、标题分段和链接；不执行脚本 |
+| `.epub` | 按 OPF spine 顺序读取 XHTML 章节，保留书名、章节资源、块序号和链接 |
+| `.docx` | 读取文档标题、段落、标题样式、表格行和超链接；不还原视觉版式 |
 | 无效 UTF-8、含 NUL 的文本 | `metadata_only`，不伪造可搜索正文 |
-| PDF 与其他格式 | `unsupported`，可按准入规则保留原始对象 |
+| PDF | `metadata_only`，保存原始对象；正文提取和 OCR 是未来扩展 |
+| 其他格式 | `unsupported`，可按准入规则保留原始对象 |
 
-成功提取状态为 `text_ready`。扩展名分类不等于自动准入；YAML/JSON/CSV 等需要相应 `include` 规则。HTML、EPUB、DOCX、PDF 文本提取与 OCR 的实施状态见 [Roadmap](../../ROADMAP.md)。
+成功提取状态为 `text_ready`。默认准入模式包含 Markdown、文本、HTML、EPUB、DOCX 和 PDF；YAML、JSON、CSV 等需要显式 `include`。EPUB 和 DOCX 最多读取 4096 个 ZIP 条目，每个展开条目不超过 16 MiB，总展开量不超过 64 MiB；加密、重复或越界条目降级为 `metadata_only` 并给出原因。
+
+HTML 块使用从 1 开始的文档内块序号。EPUB 位置包含 ZIP 内章节资源路径和章节内块序号。DOCX 位置包含从 1 开始的段落号，并为表格内容附加表格号和行号。这些位置绑定来源的精确 SHA-256 版本，不承诺在文档被修改后保持不变。
 
 ## 计划、保存和恢复
 

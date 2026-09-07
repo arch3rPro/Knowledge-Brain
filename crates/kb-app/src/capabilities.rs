@@ -20,7 +20,12 @@ pub fn capabilities() -> Capabilities {
         schema_version: CURRENT_SCHEMA_VERSION,
         direct_search: true,
         bm25: false,
-        extractors: vec!["builtin-text".into()],
+        extractors: vec![
+            "builtin-text".into(),
+            "builtin-html".into(),
+            "builtin-epub".into(),
+            "builtin-docx".into(),
+        ],
         mcp: false,
         http: false,
         commands: vec![

@@ -32,7 +32,12 @@ fn version_and_capabilities_are_explicit_contracts() {
     assert_eq!(capabilities["data"]["direct_search"], true);
     assert_eq!(
         capabilities["data"]["extractors"],
-        serde_json::json!(["builtin-text"])
+        serde_json::json!([
+            "builtin-text",
+            "builtin-html",
+            "builtin-epub",
+            "builtin-docx"
+        ])
     );
     assert_eq!(capabilities["data"]["bm25"], false);
     assert_eq!(capabilities["data"]["mcp"], false);

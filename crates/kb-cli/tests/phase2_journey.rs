@@ -1,6 +1,11 @@
 use assert_cmd::Command;
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::{
+    fs,
+    io::{Cursor, Write},
+    path::Path,
+};
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 #[test]
 fn excluding_a_captured_file_does_not_mark_it_deleted() {
@@ -440,6 +445,103 @@ fn receipt_retry_clears_leftover_marker_and_unblocks_queries() {
             .len(),
         1
     );
+}
+
+#[test]
+fn document_sources_survive_review_apply_query_and_reopening() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let path = vault.to_str().unwrap();
+    run(base, &["init", path, "--json"]);
+    fs::create_dir(vault.join("Documents")).unwrap();
+    fs::write(
+        vault.join("admission.yml"),
+        "schema_version: v1.0\ndirectories:\n- id: documents\n  path: Documents\n  enabled: true\n  include: ['**/*.html', '**/*.docx']\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Documents/page.html"),
+        "<html><head><title>Web Guide</title></head><body><h1>HTML Section</h1><p>cobalt browser source</p></body></html>",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Documents/guide.docx"),
+        zip_bytes(&[
+            (
+                "docProps/core.xml",
+                br#"<cp:coreProperties xmlns:cp="x" xmlns:dc="y"><dc:title>Office Guide</dc:title></cp:coreProperties>"#,
+            ),
+            (
+                "word/document.xml",
+                br#"<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>amber office source</w:t></w:r></w:p></w:body></w:document>"#,
+            ),
+        ]),
+    )
+    .unwrap();
+
+    let review = run(base, &["review", "--vault", path, "--json"]);
+    let changes = review["data"]["changes"].as_array().unwrap();
+    assert_eq!(changes.len(), 2);
+    assert!(
+        changes
+            .iter()
+            .all(|change| change["extraction"]["status"] == "text_ready")
+    );
+    let hashes = changes
+        .iter()
+        .map(|change| change["current_sha256"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    run(
+        base,
+        &[
+            "apply",
+            review["data"]["operation_id"].as_str().unwrap(),
+            "--json",
+        ],
+    );
+
+    let html = run(
+        base,
+        &[
+            "query", "cobalt", "--scope", "sources", "--vault", path, "--json",
+        ],
+    );
+    assert_eq!(
+        html["data"]["groups"][0]["results"][0]["location"]["kind"],
+        "html"
+    );
+    let docx = run(
+        base,
+        &[
+            "query", "amber", "--scope", "sources", "--vault", path, "--json",
+        ],
+    );
+    assert_eq!(
+        docx["data"]["groups"][0]["results"][0]["location"]["kind"],
+        "docx"
+    );
+
+    let cache_files = hashes
+        .iter()
+        .flat_map(|hash| {
+            fs::read_dir(vault.join(format!(".kb/cache/extracted/{hash}")))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    assert!(cache_files.contains(&"builtin-html-v1-html.json".to_owned()));
+    assert!(cache_files.contains(&"builtin-docx-v1-docx.json".to_owned()));
+}
+
+fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, contents) in entries {
+        writer.start_file(*name, options).unwrap();
+        writer.write_all(contents).unwrap();
+    }
+    writer.finish().unwrap().into_inner()
 }
 fn run(base: &Path, args: &[&str]) -> Value {
     let o = command(base).args(args).output().unwrap();

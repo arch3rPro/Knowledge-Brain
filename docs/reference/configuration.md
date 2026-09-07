@@ -57,7 +57,7 @@ directories:
 - `path` 必须是已存在的可移植一级目录，不能是绝对路径或嵌套路径。
 - `Wiki`、`.kb`、链接、junction/reparse point、Windows 保留名和跨平台大小写/Unicode 冲突会被拒绝。
 - 即使条目为 `enabled: false`，其结构和路径仍会校验。
-- 未写 `include` 时默认包含 Markdown、文本和 PDF；未写 `exclude` 时默认排除 `.git` 与 `.kb`。
+- 未写 `include` 时默认包含 Markdown、文本、HTML、EPUB、DOCX 和 PDF；未写 `exclude` 时默认排除 `.git` 与 `.kb`。PDF 当前只保存原始对象和元数据。
 - `kb config admission remove` 只删除准入记录，不删除对应目录。
 - 停用、移除或排除来源不会删除已保存的副本，也不会伪造“来源已删除”的变更。
 - glob 相对主题根匹配，区分大小写；`**` 匹配任意层级。排除规则优先，隐藏文件默认跳过，`.git` 与 `.kb` 始终跳过。

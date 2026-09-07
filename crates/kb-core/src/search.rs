@@ -1,4 +1,4 @@
-use crate::{ErrorCode, KbError, PortableRelativePath, SchemaVersion};
+use crate::{ErrorCode, KbError, PortableRelativePath, SchemaVersion, SourceLocation};
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +37,8 @@ pub struct SearchHit {
     pub title: String,
     pub heading: Option<String>,
     pub line_start: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<SourceLocation>,
     pub snippet: String,
     pub match_count: u64,
 }

@@ -1,6 +1,4 @@
-use kb_core::{
-    ExtractedDocument, ExtractedLink, ExtractionStatus, SourceLocation,
-};
+use kb_core::{ExtractedDocument, ExtractedLink, ExtractionStatus, SourceLocation};
 use scraper::{Html, Selector};
 
 const RENDER_WIDTH: usize = 120;
@@ -40,8 +38,7 @@ pub(super) fn extract(bytes: &[u8]) -> ExtractedDocument {
 }
 
 pub(super) fn parse(bytes: &[u8]) -> Result<HtmlContent, String> {
-    let source = std::str::from_utf8(bytes)
-        .map_err(|_| "Expected UTF-8 HTML input.".to_owned())?;
+    let source = std::str::from_utf8(bytes).map_err(|_| "Expected UTF-8 HTML input.".to_owned())?;
     let dom = Html::parse_document(source);
     let title_selector = Selector::parse("title").expect("static selector is valid");
     let link_selector = Selector::parse("a[href]").expect("static selector is valid");
