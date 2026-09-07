@@ -32,7 +32,8 @@ pub use okf::{
     parse_okf, validate_okf,
 };
 pub use operation::{
-    AdoptionPlan, ObservedEntry, ObservedKind, OperationId, OperationKind, PlannedFile,
+    AdoptionPlan, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest, KnowledgePlanResult,
+    KnowledgeWrite, ObservedEntry, ObservedKind, OperationId, OperationKind, PlannedFile,
 };
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,
