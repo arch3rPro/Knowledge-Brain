@@ -95,7 +95,7 @@
 
 `kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
 
-本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、部分完成后重试和真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。只运行相关 crate 的定向测试；Windows/Linux 原生路径、Rust 1.85 原生构建及四种外部 Agent 的实际加载行为仍待 CI 或对应宿主环境验证。
+本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、每个受管理文件写入后进程退出并重试，以及真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。只运行相关 crate 的定向测试；Windows/Linux 原生路径、Rust 1.85 原生构建及四种外部 Agent 的实际加载行为仍待 CI 或对应宿主环境验证。
 
 参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](docs/superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](docs/superpowers/plans/2026-09-07-mcp-stdio.md)。
 

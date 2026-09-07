@@ -373,6 +373,8 @@ fn apply_skill_plan_inner(
         }
         completed += 1;
         record_progress(user_paths, operation_id, completed, total)?;
+        #[cfg(test)]
+        crash_for_test(&format!("write-{completed}"));
     }
     if let Some(link) = &plan.link {
         if apply_link_change(link)? {
@@ -749,4 +751,108 @@ fn stale(path: &Path, reason: &str) -> KbError {
 
 fn io(action: &str, path: &Path, error: &std::io::Error) -> KbError {
     KbError::io_failure(action, path.display().to_string(), error.to_string())
+}
+
+#[cfg(test)]
+fn crash_for_test(point: &str) {
+    if std::env::var("KB_SKILL_CRASH_POINT").as_deref() == Ok(point) {
+        std::process::exit(89);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{InitRequest, init_vault};
+
+    fn paths(base: &Path) -> UserPaths {
+        UserPaths::new(base.join("config"), base.join("state"), base.join("cache"))
+    }
+
+    fn roots(base: &Path) -> AgentRoots {
+        AgentRoots::new(base.join("home"), base.join("agent-config"))
+    }
+
+    fn setup(base: &Path) -> (UserPaths, AgentRoots, SkillPlan) {
+        let vault = base.join("vault");
+        init_vault(&InitRequest {
+            target: vault.clone(),
+        })
+        .unwrap();
+        fs::write(vault.join("AGENTS.md"), "# Existing rules\n").unwrap();
+        let user_paths = paths(base);
+        let agent_roots = roots(base);
+        let identity = crate::vault::read_vault_identity(&vault).unwrap();
+        let plan = create_skill_plan(&SkillPlanRequest {
+            vault_root: &vault,
+            vault_id: identity.vault_id,
+            user_paths: &user_paths,
+            roots: &agent_roots,
+            host: SkillHost::Codex,
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+            action: SkillAction::Install,
+        })
+        .unwrap();
+        (user_paths, agent_roots, plan)
+    }
+
+    #[test]
+    fn crash_child() {
+        let Ok(base) = std::env::var("KB_SKILL_CHILD_ROOT") else {
+            return;
+        };
+        let operation_id = std::env::var("KB_SKILL_CHILD_ID").unwrap().parse().unwrap();
+        apply_skill_plan(
+            &paths(Path::new(&base)),
+            &roots(Path::new(&base)),
+            operation_id,
+        )
+        .unwrap();
+        panic!("child did not reach requested crash point");
+    }
+
+    fn crash(base: &Path, operation_id: OperationId, point: &str) {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "skill_plan::tests::crash_child", "--nocapture"])
+            .env("KB_SKILL_CHILD_ROOT", base)
+            .env("KB_SKILL_CHILD_ID", operation_id.to_string())
+            .env("KB_SKILL_CRASH_POINT", point)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(89),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn process_exit_after_each_managed_write_is_recoverable() {
+        for completed in 1..=5 {
+            let temporary = tempfile::tempdir().unwrap();
+            let (user_paths, agent_roots, plan) = setup(temporary.path());
+            crash(
+                temporary.path(),
+                plan.operation_id,
+                &format!("write-{completed}"),
+            );
+            let result = apply_skill_plan(&user_paths, &agent_roots, plan.operation_id).unwrap();
+            assert_eq!(result.action, SkillAction::Install);
+            let status = skill_status(
+                &plan.vault_root,
+                &agent_roots,
+                SkillHost::Codex,
+                SkillScope::Vault,
+            )
+            .unwrap();
+            assert_eq!(status.state, SkillInstallState::Current);
+            assert!(
+                fs::read_to_string(plan.vault_root.join("AGENTS.md"))
+                    .unwrap()
+                    .starts_with("# Existing rules\n")
+            );
+        }
+    }
 }
