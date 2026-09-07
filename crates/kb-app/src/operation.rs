@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use kb_core::{AdoptionPlan, ErrorCode, KbError, OperationId};
+use kb_core::{AdoptionPlan, ErrorCode, KbError, KnowledgePlan, KnowledgePlanResult, OperationId};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
@@ -21,6 +21,8 @@ pub enum OperationState {
     Applied(AdoptionResult),
     PlannedSource(crate::SourceCapturePlan),
     AppliedSource(crate::SourceCaptureResult),
+    PlannedKnowledge(KnowledgePlan),
+    AppliedKnowledge(KnowledgePlanResult),
 }
 
 /// Read an operation plan or its durable completion receipt.
@@ -39,6 +41,9 @@ pub fn inspect_operation(
         if value["kind"] == "capture_sources" {
             return read_json(&result_path).map(OperationState::AppliedSource);
         }
+        if value["kind"] == "save_knowledge" {
+            return read_json(&result_path).map(OperationState::AppliedKnowledge);
+        }
         return read_json(&result_path).map(OperationState::Applied);
     }
     let plan_path = directory.join("plan.json");
@@ -46,6 +51,9 @@ pub fn inspect_operation(
         let value: serde_json::Value = read_json(&plan_path)?;
         if value["kind"] == "capture_sources" {
             return read_json(&plan_path).map(OperationState::PlannedSource);
+        }
+        if value["kind"] == "save_knowledge" {
+            return read_json(&plan_path).map(OperationState::PlannedKnowledge);
         }
         return read_json(&plan_path).map(OperationState::Planned);
     }

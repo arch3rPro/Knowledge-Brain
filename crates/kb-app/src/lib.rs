@@ -21,8 +21,10 @@ mod capabilities;
 mod config;
 mod doctor;
 mod init;
+mod knowledge_plan;
 mod lint;
 mod lock;
+mod managed_markdown;
 mod operation;
 mod registry;
 mod status;
@@ -44,6 +46,7 @@ pub use config::{
 };
 pub use doctor::{CheckStatus, DoctorCheck, DoctorReport, doctor};
 pub use init::{InitReport, InitRequest, init_and_register_vault, init_vault};
+pub use knowledge_plan::create_knowledge_plan;
 pub use lint::{LintReport, lint};
 pub use lock::{LockMode, VaultLock};
 pub use operation::{AdoptionResult, OperationState, inspect_operation};

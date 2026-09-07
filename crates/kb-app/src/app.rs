@@ -285,6 +285,12 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
                 OperationState::AppliedSource(result) => {
                     Ok(json!({"state":"applied","result":result}))
                 }
+                OperationState::PlannedKnowledge(plan) => {
+                    Ok(json!({"state":"planned","plan":plan}))
+                }
+                OperationState::AppliedKnowledge(result) => {
+                    Ok(json!({"state":"applied","result":result}))
+                }
             }
         }
     }
@@ -500,6 +506,14 @@ fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result
                 operation_id,
                 &context.overrides(),
             )?)
+        }
+        OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_) => {
+            Err(KbError::new(
+                ErrorCode::CapabilityUnavailable,
+                "Knowledge apply is not available.",
+                false,
+                "Use a version that implements knowledge plan apply.",
+            ))
         }
         _ => to_value(apply_operation(context.user_paths()?, operation_id)?),
     }
