@@ -11,7 +11,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Structured Wiki** — 来源、阶段性研究和可复用文章分别保存在固定的三层 `Wiki/` 结构中。
 - **Reviewable changes** — 采用已有目录等多文件操作先生成计划，再由用户明确执行。
 - **Traceable sources** — 保留原始文件副本和精确版本，来源变更不覆盖旧证据。
-- **Direct search** — 直接查询 Wiki 和已保存来源；删除缓存后仍可检索。
+- **Layered search** — 默认直接查询真实文件；可选 BM25F 提供字段加权、中文检索和可解释评分。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
 - **Tool-independent core** — CLI 与未来的 MCP、HTTP、WebUI 和 GUI 共用同一应用层。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
@@ -118,7 +118,7 @@ kb apply <operation-id> --json
 | `kb apply` | 执行已审核的操作计划 |
 | `kb review` | 查看准入来源变化并生成保存计划 |
 | `kb query` | 查询 Wiki 或已保存来源 |
-| `kb cache rebuild` | 重建轻量目录 |
+| `kb cache rebuild` | 重建轻量目录及已启用的搜索索引 |
 | `kb source verify` | 核对已保存来源的完整性 |
 | `kb config` | 查看、校验和修改配置或准入清单 |
 | `kb vault` | 管理本机 Vault 注册和路径绑定 |

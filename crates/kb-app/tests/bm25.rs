@@ -142,6 +142,20 @@ fn stale_or_corrupt_index_falls_back_unless_strict() {
             .code,
         ErrorCode::IndexStale
     );
+
+    let mut structurally_invalid = index_after_rebuild(&vault, &config);
+    structurally_invalid["documents"][0]["chunks"][0]["fields"] = serde_json::json!([]);
+    fs::write(
+        vault.join(".kb/cache/bm25.json"),
+        serde_json::to_vec_pretty(&structurally_invalid).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        query(&vault, &request("first", true), &config)
+            .unwrap_err()
+            .code,
+        ErrorCode::IndexStale
+    );
 }
 
 fn index(vault: &Path) -> serde_json::Value {
@@ -157,4 +171,9 @@ fn generation(index: &serde_json::Value, path: &str) -> u64 {
         .unwrap()["generation"]
         .as_u64()
         .unwrap()
+}
+
+fn index_after_rebuild(vault: &Path, config: &kb_core::EffectiveConfig) -> serde_json::Value {
+    rebuild_catalog(vault, config).unwrap();
+    index(vault)
 }

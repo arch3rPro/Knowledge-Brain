@@ -29,7 +29,7 @@ kb apply <OPERATION_ID> [--json]
 
 ```text
 kb review [--vault <PATH_OR_ID>] [--json]
-kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--vault <PATH_OR_ID>] [--json]
+kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--strict-backend] [--vault <PATH_OR_ID>] [--json]
 kb cache rebuild [--vault <PATH_OR_ID>] [--json]
 kb source verify [--vault <PATH_OR_ID>] [--json]
 kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
@@ -37,9 +37,9 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 
 `review` 只查看启用的准入目录，返回新增、变化、删除及可能移动的来源。有变化时保存用户状态目录中的计划；没有变化时 `operation_id` 为 `null`。它不保存来源、不改主题文件或 Wiki；明确执行该 ID 的 `apply` 才保存来源与日志。计划核对及恢复规则见[来源格式](sources.md)。
 
-`query` 默认 `scope=wiki`、`limit=10`。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。匹配、排序和定位规则见[搜索参考](search.md)。
+`query` 默认 `scope=wiki`、`limit=10`。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。BM25 索引不可用时默认整次回退 direct 并返回 warning；`--strict-backend` 改为返回 `index_stale`。匹配、排序、解释和索引新鲜度规则见[搜索参考](search.md)。
 
-`cache rebuild` 从实际文件重建目录，不创建知识内容。`source verify` 核对来源记录引用的所有历史对象，逐项返回 `pass`、`fail` 或 `not_checked`。成功取得报告不代表所有对象通过：自动化必须检查各项状态；来源记录无法解析时整个命令失败。
+`cache rebuild` 从实际文件重建轻量目录；启用 BM25 时同时增量维护字段索引。它不创建知识内容。`source verify` 核对来源记录引用的所有历史对象，逐项返回 `pass`、`fail` 或 `not_checked`。成功取得报告不代表所有对象通过：自动化必须检查各项状态；来源记录无法解析时整个命令失败。
 
 存在未恢复的来源保存或知识保存时，`review`、`query`、`cache rebuild`、`source verify`、`lint` 和其他写入返回 `vault_needs_recovery`。可以查看 `status`、读取配置、查看操作计划，并重试对应 `apply`。
 

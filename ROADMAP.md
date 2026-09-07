@@ -90,13 +90,21 @@
 
 ## Stage 5 — 搜索、备份与发布
 
-**Status:** planned
+**Status:** in progress
 
-- 完整、可选的 BM25F
-- 索引损坏后的直接 Markdown 回退
+- 完整、可选的 BM25F（Stage 5A implemented）
+- 索引缺失、损坏、版本不兼容或陈旧后的 direct 回退（Stage 5A implemented）
 - 标准 ZIP 备份、校验和恢复
 - schema 迁移
 - Windows、macOS 和 Linux 发布产物
 - 安装包、签名和升级流程
 
 Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足够收益且不成为知识库运行前提。
+
+### Stage 5A — 可选 BM25F
+
+**Status:** implemented（定向本地测试）。`search.mode: bm25` 提供标题、别名、章节、标签和正文加权，ASCII 词项与中文 1–3 gram、章节级结果、确定性整数评分及字段贡献解释。`.kb/cache/bm25.json` 支持未变文档复用、增改删更新和精确新鲜度核对；默认失败策略是整次 direct 回退，`--strict-backend` 返回 `index_stale`。
+
+本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。
+
+排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](docs/superpowers/plans/2026-09-07-bm25f-search.md)。

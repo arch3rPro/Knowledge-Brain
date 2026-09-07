@@ -1,6 +1,6 @@
 # ADR-0006: Direct search and optional BM25F
 
-- Status: proposed
+- Status: accepted
 - Class: architecture
 - Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
@@ -8,9 +8,9 @@
 
 Small Vaults need reliable search without index administration, while larger Vaults need ranked full-text retrieval. Neither use case should make generated index data part of the knowledge truth.
 
-## Proposal
+## Decision
 
-Search actual Markdown in direct mode by default. Maintain a rebuildable lightweight catalog for navigation. Offer a complete, explicitly selected BM25F backend with field weighting, heading-section chunks, CJK 1–3 grams, incremental updates, versioned hashes, explanations, and direct-search fallback.
+Search actual Markdown in direct mode by default. Maintain a rebuildable lightweight catalog for navigation. The explicitly selected BM25F backend uses field weighting, heading-section chunks, CJK 1–3 grams, incremental updates, versioned content fingerprints, explanations, and direct-search fallback. A strict request policy turns fallback into a stable error when callers require that backend.
 
 ## Alternatives considered
 
@@ -20,12 +20,11 @@ Search actual Markdown in direct mode by default. Maintain a rebuildable lightwe
 
 **Automatic switching by document count.** Hidden mode changes make identical commands behave differently as a Vault grows.
 
-## Acceptance criteria
+## Consequences
 
 - Direct search works when every cache is absent.
-- BM25 mode is user-selected, explainable, incrementally maintainable, and safely falls back unless strict mode is requested.
-
-## Risks
-
+- BM25 mode remains user-selected, explainable and incrementally maintainable.
+- The index is disposable and validated against actual paths and content before use.
+- Missing, damaged, incompatible or stale indexes fall back as one request unless strict mode is requested.
 - Maintaining two backends expands the retrieval test matrix.
-- CJK n-grams increase index size and require careful relevance tuning.
+- CJK n-grams increase index size and relevance tuning remains a versioned implementation concern.

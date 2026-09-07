@@ -26,7 +26,7 @@
 | `files.include_hidden` | `true` 或 `false` | `false` | `KB_FILES_INCLUDE_HIDDEN` |
 | `operations.plan_retention_hours` | 正整数 | `168` | `KB_OPERATIONS_PLAN_RETENTION_HOURS` |
 
-`direct` 查询真实文件。`bm25` 偏好可以保存，但在二进制未提供 BM25 时返回明确警告并使用 direct；实际能力以 `kb capabilities --json` 为准。
+`direct` 查询真实文件且不依赖索引。`bm25` 使用由 `kb cache rebuild` 维护的可解释字段加权索引；索引不可用或陈旧时默认回退 direct。单次查询可用 `--strict-backend` 将回退改为 `index_stale` 错误。实际能力以 `kb capabilities --json` 为准，完整行为见[搜索规则](search.md)。
 
 来源保存计划在 `operations.plan_retention_hours` 后不能首次执行；重新运行 `kb review`。已经中断的保存先恢复旧内容，再判断计划是否仍可执行；完成回执不受过期规则影响。此字段不自动删除计划、恢复记录或来源历史。
 

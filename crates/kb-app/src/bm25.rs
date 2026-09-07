@@ -31,9 +31,12 @@ struct Index {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Parameters {
-    k1_milli: u32,
-    b_milli: u32,
-    field_weights_milli: BTreeMap<SearchField, u32>,
+    #[serde(rename = "k1_milli")]
+    k1: u32,
+    #[serde(rename = "b_milli")]
+    b: u32,
+    #[serde(rename = "field_weights_milli")]
+    field_weights: BTreeMap<SearchField, u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -526,9 +529,9 @@ const fn weight(field: SearchField) -> f64 {
 
 fn parameters() -> Parameters {
     Parameters {
-        k1_milli: 1_200,
-        b_milli: 750,
-        field_weights_milli: fields()
+        k1: 1_200,
+        b: 750,
+        field_weights: fields()
             .into_iter()
             .map(|field| {
                 let value = match field {

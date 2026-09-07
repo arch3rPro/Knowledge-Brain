@@ -80,7 +80,7 @@ kb apply <OPERATION_ID> [--json]
 
 恢复只覆盖仍等于该计划新内容的文件。若文件同时不同于计划的新旧版本，Knowledge-Brain 保留它并返回 `vault_needs_recovery`，不会覆盖独立编辑。来源保存与知识保存的 pending 状态互斥。
 
-`result.json` 是知识已保存的完成依据。完成后目录缓存会被删除并按需重建；缓存清理失败作为 warning 返回，不撤销已经保存的 Markdown。
+`result.json` 是知识已保存的完成依据。完成后轻量目录和 BM25 索引会被删除并按需重建；缓存清理失败作为 warning 返回，不撤销已经保存的 Markdown。
 
 ## 当前边界
 

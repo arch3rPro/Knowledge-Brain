@@ -85,6 +85,21 @@ fn knowledge_plan_reference_owns_the_save_contract() {
 }
 
 #[test]
+fn search_reference_documents_the_optional_backend_contract() {
+    let reference = include_str!("../../../docs/reference/search.md");
+    for contract in [
+        "bm25f-v1",
+        "--strict-backend",
+        "index_stale",
+        "score_micros",
+        "整次请求回退",
+    ] {
+        assert!(reference.contains(contract), "missing {contract}");
+    }
+    assert!(COMMAND_REFERENCE.contains("--strict-backend"));
+}
+
+#[test]
 fn reference_names_every_config_and_admission_subcommand() {
     for command in ["show", "get", "set", "unset", "validate"] {
         assert!(
