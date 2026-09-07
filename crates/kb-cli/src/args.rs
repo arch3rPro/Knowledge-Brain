@@ -9,7 +9,7 @@ use kb_core::{KnowledgePlanRequest, OperationId};
 use uuid::Uuid;
 
 pub(crate) struct ParsedCommand {
-    pub request: AppRequest,
+    pub request: Result<AppRequest, kb_core::KbError>,
     pub json: bool,
     pub fail_on_findings: bool,
 }
@@ -365,11 +365,11 @@ impl Cli {
                 command: PlanCommands::Create { request, context },
             } => ParsedCommand {
                 request: match request {
-                    KnowledgeRequestArg::Parsed(request) => AppRequest::PlanCreate {
+                    KnowledgeRequestArg::Parsed(request) => Ok(AppRequest::PlanCreate {
                         vault: context.vault,
                         request,
-                    },
-                    KnowledgeRequestArg::Invalid(error) => AppRequest::Invalid(error),
+                    }),
+                    KnowledgeRequestArg::Invalid(error) => Err(error),
                 },
                 json: context.json,
                 fail_on_findings: false,
@@ -377,39 +377,41 @@ impl Cli {
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand {
-                request: AppRequest::CacheRebuild {
+                request: Ok(AppRequest::CacheRebuild {
                     vault: context.vault,
-                },
+                }),
                 json: context.json,
                 fail_on_findings: false,
             },
             Commands::Source {
                 command: SourceCommands::Verify { context },
             } => ParsedCommand {
-                request: AppRequest::SourceVerify {
+                request: Ok(AppRequest::SourceVerify {
                     vault: context.vault,
-                },
+                }),
                 json: context.json,
                 fail_on_findings: false,
             },
             Commands::Init { target, json } => ParsedCommand {
-                request: AppRequest::Init(InitRequest { target }),
+                request: Ok(AppRequest::Init(InitRequest { target })),
                 json,
                 fail_on_findings: false,
             },
             Commands::Adopt { target, json } => ParsedCommand {
-                request: AppRequest::Adopt { target },
+                request: Ok(AppRequest::Adopt { target }),
                 json,
                 fail_on_findings: false,
             },
             Commands::Apply { operation_id, json } => ParsedCommand {
-                request: AppRequest::Apply { operation_id },
+                request: Ok(AppRequest::Apply { operation_id }),
                 json,
                 fail_on_findings: false,
             },
             Commands::Operation { command } => match command {
                 OperationCommands::Show { operation_id, json } => ParsedCommand {
-                    request: AppRequest::Operation(OperationRequest::Show { operation_id }),
+                    request: Ok(AppRequest::Operation(OperationRequest::Show {
+                        operation_id,
+                    })),
                     json,
                     fail_on_findings: false,
                 },
@@ -417,33 +419,33 @@ impl Cli {
             Commands::Config { command } => config_command(command),
             Commands::Vault { command } => vault_command(command),
             Commands::Paths { context } => ParsedCommand {
-                request: AppRequest::Paths {
+                request: Ok(AppRequest::Paths {
                     vault: context.vault,
-                },
+                }),
                 json: context.json,
                 fail_on_findings: false,
             },
             Commands::Status { context } => ParsedCommand {
-                request: AppRequest::Status {
+                request: Ok(AppRequest::Status {
                     vault: context.vault,
-                },
+                }),
                 json: context.json,
                 fail_on_findings: false,
             },
             Commands::Doctor { context } => ParsedCommand {
-                request: AppRequest::Doctor {
+                request: Ok(AppRequest::Doctor {
                     vault: context.vault,
-                },
+                }),
                 json: context.json,
                 fail_on_findings: false,
             },
             Commands::Version { json } => ParsedCommand {
-                request: AppRequest::Version,
+                request: Ok(AppRequest::Version),
                 json,
                 fail_on_findings: false,
             },
             Commands::Capabilities { json } => ParsedCommand {
-                request: AppRequest::Capabilities,
+                request: Ok(AppRequest::Capabilities),
                 json,
                 fail_on_findings: false,
             },
@@ -453,9 +455,9 @@ impl Cli {
 
 fn review_command(context: VaultContext) -> ParsedCommand {
     ParsedCommand {
-        request: AppRequest::Review {
+        request: Ok(AppRequest::Review {
             vault: context.vault,
-        },
+        }),
         json: context.json,
         fail_on_findings: false,
     }
@@ -463,7 +465,7 @@ fn review_command(context: VaultContext) -> ParsedCommand {
 
 fn query_command(query: String, scope: &str, limit: usize, context: VaultContext) -> ParsedCommand {
     ParsedCommand {
-        request: AppRequest::Query {
+        request: Ok(AppRequest::Query {
             vault: context.vault,
             request: kb_core::SearchRequest {
                 query,
@@ -474,7 +476,7 @@ fn query_command(query: String, scope: &str, limit: usize, context: VaultContext
                     _ => kb_core::SearchScope::Wiki,
                 },
             },
-        },
+        }),
         json: context.json,
         fail_on_findings: false,
     }
@@ -482,9 +484,9 @@ fn query_command(query: String, scope: &str, limit: usize, context: VaultContext
 
 fn lint_command(strict: bool, context: VaultContext) -> ParsedCommand {
     ParsedCommand {
-        request: AppRequest::Lint {
+        request: Ok(AppRequest::Lint {
             vault: context.vault,
-        },
+        }),
         json: context.json,
         fail_on_findings: strict,
     }
@@ -545,7 +547,7 @@ fn config_command(command: ConfigCommands) -> ParsedCommand {
         ConfigCommands::Admission { command } => return admission_command(command),
     };
     ParsedCommand {
-        request: AppRequest::Config(request),
+        request: Ok(AppRequest::Config(request)),
         json,
         fail_on_findings: false,
     }
@@ -595,7 +597,10 @@ fn admission_command(command: AdmissionCommands) -> ParsedCommand {
         ),
     };
     ParsedCommand {
-        request: AppRequest::Config(ConfigRequest::Admission { vault, request }),
+        request: Ok(AppRequest::Config(ConfigRequest::Admission {
+            vault,
+            request,
+        })),
         json,
         fail_on_findings: false,
     }
@@ -615,7 +620,7 @@ fn vault_command(command: VaultCommands) -> ParsedCommand {
         }
     };
     ParsedCommand {
-        request: AppRequest::Vault(request),
+        request: Ok(AppRequest::Vault(request)),
         json,
         fail_on_findings: false,
     }

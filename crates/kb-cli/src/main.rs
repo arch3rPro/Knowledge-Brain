@@ -18,7 +18,10 @@ fn main() -> ExitCode {
         }
     };
     let context = AppContext::new(std::env::vars().collect::<BTreeMap<_, _>>(), current_dir);
-    match kb_app::run(parsed.request, &context) {
+    match parsed
+        .request
+        .and_then(|request| kb_app::run(request, &context))
+    {
         Ok(value) => render::success(&value, parsed.json, parsed.fail_on_findings),
         Err(error) => render::error(error, parsed.json),
     }

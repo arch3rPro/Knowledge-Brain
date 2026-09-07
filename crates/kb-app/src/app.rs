@@ -47,7 +47,6 @@ impl AppContext {
 
 #[derive(Debug, Clone)]
 pub enum AppRequest {
-    Invalid(KbError),
     Review {
         vault: Option<String>,
     },
@@ -153,7 +152,6 @@ pub enum VaultRequest {
 /// failed storage operations.
 pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbError> {
     match request {
-        AppRequest::Invalid(error) => Err(error),
         AppRequest::Review { vault } => {
             let selected = select_vault(context, vault)?;
             ensure_mutation_allowed(&selected.root)?;
@@ -183,29 +181,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             to_value(crate::query(&selected.root, &request, &config)?)
         }
         AppRequest::Lint { vault } => run_lint(context, vault),
-        AppRequest::PlanCreate { vault, request } => {
-            let selected = select_vault(context, vault)?;
-            ensure_mutation_allowed(&selected.root)?;
-            let _lock = VaultLock::acquire(
-                &selected.root,
-                LockMode::Shared,
-                "create knowledge plan",
-                None,
-            )?;
-            crate::source_apply::ensure_no_pending(&selected.root)?;
-            let config = crate::load_effective_config(
-                &selected.root,
-                context.user_paths()?,
-                &context.overrides(),
-            )?;
-            to_value(crate::create_knowledge_plan(
-                &selected.root,
-                context.user_paths()?,
-                &config,
-                request,
-                time::OffsetDateTime::now_utc(),
-            )?)
-        }
+        AppRequest::PlanCreate { vault, request } => run_plan_create(context, vault, request),
         AppRequest::CacheRebuild { vault } => {
             let selected = select_vault(context, vault)?;
             ensure_mutation_allowed(&selected.root)?;
@@ -283,6 +259,31 @@ fn run_lint(context: &AppContext, vault: Option<String>) -> Result<Value, KbErro
     to_value(crate::lint(
         &selected.root,
         &config,
+        time::OffsetDateTime::now_utc(),
+    )?)
+}
+
+fn run_plan_create(
+    context: &AppContext,
+    vault: Option<String>,
+    request: kb_core::KnowledgePlanRequest,
+) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    ensure_mutation_allowed(&selected.root)?;
+    let _lock = VaultLock::acquire(
+        &selected.root,
+        LockMode::Shared,
+        "create knowledge plan",
+        None,
+    )?;
+    crate::source_apply::ensure_no_pending(&selected.root)?;
+    let config =
+        crate::load_effective_config(&selected.root, context.user_paths()?, &context.overrides())?;
+    to_value(crate::create_knowledge_plan(
+        &selected.root,
+        context.user_paths()?,
+        &config,
+        request,
         time::OffsetDateTime::now_utc(),
     )?)
 }

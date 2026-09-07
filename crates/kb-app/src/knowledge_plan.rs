@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 use kb_core::{
     CURRENT_SCHEMA_VERSION, EffectiveConfig, KbError, KnowledgeChangeRequest, KnowledgePlan,
@@ -36,7 +39,7 @@ pub fn create_knowledge_plan(
     let mut budget = Budget::new(config);
     let mut documents = load_documents(root, &mut budget)?;
     let source_versions = available_source_versions(root, config, &mut budget)?;
-    let mut exact_sources = BTreeMap::new();
+    let mut exact_sources = BTreeSet::new();
     let mut writes = Vec::new();
 
     for change in &request.changes {
@@ -78,13 +81,15 @@ pub fn create_knowledge_plan(
     let log_entries = request
         .changes
         .iter()
-        .map(|change| LogEntry {
-            path: change.path.as_str().to_owned(),
-            title: candidate_title(change).expect("candidate validation requires title"),
-            summary: change.summary.clone(),
-            creation: change.before_sha256.is_none(),
+        .map(|change| {
+            Ok(LogEntry {
+                path: change.path.as_str().to_owned(),
+                title: candidate_title(change)?,
+                summary: change.summary.clone(),
+                creation: change.before_sha256.is_none(),
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, KbError>>()?;
     let log_after = render_log(utf8(&log_path, &log_before)?, &date, &log_entries)?;
     writes.push(KnowledgeWrite {
         path: index_path,
@@ -105,7 +110,7 @@ pub fn create_knowledge_plan(
         vault_id: config.vault_id,
         target: root.to_path_buf(),
         changes: request.changes,
-        source_versions: exact_sources.into_keys().collect(),
+        source_versions: exact_sources.into_iter().collect(),
         admission_sha256: hash(&budget.read(&safe_path(root, "admission.yml")?)?),
         config_sha256: read_config_hash(config)?,
         diff: render_diff(&writes, root, &mut budget)?,
@@ -132,10 +137,9 @@ fn load_documents(
             {
                 continue;
             }
-            let relative = path
-                .as_str()
-                .strip_prefix("Wiki/")
-                .expect("paths were listed below Wiki");
+            let relative = path.as_str().strip_prefix("Wiki/").ok_or_else(|| {
+                KbError::invalid_config(path.as_str(), "Wiki path lost its expected prefix")
+            })?;
             let bytes = budget.read(&safe_path(root, path.as_str())?)?;
             documents.insert(
                 PortableRelativePath::parse(relative)?,
@@ -150,11 +154,11 @@ fn available_source_versions(
     root: &Path,
     config: &EffectiveConfig,
     budget: &mut Budget,
-) -> Result<BTreeMap<String, ()>, KbError> {
-    let mut versions = BTreeMap::new();
+) -> Result<BTreeSet<String>, KbError> {
+    let mut versions = BTreeSet::new();
     for (_, stored) in source_record::inventory(root, config, budget)? {
         for version in stored.record.versions {
-            versions.insert(version.exact_uri(), ());
+            versions.insert(version.exact_uri());
         }
     }
     Ok(versions)
@@ -164,8 +168,8 @@ fn validate_candidate(
     path: &PortableRelativePath,
     change: &KnowledgeChangeRequest,
     now: OffsetDateTime,
-    available_sources: &BTreeMap<String, ()>,
-    exact_sources: &mut BTreeMap<String, ()>,
+    available_sources: &BTreeSet<String>,
+    exact_sources: &mut BTreeSet<String>,
 ) -> Result<(), KbError> {
     let document = parse_okf(path.clone(), &change.content);
     let findings = validate_okf(&document, now);
@@ -182,13 +186,13 @@ fn validate_candidate(
     }
     for source in document.sources {
         if source.resource.starts_with("kb-source://") {
-            if !available_sources.contains_key(&source.resource) {
+            if !available_sources.contains(&source.resource) {
                 return Err(KbError::invalid_config(
                     path.as_str(),
                     format!("exact source version does not exist: {}", source.resource),
                 ));
             }
-            exact_sources.insert(source.resource, ());
+            exact_sources.insert(source.resource);
         }
     }
     Ok(())
@@ -220,10 +224,11 @@ fn index_entries(
             .frontmatter
             .as_ref()
             .and_then(Value::as_mapping)
-            .expect("managed validation requires frontmatter");
+            .ok_or_else(|| KbError::invalid_config(path.as_str(), "managed frontmatter missing"))?;
         let entry = IndexEntry {
             path: path.as_str().to_owned(),
-            title: string_field(mapping, "title").expect("managed validation requires title"),
+            title: string_field(mapping, "title")
+                .ok_or_else(|| KbError::invalid_config(path.as_str(), "managed title missing"))?,
             description: string_field(mapping, "description"),
         };
         if path.as_str().starts_with("research/") {
@@ -235,11 +240,16 @@ fn index_entries(
     Ok((research, articles))
 }
 
-fn candidate_title(change: &KnowledgeChangeRequest) -> Option<String> {
-    let path = PortableRelativePath::parse(&format!("Wiki/{}", change.path.as_str())).ok()?;
+fn candidate_title(change: &KnowledgeChangeRequest) -> Result<String, KbError> {
+    let path = PortableRelativePath::parse(&format!("Wiki/{}", change.path.as_str()))?;
     let document = parse_okf(path, &change.content);
-    let mapping = document.frontmatter.as_ref()?.as_mapping()?;
+    let mapping = document
+        .frontmatter
+        .as_ref()
+        .and_then(Value::as_mapping)
+        .ok_or_else(|| KbError::invalid_config(change.path.as_str(), "frontmatter missing"))?;
     string_field(mapping, "title")
+        .ok_or_else(|| KbError::invalid_config(change.path.as_str(), "title missing"))
 }
 
 fn string_field(mapping: &serde_yaml_ng::Mapping, key: &str) -> Option<String> {

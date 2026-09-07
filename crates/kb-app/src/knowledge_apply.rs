@@ -133,7 +133,7 @@ fn finish_housekeeping(
         if !result.warnings.contains(&warning) {
             result.warnings.push(warning);
         }
-        write_json(&result_path, &result)?;
+        write_json(result_path, &result)?;
     }
     Ok(result)
 }
