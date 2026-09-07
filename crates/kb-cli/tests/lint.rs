@@ -23,7 +23,10 @@ fn lint_default_and_strict_share_report_but_use_different_exit_policy() {
     assert!(default.status.success());
     assert!(default.stderr.is_empty());
     let default_json: serde_json::Value = serde_json::from_slice(&default.stdout).unwrap();
-    assert_eq!(default_json["data"]["findings"][0]["code"], "orphan_concept");
+    assert_eq!(
+        default_json["data"]["findings"][0]["code"],
+        "orphan_concept"
+    );
 
     let strict = command(temporary.path())
         .args([

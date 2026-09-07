@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Serialize;
@@ -55,6 +55,7 @@ pub struct ParsedOkfDocument {
     pub sources: Vec<OkfSourceResource>,
     pub supersedes: Vec<String>,
     pub managed: bool,
+    field_lines: BTreeMap<String, usize>,
     parse_findings: Vec<OkfFinding>,
 }
 
@@ -65,6 +66,7 @@ pub fn parse_okf(path: PortableRelativePath, text: &str) -> ParsedOkfDocument {
     let normalized = text.replace("\r\n", "\n");
     let (frontmatter, body, body_line, mut parse_findings) =
         split_frontmatter(&path, kind, &normalized);
+    let field_lines = frontmatter_field_lines(&normalized);
     let links = markdown_links(&body, body_line);
     let mapping = frontmatter.as_ref().and_then(Value::as_mapping);
     let managed = mapping
@@ -73,10 +75,8 @@ pub fn parse_okf(path: PortableRelativePath, text: &str) -> ParsedOkfDocument {
         .and_then(|value| mapping_value(value, "managed"))
         .and_then(Value::as_bool)
         == Some(true);
-    let sources = mapping.map_or_else(Vec::new, |value| source_resources(value, &normalized));
-    let (supersedes, invalid_supersedes) = mapping
-        .map(|value| supersedes(value))
-        .unwrap_or_default();
+    let sources = mapping.map_or_else(Vec::new, source_resources);
+    let (supersedes, invalid_supersedes) = mapping.map(supersedes).unwrap_or_default();
     if invalid_supersedes {
         parse_findings.push(finding(
             &path,
@@ -96,6 +96,7 @@ pub fn parse_okf(path: PortableRelativePath, text: &str) -> ParsedOkfDocument {
         sources,
         supersedes,
         managed,
+        field_lines,
         parse_findings,
     }
 }
@@ -143,7 +144,25 @@ fn split_frontmatter(
         };
         return (None, text.to_owned(), 1, findings);
     }
-    let Some(end) = text[4..].find("\n---\n") else {
+    let after_open = &text[4..];
+    let (yaml_text, body, body_line) = if let Some(end) = after_open.find("\n---\n") {
+        let body_start = 4 + end + 5;
+        (
+            &after_open[..end],
+            text[body_start..].to_owned(),
+            text[..body_start]
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                + 1,
+        )
+    } else if let Some(yaml_text) = after_open.strip_suffix("\n---") {
+        (
+            yaml_text,
+            String::new(),
+            text.bytes().filter(|byte| *byte == b'\n').count() + 1,
+        )
+    } else {
         return (
             None,
             String::new(),
@@ -158,11 +177,7 @@ fn split_frontmatter(
             )],
         );
     };
-    let yaml_end = 4 + end;
-    let body_start = yaml_end + 5;
-    let body_line = text[..body_start].bytes().filter(|byte| *byte == b'\n').count() + 1;
-    let body = text[body_start..].to_owned();
-    let parsed = serde_yaml_ng::from_str::<Value>(&text[4..yaml_end]);
+    let parsed = serde_yaml_ng::from_str::<Value>(yaml_text);
     let value = match parsed {
         Ok(value) if value.is_mapping() => Some(value),
         Ok(_) => {
@@ -233,6 +248,9 @@ fn validate_concept(
     validate_generated(document, mapping, findings);
     validate_verified(document, mapping, findings);
     validate_sources(document, mapping, findings);
+    if let Some(window) = mapping_value(mapping, "usage_window") {
+        validate_usage_window(document, "usage_window", window, findings);
+    }
     validate_stale_after(document, mapping, now, findings);
     if document.managed {
         validate_managed(document, mapping, findings);
@@ -326,6 +344,17 @@ fn validate_generated(
             "generated.by must be a non-empty actor string.",
             "Identify the agent, human, or process that produced the content.",
         ));
+    } else if !mapping_value(value, "by")
+        .and_then(Value::as_str)
+        .is_some_and(valid_actor)
+    {
+        findings.push(field_finding(
+            document,
+            "generated",
+            "generated_actor_invalid",
+            "generated.by does not follow the OKF actor convention.",
+            "Use producer/version, human:<id>, or process:<id>.",
+        ));
     }
     if let Some(at) = mapping_value(value, "at") {
         if parse_timestamp(at).is_none() {
@@ -381,8 +410,22 @@ fn validate_verified(
                 "verified.by must be a non-empty actor string.",
                 "Identify the human, agent, or process that verified the content.",
             ));
+        } else if !mapping_value(event, "by")
+            .and_then(Value::as_str)
+            .is_some_and(valid_actor)
+        {
+            findings.push(field_finding(
+                document,
+                "verified",
+                "verified_actor_invalid",
+                "verified.by does not follow the OKF actor convention.",
+                "Use producer/version, human:<id>, or process:<id>.",
+            ));
         }
-        if mapping_value(event, "at").and_then(parse_timestamp).is_none() {
+        if mapping_value(event, "at")
+            .and_then(parse_timestamp)
+            .is_none()
+        {
             findings.push(field_finding(
                 document,
                 "verified",
@@ -444,6 +487,45 @@ fn validate_sources(
                 ));
             }
         }
+        if mapping_value(source, "last_modified")
+            .is_some_and(|value| parse_timestamp(value).is_none())
+        {
+            findings.push(field_finding(
+                document,
+                "sources",
+                "source_last_modified_invalid",
+                "sources[].last_modified must be an ISO 8601 timestamp with an explicit UTC offset.",
+                "Use an absolute timestamp such as 2026-09-07T03:00:00Z.",
+            ));
+        }
+        if let Some(window) = mapping_value(source, "usage_window") {
+            validate_usage_window(document, "sources", window, findings);
+        }
+    }
+}
+
+fn validate_usage_window(
+    document: &ParsedOkfDocument,
+    field: &str,
+    value: &Value,
+    findings: &mut Vec<OkfFinding>,
+) {
+    let valid = value.as_mapping().is_some_and(|window| {
+        mapping_value(window, "from")
+            .and_then(parse_timestamp)
+            .is_some()
+            && mapping_value(window, "to")
+                .and_then(parse_timestamp)
+                .is_some()
+    });
+    if !valid {
+        findings.push(field_finding(
+            document,
+            field,
+            "usage_window_invalid",
+            "usage_window must contain valid from and to timestamps with explicit UTC offsets.",
+            "Set both from and to to absolute ISO 8601 timestamps.",
+        ));
     }
 }
 
@@ -556,14 +638,18 @@ fn markdown_links(body: &str, first_line: usize) -> Vec<MarkdownLink> {
         .filter_map(|(event, range)| match event {
             Event::Start(Tag::Link { dest_url, .. }) => Some(MarkdownLink {
                 destination: dest_url.into_string(),
-                line: first_line + body[..range.start].bytes().filter(|byte| *byte == b'\n').count(),
+                line: first_line
+                    + body[..range.start]
+                        .bytes()
+                        .filter(|byte| *byte == b'\n')
+                        .count(),
             }),
             _ => None,
         })
         .collect()
 }
 
-fn source_resources(mapping: &Mapping, text: &str) -> Vec<OkfSourceResource> {
+fn source_resources(mapping: &Mapping) -> Vec<OkfSourceResource> {
     mapping_value(mapping, "sources")
         .and_then(Value::as_sequence)
         .into_iter()
@@ -576,7 +662,7 @@ fn source_resources(mapping: &Mapping, text: &str) -> Vec<OkfSourceResource> {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned),
                 resource,
-                line: field_line(text, "resource"),
+                line: None,
             })
         })
         .collect()
@@ -595,9 +681,10 @@ fn supersedes(mapping: &Mapping) -> (Vec<String>, bool) {
     let mut invalid = false;
     let strings = values
         .iter()
-        .filter_map(|value| match value.as_str() {
-            Some(value) => Some(value.to_owned()),
-            None => {
+        .filter_map(|value| {
+            if let Some(value) = value.as_str() {
+                Some(value.to_owned())
+            } else {
                 invalid = true;
                 None
             }
@@ -639,6 +726,18 @@ fn is_nonempty_string_value(value: &Value) -> bool {
 
 fn parse_timestamp(value: &Value) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(value.as_str()?, &Rfc3339).ok()
+}
+
+fn valid_actor(value: &str) -> bool {
+    if let Some(id) = value.strip_prefix("human:") {
+        return !id.trim().is_empty();
+    }
+    if let Some(id) = value.strip_prefix("process:") {
+        return !id.trim().is_empty();
+    }
+    value.split_once('/').is_some_and(|(producer, version)| {
+        !producer.trim().is_empty() && !version.trim().is_empty()
+    })
 }
 
 fn field_line(text: &str, field: &str) -> Option<usize> {
@@ -686,9 +785,29 @@ fn field_finding_with_severity(
 }
 
 fn field_line_from_document(document: &ParsedOkfDocument, field: &str) -> Option<usize> {
-    let value = document.frontmatter.as_ref()?;
-    let yaml = serde_yaml_ng::to_string(value).ok()?;
-    field_line(&format!("---\n{yaml}"), field)
+    document.field_lines.get(field).copied()
+}
+
+fn frontmatter_field_lines(text: &str) -> BTreeMap<String, usize> {
+    if !text.starts_with("---\n") {
+        return BTreeMap::new();
+    }
+    let mut lines = BTreeMap::new();
+    for (index, line) in text.lines().enumerate().skip(1) {
+        if line == "---" {
+            break;
+        }
+        let trimmed = line.trim_start();
+        if line != trimmed || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((key, _)) = trimmed.split_once(':') {
+            if !key.is_empty() && !key.chars().any(char::is_whitespace) {
+                lines.entry(key.to_owned()).or_insert(index + 1);
+            }
+        }
+    }
+    lines
 }
 
 fn finding(

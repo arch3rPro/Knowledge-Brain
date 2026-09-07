@@ -11,7 +11,7 @@ use serde::Serialize;
 use time::OffsetDateTime;
 
 use crate::{
-    source_io::{Budget, list_files, safe_path},
+    source_io::{Budget, list_files_allowing_collisions, safe_path},
     source_record,
 };
 
@@ -63,12 +63,7 @@ pub fn lint(
     let mut incoming = BTreeSet::new();
     validate_links(root, &documents, &mut incoming, &mut findings)?;
     validate_supersedes(&documents, &mut incoming, &mut findings);
-    validate_source_resources(
-        &documents,
-        &source_versions,
-        &mut incoming,
-        &mut findings,
-    );
+    validate_source_resources(&documents, &source_versions, &mut incoming, &mut findings);
     find_orphans(&documents, &incoming, &mut findings);
     sort_findings(&mut findings);
 
@@ -89,7 +84,7 @@ fn wiki_markdown_paths(
         "Wiki/articles",
         "Wiki/external-sources/records",
     ] {
-        paths.extend(list_files(root, relative, budget)?);
+        paths.extend(list_files_allowing_collisions(root, relative, budget)?);
     }
     for relative in ["Wiki/index.md", "Wiki/log.md"] {
         if safe_path(root, relative)?.is_file() {
@@ -135,10 +130,7 @@ fn collect_source_versions(
     let mut versions = BTreeMap::new();
     let mut logical_sources = BTreeSet::new();
     for (path, document) in documents {
-        if !path
-            .as_str()
-            .starts_with("Wiki/external-sources/records/")
-        {
+        if !path.as_str().starts_with("Wiki/external-sources/records/") {
             continue;
         }
         let Some(frontmatter) = &document.frontmatter else {
@@ -166,6 +158,7 @@ fn collect_source_versions(
             .versions
             .iter()
             .all(|version| version.source == record.source.source)
+            && record.versions.contains(&record.source)
             && source_record::record_path_for(&record.source.source)
                 .is_ok_and(|expected| expected == *path)
             && logical_sources.insert(record.source.source.logical_uri());
@@ -270,7 +263,9 @@ fn validate_supersedes(
                 ));
                 continue;
             }
-            let valid = target.as_str().ends_with(".md")
+            let valid = Path::new(target.as_str())
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
                 && !target.as_str().contains("/.objects/")
                 && documents
                     .get(&target)
@@ -304,16 +299,17 @@ fn validate_source_resources(
     for (path, document) in documents {
         for source in &document.sources {
             if source.resource.starts_with("kb-source://") {
-                let exact_shape = source
-                    .resource
-                    .rsplit_once("?sha256=")
-                    .is_some_and(|(logical, digest)| {
-                        logical.starts_with("kb-source://")
-                            && digest.len() == 64
-                            && digest.bytes().all(|byte| {
-                                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
-                            })
-                    });
+                let exact_shape =
+                    source
+                        .resource
+                        .rsplit_once("?sha256=")
+                        .is_some_and(|(logical, digest)| {
+                            logical.starts_with("kb-source://")
+                                && digest.len() == 64
+                                && digest.bytes().all(|byte| {
+                                    byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+                                })
+                        });
                 if !exact_shape || !versions.contains_key(&source.resource) {
                     findings.push(new_finding(
                         path,
@@ -377,7 +373,10 @@ fn resolve_wiki_target(source: &PortableRelativePath, destination: &str) -> Targ
         return Target::ExternalOrFragment;
     }
     let without_fragment = destination.split('#').next().unwrap_or(destination);
-    let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
     if without_query.is_empty() {
         return Target::ExternalOrFragment;
     }

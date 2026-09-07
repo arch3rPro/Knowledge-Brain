@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use kb_app::{
     AppContext, AppRequest, ConfigOverrides, InitRequest, UserPaths, init_vault, lint,
@@ -7,7 +11,11 @@ use kb_app::{
 use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-fn setup() -> (tempfile::TempDir, std::path::PathBuf, kb_core::EffectiveConfig) {
+fn setup() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    kb_core::EffectiveConfig,
+) {
     let temporary = tempfile::tempdir().unwrap();
     let vault = temporary.path().join("vault");
     init_vault(&InitRequest {
@@ -157,21 +165,78 @@ fn lint_is_read_only_and_reports_non_utf8_markdown() {
     assert_eq!(snapshot(&vault), before);
 }
 
-fn write_source_record(vault: &Path, old: &str, current: &str) {
+#[test]
+fn lint_reports_portable_collisions_when_the_filesystem_can_store_them() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/articles/Case.md"),
+        "---\ntype: Article\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/case.md"),
+        "---\ntype: Article\n---\n",
+    )
+    .unwrap();
+    let distinct_entries = fs::read_dir(vault.join("Wiki/articles"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("case.md")
+        })
+        .count();
+    if distinct_entries < 2 {
+        return;
+    }
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert_eq!(
+        codes(&report)
+            .into_iter()
+            .filter(|code| *code == "portable_path_collision")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn source_record_current_version_must_appear_in_history() {
+    let (_temporary, vault, config) = setup();
+    let old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let current = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let path = write_source_record(&vault, old, current);
+    let text = fs::read_to_string(&path).unwrap();
+    let current_history = format!(
+        "      - source:\n          admission_id: notes\n          relative_path: a.md\n        sha256: {current}\n"
+    );
+    fs::write(path, text.replacen(&current_history, "", 1)).unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert!(codes(&report).contains(&"source_identity_invalid"));
+}
+
+fn write_source_record(vault: &Path, old: &str, current: &str) -> PathBuf {
     let logical = "kb-source://notes/a.md";
     let record_digest = hex::encode(Sha256::digest(logical.as_bytes()));
     let path = vault.join(format!(
         "Wiki/external-sources/records/{}/{}.md",
-        &record_digest[..2], record_digest
+        &record_digest[..2],
+        record_digest
     ));
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
-        path,
+        &path,
         format!(
             "---\ntype: Reference\ntitle: a.md\nkb:\n  source:\n    source:\n      source:\n        admission_id: notes\n        relative_path: a.md\n      sha256: {current}\n    title: a.md\n    size: 1\n    media_type: markdown\n    extraction_status: text_ready\n    present: true\n    captured_at: 2026-09-07T03:00:00Z\n    versions:\n      - source:\n          admission_id: notes\n          relative_path: a.md\n        sha256: {old}\n      - source:\n          admission_id: notes\n          relative_path: a.md\n        sha256: {current}\n---\n\n# a.md\n"
         ),
     )
     .unwrap();
+    path
 }
 
 fn snapshot(root: &Path) -> BTreeMap<String, Vec<u8>> {

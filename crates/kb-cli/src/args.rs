@@ -307,41 +307,14 @@ impl LayerSelection {
 impl Cli {
     fn into_command(self) -> ParsedCommand {
         match self.command {
-            Commands::Review { context } => ParsedCommand {
-                request: AppRequest::Review {
-                    vault: context.vault,
-                },
-                json: context.json,
-                fail_on_findings: false,
-            },
+            Commands::Review { context } => review_command(context),
             Commands::Query {
                 query,
                 scope,
                 limit,
                 context,
-            } => ParsedCommand {
-                request: AppRequest::Query {
-                    vault: context.vault,
-                    request: kb_core::SearchRequest {
-                        query,
-                        limit,
-                        scope: match scope.as_str() {
-                            "sources" => kb_core::SearchScope::Sources,
-                            "all" => kb_core::SearchScope::All,
-                            _ => kb_core::SearchScope::Wiki,
-                        },
-                    },
-                },
-                json: context.json,
-                fail_on_findings: false,
-            },
-            Commands::Lint { strict, context } => ParsedCommand {
-                request: AppRequest::Lint {
-                    vault: context.vault,
-                },
-                json: context.json,
-                fail_on_findings: strict,
-            },
+            } => query_command(query, &scope, limit, context),
+            Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand {
@@ -416,6 +389,45 @@ impl Cli {
                 fail_on_findings: false,
             },
         }
+    }
+}
+
+fn review_command(context: VaultContext) -> ParsedCommand {
+    ParsedCommand {
+        request: AppRequest::Review {
+            vault: context.vault,
+        },
+        json: context.json,
+        fail_on_findings: false,
+    }
+}
+
+fn query_command(query: String, scope: &str, limit: usize, context: VaultContext) -> ParsedCommand {
+    ParsedCommand {
+        request: AppRequest::Query {
+            vault: context.vault,
+            request: kb_core::SearchRequest {
+                query,
+                limit,
+                scope: match scope {
+                    "sources" => kb_core::SearchScope::Sources,
+                    "all" => kb_core::SearchScope::All,
+                    _ => kb_core::SearchScope::Wiki,
+                },
+            },
+        },
+        json: context.json,
+        fail_on_findings: false,
+    }
+}
+
+fn lint_command(strict: bool, context: VaultContext) -> ParsedCommand {
+    ParsedCommand {
+        request: AppRequest::Lint {
+            vault: context.vault,
+        },
+        json: context.json,
+        fail_on_findings: strict,
     }
 }
 

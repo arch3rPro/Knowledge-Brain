@@ -4,8 +4,8 @@ mod admission;
 mod config;
 mod error;
 mod extraction;
-mod operation;
 mod okf;
+mod operation;
 mod path;
 mod platform;
 mod search;
@@ -27,12 +27,12 @@ pub use config::{
     SearchMode, Sourced,
 };
 pub use error::{ErrorCode, KbError};
+pub use okf::{
+    MarkdownLink, OkfDocumentKind, OkfFinding, OkfSeverity, OkfSourceResource, ParsedOkfDocument,
+    parse_okf, validate_okf,
+};
 pub use operation::{
     AdoptionPlan, ObservedEntry, ObservedKind, OperationId, OperationKind, PlannedFile,
-};
-pub use okf::{
-    MarkdownLink, OkfDocumentKind, OkfFinding, OkfSeverity, OkfSourceResource,
-    ParsedOkfDocument, parse_okf, validate_okf,
 };
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,

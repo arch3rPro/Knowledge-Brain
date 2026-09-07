@@ -1,6 +1,4 @@
-use kb_core::{
-    OkfDocumentKind, OkfSeverity, PortableRelativePath, parse_okf, validate_okf,
-};
+use kb_core::{OkfDocumentKind, OkfSeverity, PortableRelativePath, parse_okf, validate_okf};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 fn parse(path: &str, text: &str) -> kb_core::ParsedOkfDocument {
@@ -29,10 +27,7 @@ fn ordinary_concepts_require_only_valid_frontmatter_and_type() {
     let missing = parse("Wiki/articles/missing.md", "# No frontmatter\n");
     assert_eq!(codes(&missing), ["frontmatter_required"]);
 
-    let empty_type = parse(
-        "Wiki/articles/type.md",
-        "---\ntype: '  '\n---\n\nBody\n",
-    );
+    let empty_type = parse("Wiki/articles/type.md", "---\ntype: '  '\n---\n\nBody\n");
     assert_eq!(codes(&empty_type), ["type_required"]);
 }
 
@@ -86,7 +81,11 @@ fn present_optional_families_are_validated_without_equating_stable_and_verified(
         "Wiki/articles/stable.md",
         "---\ntype: Article\nstatus: stable\n---\n",
     );
-    assert!(!codes(&stable).iter().any(|code| code == "verified_required"));
+    assert!(
+        !codes(&stable)
+            .iter()
+            .any(|code| code == "verified_required")
+    );
 }
 
 #[test]
@@ -102,10 +101,7 @@ fn markdown_links_ignore_code_and_preserve_source_lines() {
 
 #[test]
 fn reserved_files_follow_their_own_okf_rules() {
-    let index = parse(
-        "Wiki/index.md",
-        "---\nokf_version: '0.3'\n---\n\n# Index\n",
-    );
+    let index = parse("Wiki/index.md", "---\nokf_version: '0.3'\n---\n\n# Index\n");
     assert_eq!(index.kind, OkfDocumentKind::Index);
     assert_eq!(codes(&index), ["okf_version_unsupported"]);
 
@@ -131,4 +127,58 @@ fn supersedes_is_exposed_for_vault_level_resolution() {
     );
     assert_eq!(document.supersedes, ["articles/old.md"]);
     assert_eq!(codes(&document), ["supersedes_entry_invalid"]);
+}
+
+#[test]
+fn frontmatter_findings_use_original_file_lines() {
+    let document = parse(
+        "Wiki/articles/lines.md",
+        "---\n# This comment must count\nunknown:\n  - value\nstatus: invalid\ntype: Article\n---\n",
+    );
+    let finding = validate_okf(&document, now())
+        .into_iter()
+        .find(|finding| finding.code == "status_invalid")
+        .unwrap();
+
+    assert_eq!(finding.line, Some(5));
+}
+
+#[test]
+fn frontmatter_may_close_at_end_of_file() {
+    let document = parse("Wiki/articles/empty-body.md", "---\ntype: Article\n---");
+
+    assert!(validate_okf(&document, now()).is_empty());
+}
+
+#[test]
+fn frontmatter_lines_are_taken_from_top_level_keys() {
+    let document = parse(
+        "Wiki/articles/nested-lines.md",
+        "---\nunknown:\n  status: nested\ntype: Article\nstatus: invalid\n---\n",
+    );
+    let finding = validate_okf(&document, now())
+        .into_iter()
+        .find(|finding| finding.code == "status_invalid")
+        .unwrap();
+
+    assert_eq!(finding.line, Some(5));
+}
+
+#[test]
+fn okf_actor_and_source_time_fields_follow_v02_shapes() {
+    let document = parse(
+        "Wiki/articles/metadata.md",
+        "---\ntype: Article\ngenerated:\n  by: unknown-actor\nsources:\n  - resource: https://example.com\n    last_modified: yesterday\n    usage_window:\n      from: 2026-09-01T00:00:00Z\nusage_window: invalid\nverified:\n  by: 'human:'\n  at: 2026-09-07T03:00:00Z\n---\n",
+    );
+
+    assert_eq!(
+        codes(&document),
+        [
+            "generated_actor_invalid",
+            "source_last_modified_invalid",
+            "usage_window_invalid",
+            "usage_window_invalid",
+            "verified_actor_invalid",
+        ]
+    );
 }

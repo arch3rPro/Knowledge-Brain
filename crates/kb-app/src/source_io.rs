@@ -102,13 +102,37 @@ pub(crate) fn list_files(
     relative: &str,
     budget: &mut Budget,
 ) -> Result<Vec<PortableRelativePath>, KbError> {
+    list_files_inner(root, relative, budget, true)
+}
+
+pub(crate) fn list_files_allowing_collisions(
+    root: &Path,
+    relative: &str,
+    budget: &mut Budget,
+) -> Result<Vec<PortableRelativePath>, KbError> {
+    list_files_inner(root, relative, budget, false)
+}
+
+fn list_files_inner(
+    root: &Path,
+    relative: &str,
+    budget: &mut Budget,
+    reject_collisions: bool,
+) -> Result<Vec<PortableRelativePath>, KbError> {
     let start = safe_path(root, relative)?;
     if !start.exists() {
         return Ok(Vec::new());
     }
     let mut files = Vec::new();
     let mut seen = BTreeMap::new();
-    walk(root, &start, budget, &mut files, &mut seen)?;
+    walk(
+        root,
+        &start,
+        budget,
+        &mut files,
+        &mut seen,
+        reject_collisions,
+    )?;
     files.sort();
     Ok(files)
 }
@@ -118,6 +142,7 @@ fn walk(
     b: &mut Budget,
     out: &mut Vec<PortableRelativePath>,
     seen: &mut BTreeMap<String, String>,
+    reject_collisions: bool,
 ) -> Result<(), KbError> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(dir).map_err(|e| io("read directory", dir, e))? {
@@ -132,18 +157,20 @@ fn walk(
         let rel = PortableRelativePath::from_path(
             p.strip_prefix(root).map_err(|e| io("resolve", &p, e))?,
         )?;
-        if let Some(old) = seen.insert(portability_key(&rel), rel.as_str().into()) {
-            return Err(KbError::invalid_config(
-                "paths",
-                format!("{old} collides with {}", rel.as_str()),
-            ));
+        if reject_collisions {
+            if let Some(old) = seen.insert(portability_key(&rel), rel.as_str().into()) {
+                return Err(KbError::invalid_config(
+                    "paths",
+                    format!("{old} collides with {}", rel.as_str()),
+                ));
+            }
         }
         if entry
             .file_type()
             .map_err(|e| io("inspect", &p, e))?
             .is_dir()
         {
-            walk(root, &p, b, out, seen)?;
+            walk(root, &p, b, out, seen, reject_collisions)?;
         } else {
             out.push(rel);
         }

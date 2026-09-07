@@ -54,13 +54,21 @@
 
 ## Stage 3 — 知识形成与安全保存
 
-**Status:** planned
+**Status:** in progress
 
 - OKF v0.2 Producer Profile
 - 来源、research 和 article 之间的引用关系
 - 知识变更计划、确认、保存和恢复
 - `Wiki/index.md` 与 `Wiki/log.md` 的受管理区域
 - lint、来源新鲜度和冲突提示
+
+### Stage 3A — OKF 与只读 lint
+
+**Status:** implemented（定向本地测试）。`kb lint` 已实现 OKF v0.2 底线、显式受管理 Producer Profile、保留文件、Markdown 链接、孤立页、`supersedes`、精确来源版本、新鲜度和可移植路径检查。报告由应用层共享，CLI 的 `--strict` 只控制退出码。
+
+本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。知识写入计划、受管理 index/log 更新和中断恢复仍属于后续 Stage 3 子阶段。
+
+命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](docs/superpowers/plans/2026-09-07-wiki-lint.md)。
 
 ## Stage 4 — Agent 与应用入口
 

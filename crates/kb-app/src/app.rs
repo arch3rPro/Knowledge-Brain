@@ -176,21 +176,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             )?;
             to_value(crate::query(&selected.root, &request, &config)?)
         }
-        AppRequest::Lint { vault } => {
-            let selected = select_vault(context, vault)?;
-            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "lint", None)?;
-            crate::source_apply::ensure_no_pending(&selected.root)?;
-            let config = crate::load_effective_config(
-                &selected.root,
-                context.user_paths()?,
-                &context.overrides(),
-            )?;
-            to_value(crate::lint(
-                &selected.root,
-                &config,
-                time::OffsetDateTime::now_utc(),
-            )?)
-        }
+        AppRequest::Lint { vault } => run_lint(context, vault),
         AppRequest::CacheRebuild { vault } => {
             let selected = select_vault(context, vault)?;
             ensure_mutation_allowed(&selected.root)?;
@@ -257,6 +243,19 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
         })),
         AppRequest::Capabilities => to_value(capabilities()),
     }
+}
+
+fn run_lint(context: &AppContext, vault: Option<String>) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "lint", None)?;
+    crate::source_apply::ensure_no_pending(&selected.root)?;
+    let config =
+        crate::load_effective_config(&selected.root, context.user_paths()?, &context.overrides())?;
+    to_value(crate::lint(
+        &selected.root,
+        &config,
+        time::OffsetDateTime::now_utc(),
+    )?)
 }
 
 fn run_init(request: &InitRequest, context: &AppContext) -> Result<Value, KbError> {
