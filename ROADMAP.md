@@ -15,6 +15,8 @@
 
 真实 Vault 工作流需要缩短 Hash 的默认展示、把确认集中到最终写入，并将来源保存、查询和知识整理表达为三条独立路径。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
 
+实现契约见[使用体验与 Agent Skill 套件设计](docs/superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
+
 ## Stage 1 — Vault 基础
 
 **Status:** implemented；macOS 工作流已验证，Windows 和 Linux 等待原生 CI 证据。
