@@ -46,18 +46,20 @@ My-Knowledge/
 
 ## 安装
 
-当前从源码构建，需要 Rust 1.85 或更高版本：
+当前从源码安装，需要 Rust 1.85 或更高版本。在仓库根目录执行：
 
 ```bash
-cargo build --release -p kb-cli
+cargo install --path crates/kb-cli --locked
+kb version
 ```
 
-生成的可执行文件位于：
+`cargo install` 会把 `kb` 安装到 Cargo 的可执行文件目录；Linux、macOS 和 Windows 使用同一条命令。如果该目录尚未加入 `PATH`，也可以不安装，直接执行：
 
-- Linux/macOS：`target/release/kb`
-- Windows：`target\release\kb.exe`
+```bash
+cargo run --release -p kb-cli -- version
+```
 
-将可执行文件复制到 `PATH`，或从构建目录直接运行。
+开发构建生成的文件位于 `target/release/kb`（Windows 为 `target\release\kb.exe`）。
 
 ## 快速开始
 
@@ -81,7 +83,7 @@ kb config admission add notes Notes --vault ./my-knowledge --yes
 
 ### 保存来源与查询
 
-将 Markdown 或文本放入 `Notes/`，然后查看来源变化：
+将 Markdown 或文本放入 `Notes/`。下面的 `review` 只检查 `admission.yml` 中已启用的目录，并生成一份待确认的保存计划：
 
 ```bash
 kb review --vault ./my-knowledge
