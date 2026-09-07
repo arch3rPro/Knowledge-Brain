@@ -21,7 +21,10 @@ pub use search::{
     Catalog, CatalogEntry, SearchBackend, SearchExplanation, SearchField, SearchFieldContribution,
     SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
 };
-pub use skill::{SkillAction, SkillHost, SkillInstallMode, SkillScope};
+pub use skill::{
+    SkillAction, SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillLinkChange,
+    SkillPlan, SkillScope,
+};
 pub use source::{SourceId, SourceVersion};
 
 pub use admission::{AdmissionDocument, AdmissionEntry};

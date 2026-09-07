@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
-use kb_core::{CURRENT_SCHEMA_VERSION, ErrorCode, KbError, OperationId, SchemaCompatibility};
+use kb_core::{
+    CURRENT_SCHEMA_VERSION, ErrorCode, KbError, OperationId, SchemaCompatibility, SkillAction,
+    SkillHost, SkillInstallMode, SkillScope,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -10,7 +13,8 @@ use crate::{
     UserPaths, VaultLock, VaultSelection, admission_change, apply_operation, capabilities,
     config_get, config_set, config_show, config_unset, config_validate, create_adoption_plan,
     doctor, init_and_register_vault, init_vault, inspect_operation, list_vaults, load_admission,
-    rebind_vault, register_vault, resolve_vault, unregister_vault, vault_status,
+    rebind_vault, register_vault, resolve_skill_host, resolve_vault, skill_target,
+    unregister_vault, vault_status,
 };
 
 #[derive(Debug, Clone)]
@@ -43,6 +47,10 @@ impl AppContext {
             cli: BTreeMap::new(),
         }
     }
+
+    fn agent_roots(&self) -> Result<crate::AgentRoots, KbError> {
+        crate::AgentRoots::resolve(&self.environment)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +76,7 @@ pub enum AppRequest {
     SourceVerify {
         vault: Option<String>,
     },
+    Skills(SkillRequest),
     Init(InitRequest),
     Adopt {
         target: PathBuf,
@@ -93,6 +102,29 @@ pub enum AppRequest {
     },
     Version,
     Capabilities,
+}
+
+#[derive(Debug, Clone)]
+pub enum SkillRequest {
+    Detect {
+        vault: Option<String>,
+    },
+    Install {
+        vault: Option<String>,
+        host: Option<SkillHost>,
+        scope: SkillScope,
+        mode: SkillInstallMode,
+    },
+    Status {
+        vault: Option<String>,
+        host: Option<SkillHost>,
+        scope: SkillScope,
+    },
+    Uninstall {
+        vault: Option<String>,
+        host: Option<SkillHost>,
+        scope: SkillScope,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -239,6 +271,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             )?;
             to_value(crate::verify_sources(&selected.root, &config)?)
         }
+        AppRequest::Skills(request) => run_skills(request, context),
         AppRequest::Init(request) => run_init(&request, context),
         AppRequest::Adopt { target } => run_adopt(context, &target),
         AppRequest::Apply { operation_id } => run_apply(context, operation_id),
@@ -411,6 +444,10 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
                 OperationState::AppliedKnowledge(result) => {
                     Ok(json!({"state":"applied","result":result}))
                 }
+                OperationState::PlannedSkill(plan) => Ok(json!({"state":"planned","plan":plan})),
+                OperationState::AppliedSkill(result) => {
+                    Ok(json!({"state":"applied","result":result}))
+                }
             }
         }
         OperationRequest::ShowForVault {
@@ -446,6 +483,8 @@ fn ensure_operation_vault(
         OperationState::AppliedSource(value) => value.vault_id,
         OperationState::PlannedKnowledge(value) => value.vault_id,
         OperationState::AppliedKnowledge(value) => value.vault_id,
+        OperationState::PlannedSkill(value) => value.vault_id,
+        OperationState::AppliedSkill(value) => value.vault_id,
     };
     if operation_vault_id != selected.vault_id {
         return Err(KbError::new(
@@ -582,6 +621,73 @@ fn run_vault(request: VaultRequest, context: &AppContext) -> Result<Value, KbErr
     }
 }
 
+fn run_skills(request: SkillRequest, context: &AppContext) -> Result<Value, KbError> {
+    let (vault, explicit_host, scope) = match &request {
+        SkillRequest::Detect { vault } => (vault.clone(), None, SkillScope::Vault),
+        SkillRequest::Install {
+            vault, host, scope, ..
+        }
+        | SkillRequest::Status { vault, host, scope }
+        | SkillRequest::Uninstall { vault, host, scope } => (vault.clone(), *host, *scope),
+    };
+    let selected = select_vault(context, vault)?;
+    let detected = crate::detect_skill_hosts(&selected.root)?;
+    if matches!(request, SkillRequest::Detect { .. }) {
+        return Ok(json!({ "detected": detected }));
+    }
+    let host = resolve_skill_host(explicit_host, &detected)?;
+    let roots = context.agent_roots()?;
+    match request {
+        SkillRequest::Status { .. } => {
+            to_value(crate::skill_status(&selected.root, &roots, host, scope)?)
+        }
+        SkillRequest::Install { mode, .. } => {
+            ensure_mutation_allowed(&selected.root)?;
+            let _lock = VaultLock::acquire(
+                &selected.root,
+                LockMode::Shared,
+                "create Skill install plan",
+                None,
+            )?;
+            to_value(crate::create_skill_plan(&crate::SkillPlanRequest {
+                vault_root: &selected.root,
+                vault_id: selected.vault_id,
+                user_paths: context.user_paths()?,
+                roots: &roots,
+                host,
+                scope,
+                mode,
+                action: SkillAction::Install,
+            })?)
+        }
+        SkillRequest::Uninstall { .. } => {
+            ensure_mutation_allowed(&selected.root)?;
+            let target = skill_target(&selected.root, &roots, host, scope)?;
+            let mode = match std::fs::symlink_metadata(&target.skill_dir) {
+                Ok(metadata) if metadata.file_type().is_symlink() => SkillInstallMode::Symlink,
+                _ => SkillInstallMode::Copy,
+            };
+            let _lock = VaultLock::acquire(
+                &selected.root,
+                LockMode::Shared,
+                "create Skill uninstall plan",
+                None,
+            )?;
+            to_value(crate::create_skill_plan(&crate::SkillPlanRequest {
+                vault_root: &selected.root,
+                vault_id: selected.vault_id,
+                user_paths: context.user_paths()?,
+                roots: &roots,
+                host,
+                scope,
+                mode,
+                action: SkillAction::Uninstall,
+            })?)
+        }
+        SkillRequest::Detect { .. } => unreachable!("detect returned before host resolution"),
+    }
+}
+
 fn select_vault(
     context: &AppContext,
     explicit: Option<String>,
@@ -625,7 +731,7 @@ fn select_doctor_root(context: &AppContext, explicit: Option<String>) -> Result<
     select_vault(context, None).map(|vault| vault.root)
 }
 
-fn ensure_mutation_allowed(root: &std::path::Path) -> Result<(), KbError> {
+pub(crate) fn ensure_mutation_allowed(root: &std::path::Path) -> Result<(), KbError> {
     let identity = crate::vault::read_vault_identity(root)?;
     match identity
         .schema_version
@@ -671,6 +777,9 @@ fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result
         }
         OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_) => to_value(
             crate::apply_knowledge(context.user_paths()?, operation_id, &context.overrides())?,
+        ),
+        OperationState::PlannedSkill(_) | OperationState::AppliedSkill(_) => to_value(
+            crate::apply_skill_plan(context.user_paths()?, &context.agent_roots()?, operation_id)?,
         ),
         _ => to_value(apply_operation(context.user_paths()?, operation_id)?),
     }

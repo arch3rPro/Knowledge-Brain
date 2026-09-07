@@ -8,6 +8,7 @@ mod review;
 mod search;
 mod skill_assets;
 mod skill_hosts;
+mod skill_plan;
 mod source_apply;
 mod source_io;
 mod source_plan;
@@ -21,6 +22,10 @@ pub use skill_assets::{SkillAsset, skill_assets};
 pub use skill_hosts::{
     AgentRoots, DetectedSkillHost, SkillTarget, detect_skill_hosts, resolve_skill_host,
     skill_target,
+};
+pub use skill_plan::{
+    SkillInstallState, SkillPlanRequest, SkillStatusReport, apply_skill_plan, create_skill_plan,
+    skill_status,
 };
 pub use source_plan::{ReviewReport, SourceCapturePlan, SourceCaptureResult};
 pub use source_verify::{Verification, VerificationItem, verify_sources};
@@ -47,7 +52,7 @@ mod vault;
 pub use adopt::{apply_operation, create_adoption_plan};
 pub use app::{
     AdmissionRequest, AppContext, AppRequest, AppResponse, BackupRequest, ConfigRequest,
-    OperationRequest, VaultRequest, run,
+    OperationRequest, SkillRequest, VaultRequest, run,
 };
 pub use backup::{BackupCreateRequest, create_backup, restore_backup, verify_backup};
 pub use capabilities::{Capabilities, capabilities};

@@ -78,21 +78,41 @@ pub fn skill_target(
         ));
     }
 
-    let (base, bridge_name) = match (scope, host) {
-        (SkillScope::Vault, SkillHost::Codex) => (vault_root.join(".agents"), "AGENTS.md"),
-        (SkillScope::Vault, SkillHost::ClaudeCode) => (vault_root.join(".claude"), "CLAUDE.md"),
-        (SkillScope::Vault, SkillHost::GeminiCli) => (vault_root.join(".gemini"), "GEMINI.md"),
-        (SkillScope::Vault, SkillHost::OpenCode) => (vault_root.join(".opencode"), "AGENTS.md"),
-        (SkillScope::User, SkillHost::Codex) => (roots.home_dir.join(".codex"), "AGENTS.md"),
-        (SkillScope::User, SkillHost::ClaudeCode) => (roots.home_dir.join(".claude"), "CLAUDE.md"),
-        (SkillScope::User, SkillHost::GeminiCli) => (roots.home_dir.join(".gemini"), "GEMINI.md"),
-        (SkillScope::User, SkillHost::OpenCode) => (roots.config_dir.join("opencode"), "AGENTS.md"),
+    let (base, bridge_file) = match (scope, host) {
+        (SkillScope::Vault, SkillHost::Codex) => {
+            (vault_root.join(".agents"), vault_root.join("AGENTS.md"))
+        }
+        (SkillScope::Vault, SkillHost::ClaudeCode) => {
+            (vault_root.join(".claude"), vault_root.join("CLAUDE.md"))
+        }
+        (SkillScope::Vault, SkillHost::GeminiCli) => {
+            (vault_root.join(".gemini"), vault_root.join("GEMINI.md"))
+        }
+        (SkillScope::Vault, SkillHost::OpenCode) => {
+            (vault_root.join(".opencode"), vault_root.join("AGENTS.md"))
+        }
+        (SkillScope::User, SkillHost::Codex) => {
+            let base = roots.home_dir.join(".codex");
+            (base.clone(), base.join("AGENTS.md"))
+        }
+        (SkillScope::User, SkillHost::ClaudeCode) => {
+            let base = roots.home_dir.join(".claude");
+            (base.clone(), base.join("CLAUDE.md"))
+        }
+        (SkillScope::User, SkillHost::GeminiCli) => {
+            let base = roots.home_dir.join(".gemini");
+            (base.clone(), base.join("GEMINI.md"))
+        }
+        (SkillScope::User, SkillHost::OpenCode) => {
+            let base = roots.config_dir.join("opencode");
+            (base.clone(), base.join("AGENTS.md"))
+        }
     };
     Ok(SkillTarget {
         host,
         scope,
         skill_dir: base.join("skills/knowledge-brain"),
-        bridge_file: base.join(bridge_name),
+        bridge_file,
     })
 }
 

@@ -144,6 +144,7 @@ pub struct OperationEventReport {
 pub enum OperationKind {
     AdoptVault,
     SaveKnowledge,
+    ManageSkill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

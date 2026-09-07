@@ -236,7 +236,9 @@ fn load_adoption_operation(
         OperationState::PlannedSource(_)
         | OperationState::AppliedSource(_)
         | OperationState::PlannedKnowledge(_)
-        | OperationState::AppliedKnowledge(_) => Err(KbError::invalid_config(
+        | OperationState::AppliedKnowledge(_)
+        | OperationState::PlannedSkill(_)
+        | OperationState::AppliedSkill(_) => Err(KbError::invalid_config(
             "operation",
             "expected adoption plan",
         )),

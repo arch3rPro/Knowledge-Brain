@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use kb_core::{AdoptionPlan, ErrorCode, KbError, KnowledgePlan, KnowledgePlanResult, OperationId};
+use kb_core::{
+    AdoptionPlan, ErrorCode, KbError, KnowledgePlan, KnowledgePlanResult, OperationId,
+    SkillApplyResult, SkillPlan,
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
@@ -23,6 +26,8 @@ pub enum OperationState {
     AppliedSource(crate::SourceCaptureResult),
     PlannedKnowledge(KnowledgePlan),
     AppliedKnowledge(KnowledgePlanResult),
+    PlannedSkill(SkillPlan),
+    AppliedSkill(SkillApplyResult),
 }
 
 /// Read an operation plan or its durable completion receipt.
@@ -44,6 +49,9 @@ pub fn inspect_operation(
         if value["kind"] == "save_knowledge" {
             return read_json(&result_path).map(OperationState::AppliedKnowledge);
         }
+        if value["kind"] == "manage_skill" {
+            return read_json(&result_path).map(OperationState::AppliedSkill);
+        }
         return read_json(&result_path).map(OperationState::Applied);
     }
     let plan_path = directory.join("plan.json");
@@ -55,6 +63,9 @@ pub fn inspect_operation(
         if value["kind"] == "save_knowledge" {
             return read_json(&plan_path).map(OperationState::PlannedKnowledge);
         }
+        if value["kind"] == "manage_skill" {
+            return read_json(&plan_path).map(OperationState::PlannedSkill);
+        }
         return read_json(&plan_path).map(OperationState::Planned);
     }
     Err(KbError::new(
@@ -63,6 +74,40 @@ pub fn inspect_operation(
         false,
         "Create a new plan with kb adopt <directory>.",
     ))
+}
+
+pub(crate) fn save_skill_plan(user_paths: &UserPaths, plan: &SkillPlan) -> Result<(), KbError> {
+    let directory = operation_directory(user_paths, plan.operation_id);
+    create_private_directory_all(&directory)?;
+    write_json(&directory.join("plan.json"), plan)?;
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        plan.operation_id,
+        kb_core::OperationEventKind::Planned,
+        Some((0, plan.files.len() as u64 + u64::from(plan.link.is_some()))),
+        "Skill change plan is ready for review.",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn save_skill_result(
+    user_paths: &UserPaths,
+    result: &SkillApplyResult,
+) -> Result<(), KbError> {
+    let directory = operation_directory(user_paths, result.operation_id);
+    create_private_directory_all(&directory)?;
+    write_json(&directory.join("result.json"), result)?;
+    match fs::remove_file(directory.join("plan.json")) {
+        Ok(()) => remove_progress_file(&directory),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            remove_progress_file(&directory)
+        }
+        Err(error) => Err(KbError::io_failure(
+            "remove completed Skill plan",
+            directory.display().to_string(),
+            error.to_string(),
+        )),
+    }
 }
 
 pub(crate) fn operation_directory(user_paths: &UserPaths, operation_id: OperationId) -> PathBuf {

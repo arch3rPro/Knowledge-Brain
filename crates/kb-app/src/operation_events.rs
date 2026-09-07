@@ -149,6 +149,15 @@ fn synthetic_log(
             "Knowledge save plan is ready for review.",
             value.created_at,
         ),
+        OperationState::PlannedSkill(value) => (
+            OperationEventKind::Planned,
+            Some((
+                0,
+                value.files.len() as u64 + u64::from(value.link.is_some()),
+            )),
+            "Skill change plan is ready for review.",
+            normalize_time(&value.created_at)?,
+        ),
         OperationState::Applied(value) => (
             OperationEventKind::Applied,
             Some((value.created.len() as u64, value.created.len() as u64)),
@@ -170,6 +179,15 @@ fn synthetic_log(
                 OperationEventKind::Applied,
                 Some((count, count)),
                 "Knowledge save is complete.",
+                modified_at(&operation_directory(user_paths, operation_id).join("result.json"))?,
+            )
+        }
+        OperationState::AppliedSkill(value) => {
+            let count = value.changed.len() as u64;
+            (
+                OperationEventKind::Applied,
+                Some((count, count)),
+                "Skill change is complete.",
                 modified_at(&operation_directory(user_paths, operation_id).join("result.json"))?,
             )
         }
