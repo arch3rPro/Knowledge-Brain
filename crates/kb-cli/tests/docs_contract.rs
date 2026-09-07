@@ -47,6 +47,7 @@ fn command_reference_names_every_real_top_level_command() {
     let help = String::from_utf8(output.stdout).unwrap();
 
     for command in [
+        "backup",
         "init",
         "adopt",
         "apply",
@@ -97,6 +98,21 @@ fn search_reference_documents_the_optional_backend_contract() {
         assert!(reference.contains(contract), "missing {contract}");
     }
     assert!(COMMAND_REFERENCE.contains("--strict-backend"));
+}
+
+#[test]
+fn backup_reference_owns_archive_and_restore_boundaries() {
+    let reference = include_str!("../../../docs/reference/backup.md");
+    for contract in [
+        "kb backup create",
+        "--without-source-objects",
+        "complete_source_evidence",
+        "manifest.json",
+        "空目录",
+        "不可信输入",
+    ] {
+        assert!(reference.contains(contract), "missing {contract}");
+    }
 }
 
 #[test]

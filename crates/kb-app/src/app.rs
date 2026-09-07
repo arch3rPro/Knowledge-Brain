@@ -47,6 +47,7 @@ impl AppContext {
 
 #[derive(Debug, Clone)]
 pub enum AppRequest {
+    Backup(BackupRequest),
     Review {
         vault: Option<String>,
     },
@@ -88,6 +89,22 @@ pub enum AppRequest {
     },
     Version,
     Capabilities,
+}
+
+#[derive(Debug, Clone)]
+pub enum BackupRequest {
+    Create {
+        vault: Option<String>,
+        output: Option<PathBuf>,
+        without_source_objects: bool,
+    },
+    Verify {
+        archive: PathBuf,
+    },
+    Restore {
+        archive: PathBuf,
+        target: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -152,6 +169,7 @@ pub enum VaultRequest {
 /// failed storage operations.
 pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbError> {
     match request {
+        AppRequest::Backup(request) => run_backup(request, context),
         AppRequest::Review { vault } => {
             let selected = select_vault(context, vault)?;
             ensure_mutation_allowed(&selected.root)?;
@@ -247,6 +265,58 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             "schema_version": CURRENT_SCHEMA_VERSION,
         })),
         AppRequest::Capabilities => to_value(capabilities()),
+    }
+}
+
+fn run_backup(request: BackupRequest, context: &AppContext) -> Result<Value, KbError> {
+    match request {
+        BackupRequest::Create {
+            vault,
+            output,
+            without_source_objects,
+        } => {
+            let selected = select_vault(context, vault)?;
+            let _lock =
+                VaultLock::acquire(&selected.root, LockMode::Shared, "backup create", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let created_at = time::OffsetDateTime::now_utc();
+            let output = output.map_or_else(
+                || {
+                    let name = selected
+                        .root
+                        .file_name()
+                        .and_then(std::ffi::OsStr::to_str)
+                        .unwrap_or("knowledge-brain");
+                    selected
+                        .root
+                        .parent()
+                        .unwrap_or(&selected.root)
+                        .join(format!("{name}-{}.kb.zip", created_at.unix_timestamp()))
+                },
+                |path| resolve_context_path(context, &path),
+            );
+            to_value(crate::create_backup(&crate::BackupCreateRequest {
+                vault: selected.root,
+                output,
+                include_source_objects: !without_source_objects,
+                created_at,
+            })?)
+        }
+        BackupRequest::Verify { archive } => to_value(crate::verify_backup(
+            &resolve_context_path(context, &archive),
+        )?),
+        BackupRequest::Restore { archive, target } => to_value(crate::restore_backup(
+            &resolve_context_path(context, &archive),
+            &resolve_context_path(context, &target),
+        )?),
+    }
+}
+
+fn resolve_context_path(context: &AppContext, path: &std::path::Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        context.current_dir.join(path)
     }
 }
 

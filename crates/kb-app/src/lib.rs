@@ -1,6 +1,7 @@
 //! Application workflows over Knowledge-Brain Vaults.
 
 mod adopt;
+mod backup;
 mod discovery;
 mod extract;
 mod review;
@@ -37,9 +38,10 @@ mod vault;
 
 pub use adopt::{apply_operation, create_adoption_plan};
 pub use app::{
-    AdmissionRequest, AppContext, AppRequest, AppResponse, ConfigRequest, OperationRequest,
-    VaultRequest, run,
+    AdmissionRequest, AppContext, AppRequest, AppResponse, BackupRequest, ConfigRequest,
+    OperationRequest, VaultRequest, run,
 };
+pub use backup::{BackupCreateRequest, create_backup, restore_backup, verify_backup};
 pub use capabilities::{Capabilities, capabilities};
 pub use config::{
     AdmissionAction, ConfigChange, ConfigOverrides, ConfigTarget, ValidationReport,

@@ -29,6 +29,7 @@ pub fn capabilities() -> Capabilities {
         mcp: false,
         http: false,
         commands: vec![
+            "backup",
             "init",
             "adopt",
             "apply",

@@ -69,6 +69,27 @@ impl BackupManifest {
             }
             insert_path(&mut paths, &file.path, "file")?;
         }
+        for required in ["Wiki", ".kb", ".kb/schemas"] {
+            if !self
+                .directories
+                .iter()
+                .any(|path| path.as_str() == required)
+            {
+                return Err(invalid(&format!(
+                    "required directory is missing: {required}"
+                )));
+            }
+        }
+        for required in ["admission.yml", "KB.md", ".kb/config.yml"] {
+            if !self.files.iter().any(|file| file.path.as_str() == required) {
+                return Err(invalid(&format!("required file is missing: {required}")));
+            }
+        }
+        self.files.iter().try_fold(0_u64, |total, file| {
+            total
+                .checked_add(file.size)
+                .ok_or_else(|| invalid("total file size overflow"))
+        })?;
         for file in &self.files {
             let prefix = format!("{}/", file.path.as_str());
             if self
@@ -83,6 +104,13 @@ impl BackupManifest {
             }
         }
         Ok(())
+    }
+
+    #[must_use]
+    pub fn total_bytes(&self) -> u64 {
+        self.files
+            .iter()
+            .fold(0_u64, |total, file| total.saturating_add(file.size))
     }
 }
 

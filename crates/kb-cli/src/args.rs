@@ -2,8 +2,8 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
-    AdmissionAction, AdmissionRequest, AppRequest, ConfigRequest, ConfigTarget, InitRequest,
-    OperationRequest, VaultRequest,
+    AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
+    InitRequest, OperationRequest, VaultRequest,
 };
 use kb_core::{KnowledgePlanRequest, OperationId};
 use uuid::Uuid;
@@ -31,6 +31,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Create, verify, or restore portable ZIP backups.
+    Backup {
+        #[command(subcommand)]
+        command: BackupCommands,
+    },
     /// Review changes in enabled admission directories.
     Review {
         #[command(flatten)]
@@ -127,6 +132,34 @@ enum Commands {
     },
     /// Show implemented and unavailable capabilities explicitly.
     Capabilities {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum BackupCommands {
+    /// Create a verified ZIP without overwriting an existing output.
+    Create {
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Omit immutable source objects and mark the backup incomplete.
+        #[arg(long)]
+        without_source_objects: bool,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Verify manifest paths, sizes and hashes without extracting.
+    Verify {
+        archive: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Restore a verified archive into a nonexistent or empty directory.
+    Restore {
+        archive: PathBuf,
+        #[arg(long)]
+        target: PathBuf,
         #[arg(long)]
         json: bool,
     },
@@ -356,6 +389,7 @@ impl LayerSelection {
 impl Cli {
     fn into_command(self) -> ParsedCommand {
         match self.command {
+            Commands::Backup { command } => backup_command(command),
             Commands::Review { context } => review_command(context),
             Commands::Query {
                 query,
@@ -454,6 +488,34 @@ impl Cli {
                 fail_on_findings: false,
             },
         }
+    }
+}
+
+fn backup_command(command: BackupCommands) -> ParsedCommand {
+    let (request, json) = match command {
+        BackupCommands::Create {
+            output,
+            without_source_objects,
+            context,
+        } => (
+            BackupRequest::Create {
+                vault: context.vault,
+                output,
+                without_source_objects,
+            },
+            context.json,
+        ),
+        BackupCommands::Verify { archive, json } => (BackupRequest::Verify { archive }, json),
+        BackupCommands::Restore {
+            archive,
+            target,
+            json,
+        } => (BackupRequest::Restore { archive, target }, json),
+    };
+    ParsedCommand {
+        request: Ok(AppRequest::Backup(request)),
+        json,
+        fail_on_findings: false,
     }
 }
 

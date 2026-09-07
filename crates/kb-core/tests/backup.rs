@@ -13,12 +13,34 @@ fn manifest() -> BackupManifest {
         created_at: "2026-09-07T00:00:00Z".into(),
         app_version: "0.1.0".into(),
         complete_source_evidence: true,
-        directories: vec![path("Wiki"), path("Wiki/articles")],
-        files: vec![BackupFile {
-            path: path("Wiki/articles/a.md"),
-            size: 3,
-            sha256: "a".repeat(64),
-        }],
+        directories: vec![
+            path(".kb"),
+            path(".kb/schemas"),
+            path("Wiki"),
+            path("Wiki/articles"),
+        ],
+        files: vec![
+            BackupFile {
+                path: path(".kb/config.yml"),
+                size: 3,
+                sha256: "a".repeat(64),
+            },
+            BackupFile {
+                path: path("KB.md"),
+                size: 3,
+                sha256: "b".repeat(64),
+            },
+            BackupFile {
+                path: path("Wiki/articles/a.md"),
+                size: 3,
+                sha256: "c".repeat(64),
+            },
+            BackupFile {
+                path: path("admission.yml"),
+                size: 3,
+                sha256: "d".repeat(64),
+            },
+        ],
     }
 }
 
@@ -52,6 +74,14 @@ fn backup_manifest_requires_sorted_unique_portable_entries_and_hashes() {
     type_conflict.directories.sort();
     assert_eq!(
         type_conflict.validate().unwrap_err().code,
+        ErrorCode::InvalidConfig
+    );
+
+    let mut portable_collision = manifest();
+    portable_collision.directories.push(path("wiki"));
+    portable_collision.directories.sort();
+    assert_eq!(
+        portable_collision.validate().unwrap_err().code,
         ErrorCode::InvalidConfig
     );
 }
