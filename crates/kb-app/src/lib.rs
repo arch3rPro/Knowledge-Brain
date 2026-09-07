@@ -43,6 +43,7 @@ mod managed_markdown;
 mod operation;
 mod operation_events;
 mod registry;
+mod schema;
 mod status;
 mod storage;
 mod template;
