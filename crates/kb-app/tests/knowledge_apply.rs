@@ -8,6 +8,7 @@ use kb_core::{
     CURRENT_SCHEMA_VERSION, ErrorCode, KnowledgeChangeRequest, KnowledgePlanRequest,
     PortableRelativePath,
 };
+use sha2::{Digest, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 fn setup() -> (
@@ -118,6 +119,71 @@ fn status_counts_interrupted_knowledge_save() {
     )
     .unwrap();
     assert_eq!(report["recovery"]["pending_operations"], 1);
+}
+
+#[test]
+fn tampered_expired_and_missing_source_plans_are_rejected() {
+    let (_temporary, _vault, paths, plan) = setup();
+    let directory = operation_directory(&paths, &plan);
+    let plan_path = directory.join("plan.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&plan_path).unwrap()).unwrap();
+    value["diff"] = "tampered".into();
+    fs::write(&plan_path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let error =
+        apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+
+    let (_temporary, _vault, paths, mut plan) = setup();
+    plan.created_at = "2000-01-01T00:00:00Z".into();
+    rewrite_plan(&paths, &plan);
+    let error =
+        apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+
+    let (_temporary, _vault, paths, mut plan) = setup();
+    plan.source_versions.push("kb-source://notes/missing.md?sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into());
+    rewrite_plan(&paths, &plan);
+    let error =
+        apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+}
+
+#[test]
+fn unrelated_files_survive_and_catalog_cleanup_failure_is_a_warning() {
+    let (_temporary, vault, paths, plan) = setup();
+    let unrelated = vault.join("Wiki/articles/human.md");
+    fs::write(&unrelated, "human-owned bytes").unwrap();
+    fs::create_dir(vault.join(".kb/cache/catalog.json")).unwrap();
+
+    let first = apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap();
+    let second = apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap();
+
+    assert_eq!(fs::read_to_string(unrelated).unwrap(), "human-owned bytes");
+    assert_eq!(first.warnings.len(), 1);
+    assert_eq!(second.warnings, first.warnings);
+}
+
+fn operation_directory(paths: &UserPaths, plan: &kb_core::KnowledgePlan) -> std::path::PathBuf {
+    paths
+        .state_dir
+        .join("operations")
+        .join(plan.operation_id.to_string())
+}
+
+fn rewrite_plan(paths: &UserPaths, plan: &kb_core::KnowledgePlan) {
+    let directory = operation_directory(paths, plan);
+    fs::write(
+        directory.join("plan.json"),
+        serde_json::to_vec_pretty(plan).unwrap(),
+    )
+    .unwrap();
+    let digest = hex::encode(Sha256::digest(serde_json::to_vec(plan).unwrap()));
+    fs::write(
+        directory.join("plan.sha256"),
+        serde_json::to_vec_pretty(&digest).unwrap(),
+    )
+    .unwrap();
 }
 
 fn snapshot(root: &Path) -> BTreeMap<String, Vec<u8>> {
