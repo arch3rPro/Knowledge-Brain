@@ -32,11 +32,11 @@
 - Produces: `KnowledgePlanRequest`, `KnowledgeChangeRequest`, `KnowledgePlan`, `KnowledgeWrite`, `KnowledgePlanResult`, and `OperationKind::SaveKnowledge`.
 - Produces: validation for schema, portable target paths, hashes, summaries, duplicate targets, and size/count limits.
 
-- [ ] Write failing contract tests for valid create/update requests and every rejected path/hash/summary boundary.
-- [ ] Run `cargo test -p kb-core --test knowledge_plan` and confirm the API is missing.
-- [ ] Implement the typed values and deterministic request validation.
-- [ ] Run the focused core test until it passes.
-- [ ] Commit the contract and tests.
+- [x] Write failing contract tests for valid create/update requests and every rejected path/hash/summary boundary.
+- [x] Run `cargo test -p kb-core --test knowledge_plan` and confirm the API is missing.
+- [x] Implement the typed values and deterministic request validation.
+- [x] Run the focused core test until it passes.
+- [x] Commit the contract and tests.
 
 ### Task 2: Plan creation, managed index, and managed log
 
@@ -52,13 +52,13 @@
 - Produces: `create_knowledge_plan(root, user_paths, config, request, now) -> Result<KnowledgePlan, KbError>`.
 - Produces: deterministic managed-region rendering that preserves bytes outside the markers.
 
-- [ ] Write failing tests for create/update preconditions, strict managed documents, exact source history, marker corruption, deterministic index ordering, log entries, preserved human regions, stored plan digest, and readable diff.
-- [ ] Run `cargo test -p kb-app --test knowledge_plan` and confirm failure from missing workflow.
-- [ ] Implement request preflight and candidate document validation.
-- [ ] Implement managed index/log derivation and exact write snapshots.
-- [ ] Persist the plan and digest in the user operation directory.
-- [ ] Run the focused app test until it passes.
-- [ ] Commit plan creation and tests.
+- [x] Write failing tests for create/update preconditions, strict managed documents, exact source history, marker corruption, deterministic index ordering, log entries, preserved human regions, stored plan digest, and readable diff.
+- [x] Run `cargo test -p kb-app --test knowledge_plan` and confirm failure from missing workflow.
+- [x] Implement request preflight and candidate document validation.
+- [x] Implement managed index/log derivation and exact write snapshots.
+- [x] Persist the plan and digest in the user operation directory.
+- [x] Run the focused app test until it passes.
+- [x] Commit plan creation and tests.
 
 ### Task 3: All-or-restore knowledge apply
 
@@ -75,13 +75,13 @@
 - Produces: `apply_knowledge(user_paths, operation_id, overrides) -> Result<KnowledgePlanResult, KbError>`.
 - Extends: pending-state guard to reject both source and knowledge pending markers.
 
-- [ ] Write failing tests for stale targets, stale sources, expired/tampered plans, duplicate completed apply, cache invalidation warning, and unrelated-file preservation.
-- [ ] Add child-process crash tests at pending marker, every target write, result receipt, and recovery conflict.
-- [ ] Run the focused app tests and confirm failure from missing apply behavior.
-- [ ] Implement preflight, durable progress, replacement, verification, reverse restoration, receipt, and cleanup.
-- [ ] Route operation inspection and shared `kb apply` dispatch by explicit operation kind.
-- [ ] Run the focused app tests until they pass.
-- [ ] Commit apply and recovery tests.
+- [x] Write failing tests for stale targets, stale sources, expired/tampered plans, duplicate completed apply, cache invalidation warning, and unrelated-file preservation.
+- [x] Add child-process crash tests at pending marker, every target write, result receipt, and recovery conflict.
+- [x] Run the focused app tests and confirm failure from missing apply behavior.
+- [x] Implement preflight, durable progress, replacement, verification, reverse restoration, receipt, and cleanup.
+- [x] Route operation inspection and shared `kb apply` dispatch by explicit operation kind.
+- [x] Run the focused app tests until they pass.
+- [x] Commit apply and recovery tests.
 
 ### Task 4: CLI request adapter and real user journey
 
@@ -97,11 +97,11 @@
 - Produces: `kb plan create <REQUEST_JSON> [--vault ...] [--json]`.
 - Reuses: `kb operation show` and `kb apply`.
 
-- [ ] Write a failing real-binary journey covering init, request file, plan creation without Vault mutation, operation show, apply, query, lint, reload, duplicate apply, index/log human-region preservation, and machine-readable failures.
-- [ ] Run `cargo test -p kb-cli --test knowledge_journey` and confirm the command is missing.
-- [ ] Implement UTF-8 request loading, JSON validation, command mapping, and capability reporting.
-- [ ] Run the journey plus adjacent help/JSON tests until they pass.
-- [ ] Commit the CLI workflow and tests.
+- [x] Write a failing real-binary journey covering init, request file, plan creation without Vault mutation, operation show, apply, query, lint, reload, duplicate apply, index/log human-region preservation, and machine-readable failures.
+- [x] Run `cargo test -p kb-cli --test knowledge_journey` and confirm the command is missing.
+- [x] Implement UTF-8 request loading, JSON validation, command mapping, and capability reporting.
+- [x] Run the journey plus adjacent help/JSON tests until they pass.
+- [x] Commit the CLI workflow and tests.
 
 ### Task 5: Reference docs, ADR lifecycle, and focused verification
 
@@ -115,9 +115,8 @@
 **Interfaces:**
 - Documents request/plan/result formats, failure semantics, recovery, and current limitations in one reference home.
 
-- [ ] Publish the reference and link summaries without duplicating field definitions.
-- [ ] Move ADR 0007 to accepted/implemented present-tense reality with alternatives and consequences.
-- [ ] Mark Stage 3B implemented with exact local evidence and remaining platform gaps.
-- [ ] Run formatting, related crate Clippy, core/app/CLI focused tests, and diff checks; do not run the full suite.
-- [ ] Inspect the complete diff and commit the documentation.
-
+- [x] Publish the reference and link summaries without duplicating field definitions.
+- [x] Move ADR 0007 to accepted/implemented present-tense reality with alternatives and consequences.
+- [x] Mark Stage 3B implemented with exact local evidence and remaining platform gaps.
+- [x] Run formatting, related crate Clippy, core/app/CLI focused tests, and diff checks; do not run the full suite.
+- [x] Inspect the complete diff and commit the documentation.

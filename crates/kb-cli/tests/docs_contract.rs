@@ -50,6 +50,7 @@ fn command_reference_names_every_real_top_level_command() {
         "init",
         "adopt",
         "apply",
+        "plan",
         "operation",
         "config",
         "status",
@@ -64,6 +65,22 @@ fn command_reference_names_every_real_top_level_command() {
             COMMAND_REFERENCE.contains(&format!("kb {command}")),
             "{command}"
         );
+    }
+}
+
+#[test]
+fn knowledge_plan_reference_owns_the_save_contract() {
+    let reference = include_str!("../../../docs/reference/knowledge-plans.md");
+    for contract in [
+        "KnowledgePlanRequest",
+        "kb plan create",
+        "before_sha256",
+        "kb.managed: true",
+        "knowledge-pending.json",
+        "vault_needs_recovery",
+        "MCP、HTTP、WebUI 和 GUI",
+    ] {
+        assert!(reference.contains(contract), "missing {contract}");
     }
 }
 

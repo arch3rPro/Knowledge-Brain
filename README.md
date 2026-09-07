@@ -171,6 +171,7 @@ Windows PowerShell：
 - [保存与查询来源](docs/guides/capture-and-query-sources.md)
 - [来源格式](docs/reference/sources.md)
 - [搜索规则](docs/reference/search.md)
+- [知识计划与安全保存](docs/reference/knowledge-plans.md)
 - [命令参考](docs/reference/commands.md)
 - [配置参考](docs/reference/configuration.md)
 - [架构概览](docs/architecture/overview.md)

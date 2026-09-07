@@ -66,9 +66,17 @@
 
 **Status:** implemented（定向本地测试）。`kb lint` 已实现 OKF v0.2 底线、显式受管理 Producer Profile、保留文件、Markdown 链接、孤立页、`supersedes`、精确来源版本、新鲜度和可移植路径检查。报告由应用层共享，CLI 的 `--strict` 只控制退出码。
 
-本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。知识写入计划、受管理 index/log 更新和中断恢复仍属于后续 Stage 3 子阶段。
+本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。知识写入计划、受管理 index/log 更新和中断恢复由 Stage 3B 提供。
 
 命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](docs/superpowers/plans/2026-09-07-wiki-lint.md)。
+
+### Stage 3B — 知识计划与安全保存
+
+**Status:** implemented（定向本地测试）。`kb plan create` 接收结构化 research/article 请求并生成不改 Vault 的可审阅计划；现有 `operation show` 和 `apply` 完成查看、旧状态复核、受管理 index/log 派生、整批保存、重复执行和中断恢复。来源保存与知识保存的恢复状态互斥，所有入口复用 `kb-app` 的 typed request/report。
+
+本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。只运行相关 crate 的定向测试、格式和 Clippy；未运行 workspace 全量测试、release 二进制流程、断电测试或 Windows/Linux 原生验证。
+
+请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)，实施计划见[Knowledge Save](docs/superpowers/plans/2026-09-07-knowledge-save.md)。
 
 ## Stage 4 — Agent 与应用入口
 

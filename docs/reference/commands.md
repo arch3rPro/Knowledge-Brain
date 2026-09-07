@@ -15,6 +15,16 @@ kb operation show <OPERATION_ID> [--json]
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
 
+## 知识计划与保存
+
+```text
+kb plan create <REQUEST_JSON> [--vault <PATH_OR_ID>] [--json]
+kb operation show <OPERATION_ID> [--json]
+kb apply <OPERATION_ID> [--json]
+```
+
+`plan create` 把结构化 research/article 建议转换为可审阅计划，不修改 Vault。计划同时派生 index 和 log 的受管理区域；`apply` 在独占锁内重新核对并整批保存。请求字段、冲突和恢复语义见[知识计划参考](knowledge-plans.md)。
+
 ## 来源与搜索
 
 ```text
@@ -31,7 +41,7 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 
 `cache rebuild` 从实际文件重建目录，不创建知识内容。`source verify` 核对来源记录引用的所有历史对象，逐项返回 `pass`、`fail` 或 `not_checked`。成功取得报告不代表所有对象通过：自动化必须检查各项状态；来源记录无法解析时整个命令失败。
 
-存在未恢复的来源保存时，`review`、`query`、`cache rebuild`、`source verify` 和配置写入返回 `vault_needs_recovery`。可以查看 `status`、读取配置、查看操作计划，并重试对应 `apply`。
+存在未恢复的来源保存或知识保存时，`review`、`query`、`cache rebuild`、`source verify`、`lint` 和其他写入返回 `vault_needs_recovery`。可以查看 `status`、读取配置、查看操作计划，并重试对应 `apply`。
 
 `lint` 检查实际 Wiki Markdown、OKF frontmatter、受管理文档、链接和来源引用，不写入知识或缓存。默认模式返回完整报告并退出 0；`--strict` 在报告含任何发现时退出非零。字段、finding code 和限制见 [Wiki lint 参考](lint.md)。
 
