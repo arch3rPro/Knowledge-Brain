@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf, str::FromStr};
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, ConfigRequest, ConfigTarget, InitRequest,
     OperationRequest, VaultRequest,
 };
-use kb_core::OperationId;
+use kb_core::{KnowledgePlanRequest, OperationId};
 use uuid::Uuid;
 
 pub(crate) struct ParsedCommand {
@@ -53,6 +53,11 @@ enum Commands {
         strict: bool,
         #[command(flatten)]
         context: VaultContext,
+    },
+    /// Create a reviewable knowledge save plan from a structured JSON request.
+    Plan {
+        #[command(subcommand)]
+        command: PlanCommands,
     },
     /// Maintain derived caches.
     Cache {
@@ -132,6 +137,47 @@ enum OperationCommands {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum PlanCommands {
+    /// Validate a JSON request and save a plan without changing the Vault.
+    Create {
+        request: KnowledgeRequestArg,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum KnowledgeRequestArg {
+    Parsed(KnowledgePlanRequest),
+    Invalid(kb_core::KbError),
+}
+
+impl FromStr for KnowledgeRequestArg {
+    type Err = std::convert::Infallible;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let path = PathBuf::from(value);
+        let parsed = fs::read(&path)
+            .map_err(|error| {
+                kb_core::KbError::io_failure(
+                    "read knowledge request",
+                    path.display().to_string(),
+                    error.to_string(),
+                )
+            })
+            .and_then(|bytes| {
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    kb_core::KbError::invalid_config(path.display().to_string(), error.to_string())
+                })
+            });
+        Ok(match parsed {
+            Ok(request) => Self::Parsed(request),
+            Err(error) => Self::Invalid(error),
+        })
+    }
 }
 
 #[derive(Subcommand)]
@@ -315,6 +361,19 @@ impl Cli {
                 context,
             } => query_command(query, &scope, limit, context),
             Commands::Lint { strict, context } => lint_command(strict, context),
+            Commands::Plan {
+                command: PlanCommands::Create { request, context },
+            } => ParsedCommand {
+                request: match request {
+                    KnowledgeRequestArg::Parsed(request) => AppRequest::PlanCreate {
+                        vault: context.vault,
+                        request,
+                    },
+                    KnowledgeRequestArg::Invalid(error) => AppRequest::Invalid(error),
+                },
+                json: context.json,
+                fail_on_findings: false,
+            },
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand {

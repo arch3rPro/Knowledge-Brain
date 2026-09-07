@@ -607,6 +607,18 @@ mod tests {
         }
     }
     #[test]
+    fn knowledge_pending_blocks_source_apply() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (user, plan) = setup(temporary.path());
+        write_json(&plan.target.join(KNOWLEDGE_MARKER), &OperationId::new()).unwrap();
+
+        let error =
+            apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::VaultNeedsRecovery);
+        assert!(!plan.target.join(MARKER).exists());
+    }
+    #[test]
     fn recovery_preserves_independent_edits_and_can_resume_after_restoration() {
         let t = tempfile::tempdir().unwrap();
         let (user, plan) = setup(t.path());

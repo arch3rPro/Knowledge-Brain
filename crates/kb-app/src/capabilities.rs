@@ -32,6 +32,7 @@ pub fn capabilities() -> Capabilities {
             "init",
             "adopt",
             "apply",
+            "plan",
             "review",
             "query",
             "lint",
