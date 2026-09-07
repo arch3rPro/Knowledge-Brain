@@ -34,6 +34,7 @@ pub fn capabilities() -> Capabilities {
             "apply",
             "review",
             "query",
+            "lint",
             "cache",
             "source",
             "operation",

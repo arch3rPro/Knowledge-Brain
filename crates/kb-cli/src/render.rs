@@ -4,7 +4,7 @@ use kb_core::KbError;
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde_json::Value;
 
-pub(crate) fn success(value: &Value, json_output: bool) -> ExitCode {
+pub(crate) fn success(value: &Value, json_output: bool, fail_on_findings: bool) -> ExitCode {
     let rendered = if json_output {
         serde_json::to_string(&Envelope::new(value))
     } else if let Some(diff) = value.get("diff").and_then(Value::as_str) {
@@ -15,7 +15,16 @@ pub(crate) fn success(value: &Value, json_output: bool) -> ExitCode {
     match rendered {
         Ok(text) => {
             println!("{text}");
-            ExitCode::SUCCESS
+            if fail_on_findings
+                && value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .is_some_and(|findings| !findings.is_empty())
+            {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         Err(serialization_error) => error(
             KbError::invalid_config("command response", serialization_error.to_string()),

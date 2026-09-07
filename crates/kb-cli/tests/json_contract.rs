@@ -48,6 +48,12 @@ fn version_and_capabilities_are_explicit_contracts() {
             .unwrap()
             .contains(&serde_json::Value::String("status".to_owned()))
     );
+    assert!(
+        capabilities["data"]["commands"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::Value::String("lint".to_owned()))
+    );
 }
 
 #[test]
