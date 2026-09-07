@@ -3,6 +3,22 @@ use std::{io::Write, path::Path};
 use atomic_write_file::AtomicWriteFile;
 use kb_core::KbError;
 
+pub(crate) fn create_new(path: &Path, bytes: &[u8]) -> Result<(), KbError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| KbError::invalid_config("destination", "missing parent"))?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| crate::source_io::io("create staging file", path, e))?;
+    file.write_all(bytes)
+        .map_err(|e| crate::source_io::io("write staging file", path, e))?;
+    file.as_file()
+        .sync_all()
+        .map_err(|e| crate::source_io::io("sync staging file", path, e))?;
+    file.persist_noclobber(path)
+        .map_err(|e| crate::source_io::io("create without replacing", path, e.error))?;
+    Ok(())
+}
+
 /// Replace a file only after all new bytes have been written and synchronized.
 ///
 /// # Errors

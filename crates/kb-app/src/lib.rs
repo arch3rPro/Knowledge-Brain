@@ -1,6 +1,21 @@
 //! Application workflows over Knowledge-Brain Vaults.
 
 mod adopt;
+mod discovery;
+mod extract;
+mod review;
+mod search;
+mod source_apply;
+mod source_io;
+mod source_plan;
+mod source_record;
+mod source_verify;
+pub use discovery::{DiscoveredSource, DiscoverySnapshot, SkippedSource, discover_sources};
+pub use extract::{BuiltinTextExtractor, classify_media_type, extract_bytes};
+pub use review::review_sources;
+pub use search::{query, rebuild_catalog};
+pub use source_plan::{ReviewReport, SourceCapturePlan, SourceCaptureResult};
+pub use source_verify::{Verification, VerificationItem, verify_sources};
 mod app;
 mod capabilities;
 mod config;

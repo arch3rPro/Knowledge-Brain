@@ -13,6 +13,7 @@ fn admission_accepts_one_portable_component_only() {
         "a/b",
         "Wiki",
         ".kb",
+        ".git",
         "CON",
         "con.txt",
         "notes.",

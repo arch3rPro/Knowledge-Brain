@@ -29,7 +29,11 @@ fn version_and_capabilities_are_explicit_contracts() {
     assert!(version["data"]["app_version"].as_str().is_some());
 
     let capabilities = run(temp.path(), &["capabilities", "--json"]);
-    assert_eq!(capabilities["data"]["direct_search"], false);
+    assert_eq!(capabilities["data"]["direct_search"], true);
+    assert_eq!(
+        capabilities["data"]["extractors"],
+        serde_json::json!(["builtin-text"])
+    );
     assert_eq!(capabilities["data"]["bm25"], false);
     assert_eq!(capabilities["data"]["mcp"], false);
     assert_eq!(capabilities["data"]["http"], false);

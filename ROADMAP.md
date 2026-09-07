@@ -38,6 +38,20 @@
 
 当前计划先实现 Markdown、文本、YAML、JSON 和 CSV；HTML、EPUB、DOCX 与 PDF 使用独立的 Stage 2 提取器计划。BM25、Embedding、rerank、LLM 综合回答和联网 URL 抓取不属于本阶段。
 
+### Stage 2A — 本地来源与直接搜索
+
+**Status:** implemented（macOS 本地工作流）；跨平台验收仍待原生 CI。
+
+已经提供 `review → operation show → apply`、来源版本历史、`query`、`cache rebuild` 和 `source verify`。来源保存更新原始对象、来源记录和日志，不修改主题文件。
+
+本地验证使用 Rust/Cargo 1.95.0：格式、Clippy、workspace 测试、release 构建，以及 release 二进制的真实 CLI 工作流。覆盖新增/修改/移动/删除、规则排除、陈旧计划、版本完整性、缓存缺失/损坏/写入失败、中文查询、移动后重开及独立用户状态。另有子进程在对象、记录、日志和回执写入后直接退出的恢复测试，以及人工改动保护测试。
+
+未验证：Windows/Linux 原生运行、Rust 1.85 原生构建、断电恢复。CI 配置使用 Rust 1.85 和三平台原生任务，但尚不能当作通过证据。Stage 2 整体尚未完成。
+
+### Stage 2B — 文档提取器
+
+**Status:** planned。HTML、EPUB、DOCX、PDF 文本和 OCR 需要独立的依赖评估、输入限制、定位契约及真实样本文档测试。
+
 ## Stage 3 — 知识形成与安全保存
 
 **Status:** planned

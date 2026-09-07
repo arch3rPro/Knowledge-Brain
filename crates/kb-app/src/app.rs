@@ -47,15 +47,38 @@ impl AppContext {
 
 #[derive(Debug, Clone)]
 pub enum AppRequest {
+    Review {
+        vault: Option<String>,
+    },
+    Query {
+        vault: Option<String>,
+        request: kb_core::SearchRequest,
+    },
+    CacheRebuild {
+        vault: Option<String>,
+    },
+    SourceVerify {
+        vault: Option<String>,
+    },
     Init(InitRequest),
-    Adopt { target: PathBuf },
-    Apply { operation_id: OperationId },
+    Adopt {
+        target: PathBuf,
+    },
+    Apply {
+        operation_id: OperationId,
+    },
     Operation(OperationRequest),
     Config(ConfigRequest),
-    Status { vault: Option<String> },
-    Doctor { vault: Option<String> },
+    Status {
+        vault: Option<String>,
+    },
+    Doctor {
+        vault: Option<String>,
+    },
     Vault(VaultRequest),
-    Paths { vault: Option<String> },
+    Paths {
+        vault: Option<String>,
+    },
     Version,
     Capabilities,
 }
@@ -122,13 +145,64 @@ pub enum VaultRequest {
 /// failed storage operations.
 pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbError> {
     match request {
+        AppRequest::Review { vault } => {
+            let selected = select_vault(context, vault)?;
+            ensure_mutation_allowed(&selected.root)?;
+            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "review", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::review_sources(
+                &selected.root,
+                context.user_paths()?,
+                &config,
+            )?)
+        }
+        AppRequest::Query { vault, request } => {
+            request.validate()?;
+            let selected = select_vault(context, vault)?;
+            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "query", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::query(&selected.root, &request, &config)?)
+        }
+        AppRequest::CacheRebuild { vault } => {
+            let selected = select_vault(context, vault)?;
+            ensure_mutation_allowed(&selected.root)?;
+            let _lock =
+                VaultLock::acquire(&selected.root, LockMode::Exclusive, "cache rebuild", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::rebuild_catalog(&selected.root, &config)?)
+        }
+        AppRequest::SourceVerify { vault } => {
+            let selected = select_vault(context, vault)?;
+            let _lock =
+                VaultLock::acquire(&selected.root, LockMode::Shared, "source verify", None)?;
+            crate::source_apply::ensure_no_pending(&selected.root)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::verify_sources(&selected.root, &config)?)
+        }
         AppRequest::Init(request) => run_init(&request, context),
         AppRequest::Adopt { target } => {
             to_value(create_adoption_plan(&target, context.user_paths()?)?)
         }
-        AppRequest::Apply { operation_id } => {
-            to_value(apply_operation(context.user_paths()?, operation_id)?)
-        }
+        AppRequest::Apply { operation_id } => run_apply(context, operation_id),
         AppRequest::Operation(request) => run_operation(request, context),
         AppRequest::Config(request) => run_config(request, context),
         AppRequest::Status { vault } => {
@@ -190,6 +264,10 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
                 OperationState::Applied(result) => {
                     Ok(json!({ "state": "applied", "result": result }))
                 }
+                OperationState::PlannedSource(plan) => Ok(json!({"state":"planned","plan":plan})),
+                OperationState::AppliedSource(result) => {
+                    Ok(json!({"state":"applied","result":result}))
+                }
             }
         }
     }
@@ -228,6 +306,9 @@ fn run_config(request: ConfigRequest, context: &AppContext) -> Result<Value, KbE
                 "config set",
                 None,
             )?;
+            if write {
+                crate::source_apply::ensure_no_pending(&selected.root)?;
+            }
             to_value(config_set(
                 &selected.root,
                 paths,
@@ -256,6 +337,9 @@ fn run_config(request: ConfigRequest, context: &AppContext) -> Result<Value, KbE
                 "config unset",
                 None,
             )?;
+            if write {
+                crate::source_apply::ensure_no_pending(&selected.root)?;
+            }
             to_value(config_unset(
                 &selected.root,
                 paths,
@@ -292,6 +376,9 @@ fn run_admission(root: &std::path::Path, request: AdmissionRequest) -> Result<Va
                 LockMode::Shared
             };
             let _lock = VaultLock::acquire(root, mode, "config admission change", None)?;
+            if write {
+                crate::source_apply::ensure_no_pending(root)?;
+            }
             to_value(admission_change(root, &action, write)?)
         }
     }
@@ -386,4 +473,17 @@ fn ensure_mutation_allowed(root: &std::path::Path) -> Result<(), KbError> {
 fn to_value(value: impl Serialize) -> Result<Value, KbError> {
     serde_json::to_value(value)
         .map_err(|error| KbError::invalid_config("application response", error.to_string()))
+}
+
+fn run_apply(context: &AppContext, operation_id: kb_core::OperationId) -> Result<Value, KbError> {
+    match inspect_operation(context.user_paths()?, operation_id)? {
+        OperationState::PlannedSource(_) | OperationState::AppliedSource(_) => {
+            to_value(crate::source_apply::apply_capture(
+                context.user_paths()?,
+                operation_id,
+                &context.overrides(),
+            )?)
+        }
+        _ => to_value(apply_operation(context.user_paths()?, operation_id)?),
+    }
 }

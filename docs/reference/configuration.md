@@ -26,13 +26,17 @@
 | `files.include_hidden` | `true` 或 `false` | `false` | `KB_FILES_INCLUDE_HIDDEN` |
 | `operations.plan_retention_hours` | 正整数 | `168` | `KB_OPERATIONS_PLAN_RETENTION_HOURS` |
 
-Stage 1 可以保存 `search.mode` 偏好，但尚未实现搜索命令；`kb capabilities --json` 中 `direct_search` 和 `bm25` 都为 `false`。
+`direct` 查询真实文件。`bm25` 偏好可以保存，但在二进制未提供 BM25 时返回明确警告并使用 direct；实际能力以 `kb capabilities --json` 为准。
+
+来源保存计划在 `operations.plan_retention_hours` 后不能首次执行；重新运行 `kb review`。已经中断的保存先恢复旧内容，再判断计划是否仍可执行；完成回执不受过期规则影响。此字段不自动删除计划、恢复记录或来源历史。
+
+读取限制适用于来源遍历、记录读取和查询的各个读取阶段。文件数量按遍历遇到的条目（包括目录）保守计数，进入排除子树前即停止。总读取字节限制是每个读取阶段的上限，不是整个进程多次复核的累计 IO 上限；重复核对和恢复可能再次读取相同文件。
 
 `kb config set/unset` 默认编辑 `.kb/config.yml`。`--local` 改为编辑 `.kb/config.local.yml`，`--user` 改为编辑用户配置；两个参数不能同时使用。没有 `--yes` 时只返回差异预览。编辑器保留无关字段、字段顺序和注释；如果无法安全保留，则拒绝写入。
 
 ## `admission.yml`
 
-`admission.yml` 是准入清单，不是待办队列。只有这里启用的一级目录才会在后续来源巡检阶段进入读取范围。
+`admission.yml` 是准入清单，不是待办队列。只有这里启用的一级目录才会进入 `kb review` 的来源读取范围。
 
 ```yaml
 schema_version: "v1.0"
@@ -55,6 +59,8 @@ directories:
 - 即使条目为 `enabled: false`，其结构和路径仍会校验。
 - 未写 `include` 时默认包含 Markdown、文本和 PDF；未写 `exclude` 时默认排除 `.git` 与 `.kb`。
 - `kb config admission remove` 只删除准入记录，不删除对应目录。
+- 停用、移除或排除来源不会删除已保存的副本，也不会伪造“来源已删除”的变更。
+- glob 相对主题根匹配，区分大小写；`**` 匹配任意层级。排除规则优先，隐藏文件默认跳过，`.git` 与 `.kb` 始终跳过。
 
 准入目录不能从其他配置层隐式增加。高级 `include/exclude` 当前通过人工编辑 YAML 配置，再用 `kb config validate` 校验。
 

@@ -17,13 +17,13 @@ CLI / future GUI / future WebUI / future MCP / future HTTP
 ## Workspace 职责
 
 - `kb-core`：schema 版本、稳定错误码、可移植路径、准入模型和操作计划类型。它不处理界面呈现。
-- `kb-app`：完整用例、Vault 选择、配置合并、无损编辑、注册、锁、采用计划、状态和诊断。所有入口应调用这里的 `AppRequest → AppResponse`。
+- `kb-app`：完整用例、Vault 选择、配置合并、无损编辑、注册、锁、采用计划、来源保存、直接搜索、状态和诊断。所有入口应调用这里的 `AppRequest → AppResponse`。
 - `kb-protocol`：带 `schema_version` 的成功与错误 JSON 信封。
 - `kb-cli`：解析命令参数并渲染人类或 JSON 输出；不直接读写 Vault 文件。
 
 ## 数据边界
 
-Vault 内的持久内容包括根级 `admission.yml`、`KB.md`、固定三层 `Wiki/` 和 `.kb/config.yml`。`.kb/cache/` 与 `.kb/runtime/` 是可重建或运行时状态，不能成为知识的唯一副本。
+Vault 内的持久内容包括根级 `admission.yml`、`KB.md`、固定三层 `Wiki/` 和 `.kb/config.yml`。`.kb/cache/` 可以重建；`.kb/runtime/` 不存知识，但未完成操作的恢复标记必须保留到恢复完成。
 
 用户级目录由操作系统规范解析，也可用 `KB_CONFIG_DIR`、`KB_STATE_DIR`、`KB_CACHE_DIR` 显式覆盖：
 
@@ -43,4 +43,10 @@ Vault 注册表可以保存本机绝对路径；Vault 内生成的相对路径�
 
 当前 schema 是 `v1.0`。旧且可迁移的 schema 可以诊断和读取，但写入返回 `migration_required`；同主版本的更新 schema 以及更新主版本只开放诊断路径，写入返回 `schema_too_new`。程序版本使用 SemVer，不能代替 schema 兼容判断。
 
-当前能力状态见 `kb capabilities --json`。Stage 1 没有搜索、提取器、MCP、HTTP、网络服务或内置 LLM。
+当前能力状态见 `kb capabilities --json`，实施状态见 [Roadmap](../../ROADMAP.md)。
+
+## 来源与读取
+
+来源身份、精确版本、提取器和查询类型定义在 `kb-core`；文件发现、来源记录、保存计划及恢复、原始对象核对和搜索由 `kb-app` 实现。`Extractor` 接收受限字节，不访问文件系统。新提取器复用该契约，入口不自行执行提取或文件写入。
+
+来源保存也使用独立 review/apply 流程。记录、对象和日志共同恢复，读取入口在未完成保存时拒绝读取混合状态。来源快照与恢复规则由[来源参考](../reference/sources.md)定义；目录缓存及查询行为由[搜索参考](../reference/search.md)定义。

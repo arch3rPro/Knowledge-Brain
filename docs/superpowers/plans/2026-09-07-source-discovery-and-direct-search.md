@@ -10,6 +10,30 @@
 
 **Spec:** [Knowledge-Brain design](../specs/2026-09-07-knowledge-brain-design.md), especially sections 5, 7, 8, 10, 11, 13, 17, 25, and 26.
 
+## Execution record — 2026-09-07
+
+The original step-by-step checklist below remains the implementation reference, not a claim that every originally named test file or command was used verbatim. The executed file layout and verification map are:
+
+| Tasks | Implementation | Evidence |
+| --- | --- | --- |
+| 1–2 | Core source/extraction/search contracts; app `extract.rs` | `kb-core` source/search tests; app extraction tests |
+| 3–5 | `discovery.rs`, `source_record.rs`, `review.rs`, `source_plan.rs` | CLI `phase2_journey` admission, changes, metadata preservation and historical-version scenarios |
+| 6 | `source_apply.rs`, shared AppRequest dispatch | Unit subprocess exits at every object/record/log write and receipt; CLI stale inputs, receipt cleanup, configuration-write blocking, cache failure |
+| 7–9 | app `search.rs`, `source_verify.rs`, CLI adapters | CLI scope separation, Chinese matching, ranking, cache deletion/corruption and source verification |
+| 10 | Source/search references, workflow guide, native scripts and CI | Local macOS gate; Windows/Linux and MSRV 1.85 native evidence remain pending |
+
+Implementation refinements:
+
+- Successful capture appends a managed log entry in the same recoverable save. Review leaves Wiki and log unchanged. Retaining old object versions keeps earlier citations verifiable.
+- Source-capture plan/result DTOs live in `kb-app/source_plan.rs`; OS-independent source, extraction and search types live in `kb-core`. Existing adoption JSON and typed Rust wrappers stay compatible.
+- One `builtin-text` extractor implements `Extractor`; `capabilities.extractors` reports that actual ID. Media classification separates the supported text formats. Cache keys include media type as well as source hash and extractor version, since identical bytes may be interpreted differently.
+- Direct search also includes source-record annotations and title-only matches. `content_path` disambiguates record line numbers from original-object line numbers.
+- The catalog is generated as a lightweight navigation artifact. Direct query deliberately has no catalog loader or cache-dependent fast path; stale/malformed catalog loading is not an executable dependency. Add a validated loader only with an actual catalog consumer.
+- Source plans carry a digest and enforce the configured retention interval before new writes; recovery is attempted before expiry rejection. Completed receipts remain repeatable. Pending journals and markers cannot be discarded as cache.
+- Read limits are conservative per reading phase, not process-wide cumulative IO. Directory entries are bounded while enumerating, before sorting.
+
+Durable contracts are maintained in [sources](../../reference/sources.md), [search](../../reference/search.md) and [configuration](../../reference/configuration.md); current platform evidence lives in [Roadmap](../../../ROADMAP.md). ADR-0002, ADR-0003, ADR-0006 and ADR-0007 remain proposed pending their full acceptance evidence; local tests alone do not prove every native platform.
+
 ## Global Constraints
 
 - Support native Windows, macOS, and Linux paths; never follow symbolic links, junctions, or reparse points.
@@ -701,11 +725,11 @@ Store operation progress and original record bytes under the private user-state 
 1. create an immutable object only when absent;
 2. verify an existing object has the expected SHA-256;
 3. atomically create or replace the source record;
-4. record each completed effect before advancing.
+4. record each intended effect durably before changing its destination, so a stop immediately after replacement remains recoverable.
 
 On failure or restart, restore replaced records, remove only objects and records that this operation created and whose hashes still match, and preserve every changed or unrecorded user file. If safe restoration cannot be proven, return `vault_needs_recovery` and block query/write operations.
 
-After durable records and objects verify, write extraction JSON beneath `.kb/cache/extracted/<sha256>/builtin-text-v1.json`. Cache failure adds a warning and leaves the durable result successful.
+After durable records and objects verify, write extraction JSON beneath `.kb/cache/extracted/<sha256>/builtin-text-v1-<media-type>.json`. Cache failure adds a warning and leaves the durable result successful.
 
 - [ ] **Step 6: Inject interruption after every durable replacement**
 

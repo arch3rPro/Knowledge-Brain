@@ -3,10 +3,18 @@
 mod admission;
 mod config;
 mod error;
+mod extraction;
 mod operation;
 mod path;
 mod platform;
+mod search;
+mod source;
 mod version;
+pub use extraction::{ExtractedBlock, ExtractedDocument, ExtractionStatus, Extractor, MediaType};
+pub use search::{
+    Catalog, CatalogEntry, SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
+};
+pub use source::{SourceId, SourceVersion};
 
 pub use admission::{AdmissionDocument, AdmissionEntry};
 pub use config::{

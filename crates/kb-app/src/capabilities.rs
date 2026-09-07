@@ -18,15 +18,19 @@ pub struct Capabilities {
 pub fn capabilities() -> Capabilities {
     Capabilities {
         schema_version: CURRENT_SCHEMA_VERSION,
-        direct_search: false,
+        direct_search: true,
         bm25: false,
-        extractors: Vec::new(),
+        extractors: vec!["builtin-text".into()],
         mcp: false,
         http: false,
         commands: vec![
             "init",
             "adopt",
             "apply",
+            "review",
+            "query",
+            "cache",
+            "source",
             "operation",
             "config",
             "status",

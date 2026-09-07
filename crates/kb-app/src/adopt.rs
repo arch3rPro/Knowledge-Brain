@@ -113,6 +113,12 @@ fn apply_operation_inner(
     let plan = match inspect_operation(user_paths, operation_id)? {
         OperationState::Applied(result) => return Ok(result),
         OperationState::Planned(plan) => plan,
+        OperationState::PlannedSource(_) | OperationState::AppliedSource(_) => {
+            return Err(KbError::invalid_config(
+                "operation",
+                "expected adoption plan",
+            ));
+        }
     };
     validate_plan_identity(&plan, operation_id)?;
 

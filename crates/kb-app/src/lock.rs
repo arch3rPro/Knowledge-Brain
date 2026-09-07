@@ -38,10 +38,12 @@ impl VaultLock {
         command: &str,
         operation_id: Option<OperationId>,
     ) -> Result<Self, KbError> {
-        let runtime = root.join(".kb/runtime");
+        let runtime = crate::source_io::safe_path(root, ".kb/runtime")?;
+        let lock_path = crate::source_io::safe_path(root, ".kb/runtime/vault.lock")?;
+        let information_path =
+            crate::source_io::safe_path(root, ".kb/runtime/vault-lock-info.json")?;
         fs::create_dir_all(&runtime)
             .map_err(|error| io_error("create runtime directory", &runtime, &error))?;
-        let lock_path = runtime.join("vault.lock");
         let file = File::options()
             .read(true)
             .write(true)
@@ -58,7 +60,7 @@ impl VaultLock {
         }
 
         let info_path = if matches!(mode, LockMode::Exclusive) {
-            let path = runtime.join("vault-lock-info.json");
+            let path = information_path;
             let info = LockInfo {
                 command,
                 process_id: std::process::id(),

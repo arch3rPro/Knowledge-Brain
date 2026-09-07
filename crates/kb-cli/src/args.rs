@@ -30,6 +30,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Review changes in enabled admission directories.
+    Review {
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Search Wiki Markdown or captured sources.
+    Query {
+        query: String,
+        #[arg(long, default_value="wiki", value_parser=["wiki","sources","all"])]
+        scope: String,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Maintain derived caches.
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommands,
+    },
+    /// Inspect captured source evidence.
+    Source {
+        #[command(subcommand)]
+        command: SourceCommands,
+    },
     /// Create a minimum Vault in a nonexistent or empty directory.
     Init {
         target: PathBuf,
@@ -97,6 +122,21 @@ enum OperationCommands {
         operation_id: OperationId,
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheCommands {
+    Rebuild {
+        #[command(flatten)]
+        context: VaultContext,
+    },
+}
+#[derive(Subcommand)]
+enum SourceCommands {
+    Verify {
+        #[command(flatten)]
+        context: VaultContext,
     },
 }
 
@@ -258,6 +298,48 @@ impl LayerSelection {
 impl Cli {
     fn into_command(self) -> ParsedCommand {
         match self.command {
+            Commands::Review { context } => ParsedCommand {
+                request: AppRequest::Review {
+                    vault: context.vault,
+                },
+                json: context.json,
+            },
+            Commands::Query {
+                query,
+                scope,
+                limit,
+                context,
+            } => ParsedCommand {
+                request: AppRequest::Query {
+                    vault: context.vault,
+                    request: kb_core::SearchRequest {
+                        query,
+                        limit,
+                        scope: match scope.as_str() {
+                            "sources" => kb_core::SearchScope::Sources,
+                            "all" => kb_core::SearchScope::All,
+                            _ => kb_core::SearchScope::Wiki,
+                        },
+                    },
+                },
+                json: context.json,
+            },
+            Commands::Cache {
+                command: CacheCommands::Rebuild { context },
+            } => ParsedCommand {
+                request: AppRequest::CacheRebuild {
+                    vault: context.vault,
+                },
+                json: context.json,
+            },
+            Commands::Source {
+                command: SourceCommands::Verify { context },
+            } => ParsedCommand {
+                request: AppRequest::SourceVerify {
+                    vault: context.vault,
+                },
+                json: context.json,
+            },
             Commands::Init { target, json } => ParsedCommand {
                 request: AppRequest::Init(InitRequest { target }),
                 json,

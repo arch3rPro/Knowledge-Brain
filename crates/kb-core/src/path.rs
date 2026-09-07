@@ -95,6 +95,7 @@ pub fn validate_admission_directory(path: &Path) -> Result<PortableRelativePath,
     }
     if portable.as_str().eq_ignore_ascii_case("Wiki")
         || portable.as_str().eq_ignore_ascii_case(".kb")
+        || portable.as_str().eq_ignore_ascii_case(".git")
     {
         return Err(unsafe_path(
             path,

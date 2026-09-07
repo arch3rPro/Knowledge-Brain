@@ -1,4 +1,4 @@
-name: Stage 1 gate
+name: Native workflow gate
 
 on:
   pull_request:
@@ -17,15 +17,15 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             shell: bash
-            command: bash scripts/check-stage-1.sh
+            command: bash scripts/check-stage-2.sh
           - name: macOS
             os: macos-latest
             shell: bash
-            command: bash scripts/check-stage-1.sh
+            command: bash scripts/check-stage-2.sh
           - name: Windows
             os: windows-latest
             shell: pwsh
-            command: ./scripts/check-stage-1.ps1
+            command: ./scripts/check-stage-2.ps1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -34,14 +34,14 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Run native Stage 1 gate
+      - name: Run native workflow gate
         shell: ${{ matrix.shell }}
         run: ${{ matrix.command }}
       - name: Upload diagnostics after failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: stage-1-${{ matrix.name }}-failure
+          name: native-${{ matrix.name }}-failure
           if-no-files-found: ignore
           path: |
             target/release/kb*

@@ -10,7 +10,7 @@ A knowledge system can become unreadable or unrecoverable when its durable meani
 
 ## Proposal
 
-Store portable knowledge and configuration in Markdown, YAML, and JSON. Treat search indexes, extraction outputs, progress data, and machine logs as derived state that can be deleted and rebuilt. Keep original source bytes as content-addressed files inside the Vault.
+Store portable knowledge and configuration in Markdown, YAML, and JSON. Treat search indexes and extraction outputs as derived state that can be deleted and rebuilt. Keep original source bytes as content-addressed files inside the Vault. Unfinished operation journals and recovery markers are machine-local recovery dependencies, not disposable caches; finish recovery before discarding or moving them.
 
 ## Alternatives considered
 

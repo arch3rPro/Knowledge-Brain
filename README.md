@@ -10,6 +10,8 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Explicit admission** — `admission.yml` 明确指定允许进入知识处理范围的一级主题目录。
 - **Structured Wiki** — 来源、阶段性研究和可复用文章分别保存在固定的三层 `Wiki/` 结构中。
 - **Reviewable changes** — 采用已有目录等多文件操作先生成计划，再由用户明确执行。
+- **Traceable sources** — 保留原始文件副本和精确版本，来源变更不覆盖旧证据。
+- **Direct search** — 直接查询 Wiki 和已保存来源；删除缓存后仍可检索。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
 - **Tool-independent core** — CLI 与未来的 MCP、HTTP、WebUI 和 GUI 共用同一应用层。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
@@ -24,6 +26,7 @@ My-Knowledge/
 ├── Reading/                     # 用户自定义主题目录
 ├── Wiki/
 │   ├── external-sources/        # 来源记录和原始对象
+│   │   ├── records/
 │   │   └── .objects/sha256/
 │   ├── research/                # 阶段性研究
 │   ├── articles/                # 可复用知识文章
@@ -75,6 +78,19 @@ kb config admission add notes Notes --vault ./my-knowledge --yes
 
 第一次调用显示差异预览；带 `--yes` 的调用才会保存。准入操作要求目录已经存在，并且不会删除目录内容。
 
+### 保存来源与查询
+
+将 Markdown 或文本放入 `Notes/`，然后查看来源变化：
+
+```bash
+kb review --vault ./my-knowledge
+kb operation show <operation-id>
+kb apply <operation-id>
+kb query "关键词" --scope sources --vault ./my-knowledge
+```
+
+用 `review` 返回的 ID 替换 `<operation-id>`。没有变化时不产生新计划。来源文件保持原样，保存的副本位于 `Wiki/external-sources/`。查询默认只搜索 Wiki；`--scope all` 同时返回 Wiki 与来源两组结果。见[保存与查询来源](docs/guides/capture-and-query-sources.md)。
+
 ### 检查结果
 
 ```bash
@@ -100,6 +116,10 @@ kb apply <operation-id> --json
 | `kb init` | 创建最小 Vault |
 | `kb adopt` | 审核已有目录并生成采用计划 |
 | `kb apply` | 执行已审核的操作计划 |
+| `kb review` | 查看准入来源变化并生成保存计划 |
+| `kb query` | 查询 Wiki 或已保存来源 |
+| `kb cache rebuild` | 重建轻量目录 |
+| `kb source verify` | 核对已保存来源的完整性 |
 | `kb config` | 查看、校验和修改配置或准入清单 |
 | `kb vault` | 管理本机 Vault 注册和路径绑定 |
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
@@ -133,13 +153,13 @@ CLI / future adapters
 Linux 和 macOS：
 
 ```bash
-bash scripts/check-stage-1.sh
+bash scripts/check-stage-2.sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-./scripts/check-stage-1.ps1
+./scripts/check-stage-2.ps1
 ```
 
 检查覆盖格式、Clippy、测试、release 构建和真实 CLI 工作流。开发阶段和后续范围由 [Roadmap](ROADMAP.md) 统一记录。
@@ -148,6 +168,9 @@ Windows PowerShell：
 
 - [创建新 Vault](docs/guides/create-a-vault.md)
 - [采用已有目录](docs/guides/adopt-an-existing-directory.md)
+- [保存与查询来源](docs/guides/capture-and-query-sources.md)
+- [来源格式](docs/reference/sources.md)
+- [搜索规则](docs/reference/search.md)
 - [命令参考](docs/reference/commands.md)
 - [配置参考](docs/reference/configuration.md)
 - [架构概览](docs/architecture/overview.md)

@@ -19,6 +19,8 @@ pub struct AdoptionResult {
 pub enum OperationState {
     Planned(AdoptionPlan),
     Applied(AdoptionResult),
+    PlannedSource(crate::SourceCapturePlan),
+    AppliedSource(crate::SourceCaptureResult),
 }
 
 /// Read an operation plan or its durable completion receipt.
@@ -33,10 +35,18 @@ pub fn inspect_operation(
     let directory = operation_directory(user_paths, operation_id);
     let result_path = directory.join("result.json");
     if result_path.is_file() {
+        let value: serde_json::Value = read_json(&result_path)?;
+        if value["kind"] == "capture_sources" {
+            return read_json(&result_path).map(OperationState::AppliedSource);
+        }
         return read_json(&result_path).map(OperationState::Applied);
     }
     let plan_path = directory.join("plan.json");
     if plan_path.is_file() {
+        let value: serde_json::Value = read_json(&plan_path)?;
+        if value["kind"] == "capture_sources" {
+            return read_json(&plan_path).map(OperationState::PlannedSource);
+        }
         return read_json(&plan_path).map(OperationState::Planned);
     }
     Err(KbError::new(
