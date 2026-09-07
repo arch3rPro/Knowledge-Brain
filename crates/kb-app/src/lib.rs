@@ -29,6 +29,7 @@ mod lint;
 mod lock;
 mod managed_markdown;
 mod operation;
+mod operation_events;
 mod registry;
 mod status;
 mod storage;
@@ -55,6 +56,7 @@ pub use knowledge_plan::create_knowledge_plan;
 pub use lint::{LintReport, lint};
 pub use lock::{LockMode, VaultLock};
 pub use operation::{AdoptionResult, OperationState, inspect_operation};
+pub use operation_events::operation_events;
 pub use registry::{
     VaultRecord, VaultRegistry, list_vaults, rebind_vault, register_vault, unregister_vault,
 };

@@ -1,6 +1,7 @@
 use std::{fmt, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use crate::{PortableRelativePath, SchemaVersion};
@@ -39,6 +40,103 @@ impl FromStr for OperationId {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Uuid::parse_str(value).map(Self)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationEventKind {
+    Planned,
+    Applying,
+    Progress,
+    Recovering,
+    Applied,
+    Failed,
+}
+
+impl OperationEventKind {
+    #[must_use]
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Applied | Self::Failed)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationEvent {
+    pub id: u64,
+    pub kind: OperationEventKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+    pub message: String,
+    pub recorded_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationEventLog {
+    pub schema_version: SchemaVersion,
+    pub operation_id: OperationId,
+    pub events: Vec<OperationEvent>,
+}
+
+impl OperationEventLog {
+    /// Validate a persisted operation event log before serving or extending it.
+    ///
+    /// # Errors
+    ///
+    /// Rejects incompatible schemas, identity mismatch, non-contiguous IDs,
+    /// invalid progress, multiline messages, timestamps and excessive events.
+    pub fn validate(
+        &self,
+        expected_operation_id: OperationId,
+        max_events: usize,
+    ) -> Result<(), crate::KbError> {
+        if self.schema_version != crate::CURRENT_SCHEMA_VERSION
+            || self.operation_id != expected_operation_id
+            || self.events.is_empty()
+            || self.events.len() > max_events
+        {
+            return Err(crate::KbError::invalid_config(
+                "operation events",
+                "schema, identity or event count is invalid",
+            ));
+        }
+        for (index, event) in self.events.iter().enumerate() {
+            let progress_valid = match (event.completed, event.total) {
+                (None, None) => true,
+                (Some(completed), Some(total)) => completed <= total,
+                _ => false,
+            };
+            if event.id != index as u64 + 1
+                || event.message.trim().is_empty()
+                || event.message.lines().count() != 1
+                || event.message.len() > 512
+                || OffsetDateTime::parse(&event.recorded_at, &Rfc3339).is_err()
+                || !progress_valid
+            {
+                return Err(crate::KbError::invalid_config(
+                    "operation events",
+                    format!("event {} is invalid", event.id),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn is_terminal(&self) -> bool {
+        self.events
+            .last()
+            .is_some_and(|event| event.kind.is_terminal())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperationEventReport {
+    pub schema_version: SchemaVersion,
+    pub operation_id: OperationId,
+    pub terminal: bool,
+    pub events: Vec<OperationEvent>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

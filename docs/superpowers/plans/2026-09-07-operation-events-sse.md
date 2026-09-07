@@ -10,9 +10,9 @@
 
 ### Task 1: Event contract and storage
 
-- [ ] Define schema-versioned event/log/report types and validation.
-- [ ] Atomically append bounded, idempotent events in operation directories.
-- [ ] Return a synthetic current-state event for legacy operations without mutating them.
+- [x] Define schema-versioned event/log/report types and validation.
+- [x] Atomically append bounded, idempotent events in operation directories.
+- [x] Return a synthetic current-state event for legacy operations without mutating them.
 
 ### Task 2: Operation lifecycle integration
 

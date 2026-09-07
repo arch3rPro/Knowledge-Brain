@@ -38,7 +38,8 @@ pub use okf::{
 };
 pub use operation::{
     AdoptionPlan, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest, KnowledgePlanResult,
-    KnowledgeWrite, ObservedEntry, ObservedKind, OperationId, OperationKind, PlannedFile,
+    KnowledgeWrite, ObservedEntry, ObservedKind, OperationEvent, OperationEventKind,
+    OperationEventLog, OperationEventReport, OperationId, OperationKind, PlannedFile,
 };
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,
