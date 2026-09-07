@@ -57,6 +57,37 @@ fn doctor_contains_a_configuration_failure_instead_of_collapsing_the_report() {
     assert_eq!(configuration["status"], "fail");
 }
 
+#[test]
+fn doctor_warns_when_schema_has_no_migration_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    let config_path = vault.join(".kb/config.yml");
+    let config = std::fs::read_to_string(&config_path)
+        .unwrap()
+        .replacen("v1.0", "v0.9", 1);
+    std::fs::write(config_path, config).unwrap();
+
+    let report = run(
+        temp.path(),
+        &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+
+    let configuration = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "configuration")
+        .unwrap();
+    assert_eq!(configuration["status"], "warn");
+    assert!(
+        configuration["message"]
+            .as_str()
+            .unwrap()
+            .contains("no migration path")
+    );
+}
+
 fn run(user_root: &Path, arguments: &[&str]) -> serde_json::Value {
     let output = Command::cargo_bin("kb")
         .unwrap()

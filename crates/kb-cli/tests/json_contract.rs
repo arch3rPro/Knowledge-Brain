@@ -78,7 +78,7 @@ fn version_and_capabilities_are_explicit_contracts() {
 #[test]
 fn status_classifies_schema_compatibility_without_guessing() {
     for (schema, expected) in [
-        ("v0.9", "older_migratable"),
+        ("v0.9", "older_unsupported"),
         ("v1.1", "newer_minor_read_only"),
         ("v2.0", "newer_major_diagnostic_only"),
     ] {
@@ -103,7 +103,7 @@ fn status_classifies_schema_compatibility_without_guessing() {
 #[test]
 fn noncurrent_schemas_are_never_mutated() {
     for (schema, expected_error) in [
-        ("v0.9", "migration_required"),
+        ("v0.9", "migration_unavailable"),
         ("v1.1", "schema_too_new"),
         ("v2.0", "schema_too_new"),
     ] {
@@ -137,16 +137,17 @@ fn noncurrent_schemas_are_never_mutated() {
 }
 
 #[test]
-fn older_schema_allows_reading_while_newer_schema_is_diagnostic_only() {
-    for (schema, should_read) in [("v0.9", true), ("v1.1", false)] {
+fn noncurrent_schemas_reject_config_show_without_altering_config() {
+    for schema in ["v0.9", "v1.1"] {
         let temp = tempfile::tempdir().unwrap();
         let vault = temp.path().join("vault");
         run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
         let config_path = vault.join(".kb/config.yml");
         let config = std::fs::read_to_string(&config_path)
             .unwrap()
-            .replacen("v1.0", schema, 1);
-        std::fs::write(config_path, config).unwrap();
+            .replacen("v1.0", schema, 1)
+            .into_bytes();
+        std::fs::write(&config_path, &config).unwrap();
         let output = command(temp.path())
             .args([
                 "config",
@@ -157,11 +158,17 @@ fn older_schema_allows_reading_while_newer_schema_is_diagnostic_only() {
             ])
             .output()
             .unwrap();
-        assert_eq!(output.status.success(), should_read, "schema={schema}");
-        if should_read {
-            let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-            assert_eq!(response["data"]["schema_version"], schema);
-        }
+        assert!(!output.status.success(), "schema={schema}");
+        let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            response["error"]["code"], "invalid_config",
+            "schema={schema}"
+        );
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            config,
+            "schema={schema}"
+        );
     }
 }
 

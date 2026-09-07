@@ -94,7 +94,9 @@ kb version [--json]
 kb capabilities [--json]
 ```
 
-`status` 返回选中 Vault 的事实状态，包括 schema 兼容性、配置、准入数量、恢复记录和缓存状态。当前 schema 的配置损坏会让命令失败。
+`status` 返回选中 Vault 的事实状态，包括 schema 兼容性、配置、准入数量、恢复记录和缓存状态。`older_unsupported` 表示生产迁移目录没有到当前 schema 的完整路径；它只保留诊断能力。当前 schema 的配置损坏会让命令失败。
+
+旧且不受支持的 schema 上，修改命令返回 `migration_unavailable`，并且不修改 Vault 配置。产品目前没有历史迁移路径，也不提供 `kb migrate` 命令；迁移路径的决策见 [ADR-0016](../decisions/accepted/architecture/0016-explicit-schema-migration-paths.md)。
 
 `doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
 

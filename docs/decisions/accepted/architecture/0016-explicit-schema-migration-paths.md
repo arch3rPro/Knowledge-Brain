@@ -1,6 +1,6 @@
 # ADR-0016: Require explicit schema migration paths
 
-- Status: proposed
+- Status: accepted / implemented
 - Class: architecture
 - Date: 2026-09-07
 
@@ -8,11 +8,11 @@
 
 A schema version lower than the current version does not prove that Knowledge-Brain understands its structure or can transform it safely. Treating every older number as migratable creates a false compatibility promise and encourages current-schema parsers to interpret undefined legacy files.
 
-## Proposal
+## Decision
 
-Separate numeric version relation from application compatibility. Knowledge-Brain will report an older schema as migratable only when the application registers a complete sequence of implemented migration steps from that exact version to the current version.
+Knowledge-Brain separates numeric version relation from application compatibility. It reports an older schema as migratable only when the application registers a complete sequence of implemented migration steps from that exact version to the current version.
 
-The initial production migration catalog is empty because `v1.0` is the first published Vault schema. Older versions without a complete path are `older_unsupported`; mutations return `migration_unavailable`. No empty `kb migrate` command is exposed.
+The production migration catalog is empty because `v1.0` is the first published Vault schema. Older versions without a complete path are `older_unsupported`; mutations return `migration_unavailable`. The product does not expose an empty `kb migrate` command.
 
 Each future catalog step must ship with its legacy parser, recoverable transformation and fixtures from the application version that produced the source schema. Catalog metadata alone cannot advertise migration support.
 
@@ -30,7 +30,7 @@ Each future catalog step must ship with its legacy parser, recoverable transform
 
 **Expose `kb migrate` before any real migration exists.** An empty command adds interface surface without a useful outcome and implies broader compatibility than the product provides.
 
-## Acceptance criteria
+## Consequences
 
 - Version ordering does not independently produce `older_migratable`.
 - Only a complete registered path produces `older_migratable` and `migration_required`.
