@@ -26,6 +26,8 @@
 
 **Status:** in progress
 
+当前实施计划：[Source Discovery and Direct Search](docs/superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
+
 - 只遍历 `admission.yml` 中启用的目录
 - 识别新增、变化、删除及可能移动的来源
 - 使用 SHA-256 标识精确来源版本
@@ -34,7 +36,7 @@
 - 构建可重建的轻量目录
 - 查询真实 Markdown，并在目录缺失或损坏时继续工作
 
-BM25、Embedding、rerank、LLM 综合回答和联网 URL 抓取不属于本阶段。
+当前计划先实现 Markdown、文本、YAML、JSON 和 CSV；HTML、EPUB、DOCX 与 PDF 使用独立的 Stage 2 提取器计划。BM25、Embedding、rerank、LLM 综合回答和联网 URL 抓取不属于本阶段。
 
 ## Stage 3 — 知识形成与安全保存
 
