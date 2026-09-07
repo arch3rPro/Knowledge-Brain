@@ -271,7 +271,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             )?;
             to_value(crate::verify_sources(&selected.root, &config)?)
         }
-        AppRequest::Skills(request) => run_skills(request, context),
+        AppRequest::Skills(request) => run_skills(&request, context),
         AppRequest::Init(request) => run_init(&request, context),
         AppRequest::Adopt { target } => run_adopt(context, &target),
         AppRequest::Apply { operation_id } => run_apply(context, operation_id),
@@ -295,20 +295,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
             to_value(doctor(&root, context.user_paths()?, &context.overrides())?)
         }
         AppRequest::Vault(request) => run_vault(request, context),
-        AppRequest::Paths { vault } => {
-            let selected = select_vault(context, vault)?;
-            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "paths", None)?;
-            Ok(json!({
-                "vault_id": selected.vault_id,
-                "root": selected.root,
-                "config": selected.root.join(".kb/config.yml"),
-                "local_config": selected.root.join(".kb/config.local.yml"),
-                "admission": selected.root.join("admission.yml"),
-                "wiki": selected.root.join("Wiki"),
-                "runtime": selected.root.join(".kb/runtime"),
-                "cache": selected.root.join(".kb/cache"),
-            }))
-        }
+        AppRequest::Paths { vault } => run_paths(context, vault),
         AppRequest::Version => Ok(json!({
             "app_version": env!("CARGO_PKG_VERSION"),
             "schema_version": CURRENT_SCHEMA_VERSION,
@@ -621,7 +608,7 @@ fn run_vault(request: VaultRequest, context: &AppContext) -> Result<Value, KbErr
     }
 }
 
-fn run_skills(request: SkillRequest, context: &AppContext) -> Result<Value, KbError> {
+fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbError> {
     let (vault, explicit_host, scope) = match &request {
         SkillRequest::Detect { vault } => (vault.clone(), None, SkillScope::Vault),
         SkillRequest::Install {
@@ -656,7 +643,7 @@ fn run_skills(request: SkillRequest, context: &AppContext) -> Result<Value, KbEr
                 roots: &roots,
                 host,
                 scope,
-                mode,
+                mode: *mode,
                 action: SkillAction::Install,
             })?)
         }
@@ -686,6 +673,21 @@ fn run_skills(request: SkillRequest, context: &AppContext) -> Result<Value, KbEr
         }
         SkillRequest::Detect { .. } => unreachable!("detect returned before host resolution"),
     }
+}
+
+fn run_paths(context: &AppContext, vault: Option<String>) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "paths", None)?;
+    Ok(json!({
+        "vault_id": selected.vault_id,
+        "root": selected.root,
+        "config": selected.root.join(".kb/config.yml"),
+        "local_config": selected.root.join(".kb/config.local.yml"),
+        "admission": selected.root.join("admission.yml"),
+        "wiki": selected.root.join("Wiki"),
+        "runtime": selected.root.join(".kb/runtime"),
+        "cache": selected.root.join(".kb/cache"),
+    }))
 }
 
 fn select_vault(

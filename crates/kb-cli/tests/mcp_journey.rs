@@ -17,7 +17,7 @@ fn write_enabled_mcp_applies_an_approved_plan_and_the_result_survives_restart() 
     let mut stdout = BufReader::new(child.stdout.take().unwrap());
     send(
         &mut stdin,
-        json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kb_plan_knowledge","arguments":{"request":{"schema_version":"v1.0","changes":[{"path":"articles/mcp-write.md","before_sha256":null,"summary":"Exercise MCP write path","content":"---\ntype: Article\ntitle: MCP write journey\nstatus: stable\ngenerated:\n  by: process:mcp-test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: mcp-spec\n    resource: https://modelcontextprotocol.io/\nkb:\n  managed: true\n---\n\n# MCP write journey\n\npersisted-mcp-needle\n"}]}}}}),
+        &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"kb_plan_knowledge","arguments":{"request":{"schema_version":"v1.0","changes":[{"path":"articles/mcp-write.md","before_sha256":null,"summary":"Exercise MCP write path","content":"---\ntype: Article\ntitle: MCP write journey\nstatus: stable\ngenerated:\n  by: process:mcp-test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: mcp-spec\n    resource: https://modelcontextprotocol.io/\nkb:\n  managed: true\n---\n\n# MCP write journey\n\npersisted-mcp-needle\n"}]}}}}),
     );
     let planned = receive(&mut stdout);
     let operation_id = planned["result"]["structuredContent"]["data"]["operation_id"]
@@ -25,7 +25,7 @@ fn write_enabled_mcp_applies_an_approved_plan_and_the_result_survives_restart() 
         .unwrap();
     send(
         &mut stdin,
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"kb_apply_operation","arguments":{"operation_id":operation_id}}}),
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"kb_apply_operation","arguments":{"operation_id":operation_id}}}),
     );
     let applied = receive(&mut stdout);
     assert_eq!(applied["result"]["isError"], false, "{applied}");
@@ -46,7 +46,7 @@ fn write_enabled_mcp_applies_an_approved_plan_and_the_result_survives_restart() 
     let mut restarted_stdout = BufReader::new(restarted.stdout.take().unwrap());
     send(
         &mut restarted_stdin,
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"persisted-mcp-needle","scope":"wiki"}}}),
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"persisted-mcp-needle","scope":"wiki"}}}),
     );
     let queried = receive(&mut restarted_stdout);
     assert_eq!(queried["result"]["isError"], false, "{queried}");
@@ -157,7 +157,7 @@ fn mcp_process(user_root: &Path, vault: &Path, allow_write: bool) -> std::proces
         .unwrap()
 }
 
-fn send(writer: &mut impl Write, request: Value) {
+fn send(writer: &mut impl Write, request: &Value) {
     writeln!(writer, "{}", serde_json::to_string(&request).unwrap()).unwrap();
     writer.flush().unwrap();
 }

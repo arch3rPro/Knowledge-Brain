@@ -58,7 +58,7 @@ fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     kb_mcp::serve_frames(stdin.lock(), stdout.lock(), |request| {
-        server.handle(request)
+        server.handle(&request)
     })
     .map_err(|error| KbError::io_failure("serve MCP stdio", "stdin/stdout", error.to_string()))
 }

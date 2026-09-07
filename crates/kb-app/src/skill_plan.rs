@@ -40,6 +40,11 @@ pub struct SkillStatusReport {
     pub bridge_file: PathBuf,
 }
 
+/// Compare one installed Skill and bridge with the embedded assets.
+///
+/// # Errors
+///
+/// Returns an error when target paths or managed files cannot be inspected.
 pub fn skill_status(
     vault_root: &Path,
     roots: &AgentRoots,
@@ -106,6 +111,11 @@ pub struct SkillPlanRequest<'a> {
     pub action: SkillAction,
 }
 
+/// Create and persist a reviewable Skill install or uninstall plan.
+///
+/// # Errors
+///
+/// Returns an error when the target is modified, invalid, or cannot be saved.
 pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, KbError> {
     let target = skill_target(
         request.vault_root,
@@ -120,8 +130,7 @@ pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, Kb
         request.scope,
     )?;
     match (request.action, status.state) {
-        (SkillAction::Install, SkillInstallState::Modified)
-        | (SkillAction::Uninstall, SkillInstallState::Modified) => {
+        (SkillAction::Install | SkillAction::Uninstall, SkillInstallState::Modified) => {
             return Err(stale(
                 &target.skill_dir,
                 "managed Skill content was modified",
@@ -192,7 +201,7 @@ fn uninstall_changes(
         Ok(metadata) if metadata.file_type().is_symlink() => Some(SkillLinkChange {
             path: target.skill_dir.clone(),
             target: fs::read_link(&target.skill_dir)
-                .map_err(|error| io("read Skill link", &target.skill_dir, error))?,
+                .map_err(|error| io("read Skill link", &target.skill_dir, &error))?,
             create: false,
         }),
         Ok(metadata) if metadata.is_dir() => {
@@ -203,7 +212,7 @@ fn uninstall_changes(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(stale(&target.skill_dir, "managed Skill is not installed"));
         }
-        Err(error) => return Err(io("inspect Skill target", &target.skill_dir, error)),
+        Err(error) => return Err(io("inspect Skill target", &target.skill_dir, &error)),
     };
     files.push(bridge_uninstall_change(&target.bridge_file)?);
     if request.mode == SkillInstallMode::Copy && link.is_some() {
@@ -283,6 +292,11 @@ fn bridge_uninstall_change(path: &Path) -> Result<SkillFileChange, KbError> {
     })
 }
 
+/// Apply a stored Skill plan after rechecking its Vault and target state.
+///
+/// # Errors
+///
+/// Returns an error for ownership, staleness, unsafe paths, or I/O failures.
 pub fn apply_skill_plan(
     user_paths: &UserPaths,
     roots: &AgentRoots,
@@ -443,7 +457,7 @@ fn validate_plan_paths(
         let relative = skill_assets().iter().find(|asset| {
             change
                 .path
-                .strip_prefix(&asset_root_for(plan, user_paths, &target))
+                .strip_prefix(asset_root_for(plan, user_paths, &target))
                 .is_ok_and(|path| path == Path::new(asset.path))
         });
         let valid = match (plan.action, relative, change.after.as_deref()) {
@@ -541,11 +555,11 @@ fn apply_file_change(change: &SkillFileChange) -> Result<bool, KbError> {
                 KbError::invalid_config(change.path.display().to_string(), "missing parent")
             })?;
             fs::create_dir_all(parent)
-                .map_err(|error| io("create Skill directory", parent, error))?;
+                .map_err(|error| io("create Skill directory", parent, &error))?;
             atomic_replace(&change.path, content.as_bytes())?;
         }
         None => fs::remove_file(&change.path)
-            .map_err(|error| io("remove managed Skill file", &change.path, error))?,
+            .map_err(|error| io("remove managed Skill file", &change.path, &error))?,
     }
     Ok(true)
 }
@@ -558,7 +572,7 @@ fn apply_link_change(change: &SkillLinkChange) -> Result<bool, KbError> {
         let parent = change.path.parent().ok_or_else(|| {
             KbError::invalid_config(change.path.display().to_string(), "missing parent")
         })?;
-        fs::create_dir_all(parent).map_err(|error| io("create link parent", parent, error))?;
+        fs::create_dir_all(parent).map_err(|error| io("create link parent", parent, &error))?;
         create_directory_symlink(&change.target, &change.path)?;
     } else {
         remove_directory_symlink(&change.path)?;
@@ -579,23 +593,23 @@ fn link_is_after(change: &SkillLinkChange) -> bool {
 #[cfg(unix)]
 fn create_directory_symlink(target: &Path, link: &Path) -> Result<(), KbError> {
     std::os::unix::fs::symlink(target, link)
-        .map_err(|error| io("create Skill symlink", link, error))
+        .map_err(|error| io("create Skill symlink", link, &error))
 }
 
 #[cfg(windows)]
 fn create_directory_symlink(target: &Path, link: &Path) -> Result<(), KbError> {
     std::os::windows::fs::symlink_dir(target, link)
-        .map_err(|error| io("create Skill directory symlink", link, error))
+        .map_err(|error| io("create Skill directory symlink", link, &error))
 }
 
 #[cfg(unix)]
 fn remove_directory_symlink(link: &Path) -> Result<(), KbError> {
-    fs::remove_file(link).map_err(|error| io("remove Skill symlink", link, error))
+    fs::remove_file(link).map_err(|error| io("remove Skill symlink", link, &error))
 }
 
 #[cfg(windows)]
 fn remove_directory_symlink(link: &Path) -> Result<(), KbError> {
-    fs::remove_dir(link).map_err(|error| io("remove Skill directory symlink", link, error))
+    fs::remove_dir(link).map_err(|error| io("remove Skill directory symlink", link, &error))
 }
 
 fn copied_assets_match(root: &Path) -> Result<bool, KbError> {
@@ -609,7 +623,7 @@ fn copied_assets_match(root: &Path) -> Result<bool, KbError> {
 }
 
 fn symlink_assets_match(link: &Path) -> Result<bool, KbError> {
-    let target = fs::read_link(link).map_err(|error| io("read Skill symlink", link, error))?;
+    let target = fs::read_link(link).map_err(|error| io("read Skill symlink", link, &error))?;
     copied_assets_match(&target)
 }
 
@@ -618,12 +632,12 @@ fn walk_file_count(root: &Path) -> Result<usize, KbError> {
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
         for entry in fs::read_dir(&directory)
-            .map_err(|error| io("read Skill directory", &directory, error))?
+            .map_err(|error| io("read Skill directory", &directory, &error))?
         {
-            let entry = entry.map_err(|error| io("read Skill entry", &directory, error))?;
+            let entry = entry.map_err(|error| io("read Skill entry", &directory, &error))?;
             let metadata = entry
                 .metadata()
-                .map_err(|error| io("inspect Skill entry", &entry.path(), error))?;
+                .map_err(|error| io("inspect Skill entry", &entry.path(), &error))?;
             if metadata.is_dir() {
                 pending.push(entry.path());
             } else if metadata.is_file() {
@@ -640,7 +654,7 @@ fn validate_link_for_install(link: &Path, target: &Path) -> Result<(), KbError> 
     match fs::symlink_metadata(link) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             let existing =
-                fs::read_link(link).map_err(|error| io("read Skill link", link, error))?;
+                fs::read_link(link).map_err(|error| io("read Skill link", link, &error))?;
             if existing == target {
                 Ok(())
             } else {
@@ -649,7 +663,7 @@ fn validate_link_for_install(link: &Path, target: &Path) -> Result<(), KbError> 
         }
         Ok(_) => Err(stale(link, "existing Skill target is not a symlink")),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(io("inspect Skill link", link, error)),
+        Err(error) => Err(io("inspect Skill link", link, &error)),
     }
 }
 
@@ -661,7 +675,7 @@ fn reject_link(path: &Path) -> Result<(), KbError> {
         )),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(io("inspect Skill directory", path, error)),
+        Err(error) => Err(io("inspect Skill directory", path, &error)),
     }
 }
 
@@ -676,10 +690,10 @@ fn read_optional_file(path: &Path) -> Result<Option<Vec<u8>>, KbError> {
             }
             fs::read(path)
                 .map(Some)
-                .map_err(|error| io("read managed Skill file", path, error))
+                .map_err(|error| io("read managed Skill file", path, &error))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(io("inspect managed Skill file", path, error)),
+        Err(error) => Err(io("inspect managed Skill file", path, &error)),
     }
 }
 
@@ -733,6 +747,6 @@ fn stale(path: &Path, reason: &str) -> KbError {
     )
 }
 
-fn io(action: &str, path: &Path, error: std::io::Error) -> KbError {
+fn io(action: &str, path: &Path, error: &std::io::Error) -> KbError {
     KbError::io_failure(action, path.display().to_string(), error.to_string())
 }

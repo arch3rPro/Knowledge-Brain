@@ -21,6 +21,12 @@ impl AgentRoots {
         }
     }
 
+    /// Resolve user and configuration roots from the operating system.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when system roots are unavailable or an override is
+    /// empty or relative.
     pub fn resolve(environment: &BTreeMap<String, String>) -> Result<Self, KbError> {
         let base = BaseDirs::new().ok_or_else(|| {
             KbError::invalid_config(
@@ -62,6 +68,11 @@ pub struct SkillTarget {
     pub bridge_file: PathBuf,
 }
 
+/// Resolve the Skill and bridge locations for one host and scope.
+///
+/// # Errors
+///
+/// Returns an error unless every supplied root is absolute.
 pub fn skill_target(
     vault_root: &Path,
     roots: &AgentRoots,
@@ -122,6 +133,11 @@ pub struct DetectedSkillHost {
     pub evidence: Vec<String>,
 }
 
+/// Detect supported Agent hosts from unambiguous files in a Vault root.
+///
+/// # Errors
+///
+/// Returns an error when the root is not an existing directory.
 pub fn detect_skill_hosts(root: &Path) -> Result<Vec<DetectedSkillHost>, KbError> {
     if !root.is_dir() {
         return Err(KbError::new(
@@ -162,6 +178,11 @@ pub fn detect_skill_hosts(root: &Path) -> Result<Vec<DetectedSkillHost>, KbError
         .collect())
 }
 
+/// Select an explicit host or the only detected host.
+///
+/// # Errors
+///
+/// Returns an error when automatic detection is empty or ambiguous.
 pub fn resolve_skill_host(
     explicit: Option<SkillHost>,
     detected: &[DetectedSkillHost],

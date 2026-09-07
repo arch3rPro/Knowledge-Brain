@@ -14,7 +14,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
     let mut server = McpServer::new(context, vault_id.clone(), false);
 
     let initialized = server
-        .handle(json!({
+        .handle(&json!({
             "jsonrpc":"2.0", "id":1, "method":"initialize",
             "params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"test","version":"1"}}
         }))
@@ -24,7 +24,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
     assert_eq!(initialized["result"]["capabilities"]["tools"], json!({}));
 
     let listed = server
-        .handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
+        .handle(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
         .unwrap();
     let names = listed["result"]["tools"]
         .as_array()
@@ -46,7 +46,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
     );
     assert!(!names.contains(&"kb_apply_operation"));
 
-    let status = call(&mut server, 3, "kb_status", json!({}));
+    let status = call(&mut server, 3, "kb_status", &json!({}));
     assert_eq!(status["result"]["isError"], false);
     assert_eq!(
         status["result"]["structuredContent"]["data"]["vault_id"],
@@ -57,7 +57,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         &mut server,
         4,
         "kb_apply_operation",
-        json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
+        &json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
     );
     assert_eq!(denied["error"]["code"], -32602);
 }
@@ -85,7 +85,7 @@ fn write_enabled_server_rejects_an_operation_owned_by_another_vault() {
     );
 
     let listed = server
-        .handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}))
+        .handle(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}))
         .unwrap();
     assert!(
         listed["result"]["tools"]
@@ -98,7 +98,7 @@ fn write_enabled_server_rejects_an_operation_owned_by_another_vault() {
         &mut server,
         2,
         "kb_apply_operation",
-        json!({"operation_id": foreign["operation_id"]}),
+        &json!({"operation_id": foreign["operation_id"]}),
     );
     assert_eq!(response["result"]["isError"], true);
     assert_eq!(
@@ -108,9 +108,9 @@ fn write_enabled_server_rejects_an_operation_owned_by_another_vault() {
     assert!(!other.join("KB.md").exists());
 }
 
-fn call(server: &mut McpServer, id: u64, name: &str, arguments: Value) -> Value {
+fn call(server: &mut McpServer, id: u64, name: &str, arguments: &Value) -> Value {
     server
-        .handle(json!({
+        .handle(&json!({
             "jsonrpc":"2.0", "id":id, "method":"tools/call",
             "params":{"name":name,"arguments":arguments}
         }))
