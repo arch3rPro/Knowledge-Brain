@@ -1,13 +1,19 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use kb_app::{
     AppContext, AppRequest, InitRequest, OperationRequest, OperationState, SkillRequest,
-    attach_operation_summary, summary_for_knowledge_plan, summary_for_state,
+    SourceCapturePlan, SourceCaptureResult, attach_operation_summary, summary_for_knowledge_plan,
+    summary_for_skill_plan, summary_for_skill_result, summary_for_source_plan,
+    summary_for_source_result, summary_for_state,
 };
 use kb_core::{
     CURRENT_SCHEMA_VERSION, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest,
-    KnowledgePlanResult, OperationId, OperationKind, PortableRelativePath, SkillHost,
-    SkillInstallMode, SkillScope,
+    KnowledgePlanResult, OperationId, OperationKind, PortableRelativePath, SkillAction,
+    SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillPlan, SkillScope,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -44,6 +50,125 @@ fn applied_summary_keeps_the_full_id_but_cannot_be_applied_again() {
     assert_eq!(summary.operation_state, "applied");
     assert!(!summary.requires_confirmation);
     assert!(!summary.can_apply);
+}
+
+#[test]
+fn applied_source_summary_keeps_truthful_encoded_identity_when_receipt_lacks_admission_path() {
+    let operation_id = OperationId::new();
+    let vault_id = Uuid::new_v4();
+    let digest = "a".repeat(64);
+    let plan: SourceCapturePlan = serde_json::from_value(json!({
+        "schema_version": CURRENT_SCHEMA_VERSION,
+        "operation_id": operation_id,
+        "kind": "capture_sources",
+        "vault_id": vault_id,
+        "target": "/vault",
+        "admission_sha256": "b".repeat(64),
+        "config_sha256": "c".repeat(64),
+        "inputs": [{
+            "version": {
+                "source": {
+                    "admission_id": "archive-id",
+                    "relative_path": "folder name/file#.md"
+                },
+                "sha256": digest
+            },
+            "relative_path": "Research Library/folder name/file#.md",
+            "media_type": "markdown",
+            "present": true
+        }],
+        "writes": [],
+        "created_at": "2026-09-08T00:00:00Z",
+        "app_version": "test"
+    }))
+    .unwrap();
+    let result: SourceCaptureResult = serde_json::from_value(json!({
+        "kind": "capture_sources",
+        "operation_id": operation_id,
+        "vault_id": vault_id,
+        "target": "/vault",
+        "captured": [format!(
+            "kb-source://archive-id/folder%20name/file%23.md?sha256={digest}"
+        )],
+        "marked_missing": [],
+        "warnings": []
+    }))
+    .unwrap();
+
+    let planned = summary_for_source_plan(&plan);
+    let applied = summary_for_source_result(&result);
+
+    assert_eq!(
+        planned.affected_paths,
+        vec!["Research Library/folder name/file#.md"]
+    );
+    assert_eq!(
+        applied.affected_paths,
+        vec![format!(
+            "kb-source://archive-id/folder%20name/file%23.md?sha256={digest}"
+        )]
+    );
+}
+
+#[test]
+fn user_skill_summaries_ignore_misleading_root_components_and_use_portable_separators() {
+    let operation_id = OperationId::new();
+    let vault_id = Uuid::new_v4();
+    let vault_root = PathBuf::from_iter(["vault-root"]);
+    let changed = PathBuf::from_iter([
+        "overrides",
+        "skills",
+        "tenant",
+        ".codex",
+        "skills",
+        "kb-query",
+        "SKILL.md",
+    ]);
+    let plan = SkillPlan {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        operation_id,
+        kind: OperationKind::ManageSkill,
+        vault_id,
+        vault_root: vault_root.clone(),
+        host: SkillHost::Codex,
+        scope: SkillScope::User,
+        mode: SkillInstallMode::Copy,
+        action: SkillAction::Install,
+        files: vec![SkillFileChange {
+            path: changed.clone(),
+            before_sha256: None,
+            after: Some("content".into()),
+        }],
+        link: None,
+        created_at: "2026-09-08T00:00:00Z".into(),
+        app_version: "test".into(),
+    };
+    let result = SkillApplyResult {
+        kind: OperationKind::ManageSkill,
+        operation_id,
+        vault_id,
+        vault_root,
+        host: SkillHost::Codex,
+        scope: SkillScope::User,
+        mode: SkillInstallMode::Copy,
+        action: SkillAction::Install,
+        changed: vec![changed],
+        warnings: Vec::new(),
+    };
+
+    let planned = summary_for_skill_plan(&plan);
+    let applied = summary_for_skill_result(&result);
+
+    assert_eq!(
+        planned.affected_paths,
+        vec![".codex/skills/kb-query/SKILL.md"]
+    );
+    assert_eq!(
+        applied.affected_paths,
+        vec![".codex/skills/kb-query/SKILL.md"]
+    );
+    assert!(!planned.affected_paths[0].contains('\\'));
+    assert!(!applied.affected_paths[0].contains('\\'));
 }
 
 #[test]

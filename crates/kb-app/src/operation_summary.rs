@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use kb_core::{
     AdoptionPlan, KbError, KnowledgePlan, KnowledgePlanResult, OperationId, SkillAction,
-    SkillApplyResult, SkillPlan,
+    SkillApplyResult, SkillHost, SkillPlan, SkillScope,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -71,7 +71,7 @@ pub fn summary_for_source_result(result: &SourceCaptureResult) -> OperationSumma
         .captured
         .iter()
         .chain(&result.marked_missing)
-        .map(|source| source_relative_path(source))
+        .cloned()
         .collect();
     applied_summary(
         result.operation_id,
@@ -119,12 +119,10 @@ pub fn summary_for_skill_plan(plan: &SkillPlan) -> OperationSummary {
     let affected_paths = plan
         .files
         .iter()
-        .map(|change| host_relative_path(&change.path, &plan.vault_root))
-        .chain(
-            plan.link
-                .iter()
-                .map(|change| host_relative_path(&change.path, &plan.vault_root)),
-        )
+        .map(|change| host_relative_path(&change.path, &plan.vault_root, plan.scope, plan.host))
+        .chain(plan.link.iter().map(|change| {
+            host_relative_path(&change.path, &plan.vault_root, plan.scope, plan.host)
+        }))
         .collect();
     planned_summary(
         plan.operation_id,
@@ -146,7 +144,7 @@ pub fn summary_for_skill_result(result: &SkillApplyResult) -> OperationSummary {
         result
             .changed
             .iter()
-            .map(|path| host_relative_path(path, &result.vault_root))
+            .map(|path| host_relative_path(path, &result.vault_root, result.scope, result.host))
             .collect(),
         skill_action_label(result.action),
     )
@@ -239,42 +237,45 @@ fn skill_action_label(action: SkillAction) -> &'static str {
     }
 }
 
-fn source_relative_path(source: &str) -> String {
-    source
-        .strip_prefix("kb-source://")
-        .unwrap_or(source)
-        .split('?')
-        .next()
-        .unwrap_or(source)
-        .to_owned()
-}
-
-fn host_relative_path(path: &Path, vault_root: &Path) -> String {
-    if let Ok(relative) = path.strip_prefix(vault_root) {
-        return portable_path(relative);
+fn host_relative_path(
+    path: &Path,
+    vault_root: &Path,
+    scope: SkillScope,
+    host: SkillHost,
+) -> String {
+    if scope == SkillScope::Vault {
+        if let Ok(relative) = path.strip_prefix(vault_root) {
+            return portable_path(relative);
+        }
     }
     let components = path.components().collect::<Vec<_>>();
-    let start = components.iter().position(|component| {
-        matches!(
-            component,
-            Component::Normal(value)
-                if matches!(value.to_str(), Some(".agents" | ".codex" | ".claude" | ".gemini" | ".opencode" | "opencode" | "skills"))
-        )
-    });
+    let host_root = match host {
+        SkillHost::Codex => ".codex",
+        SkillHost::ClaudeCode => ".claude",
+        SkillHost::GeminiCli => ".gemini",
+        SkillHost::OpenCode => "opencode",
+    };
+    let start = components
+        .iter()
+        .rposition(|component| component.as_os_str() == host_root)
+        .or_else(|| {
+            components
+                .iter()
+                .rposition(|component| component.as_os_str() == "skills")
+        });
     start.map_or_else(
         || portable_path(path),
-        |index| {
-            components[index..]
-                .iter()
-                .collect::<PathBuf>()
-                .display()
-                .to_string()
-        },
+        |index| portable_components(&components[index..]),
     )
 }
 
 fn portable_path(path: &Path) -> String {
-    path.components()
+    portable_components(&path.components().collect::<Vec<_>>())
+}
+
+fn portable_components(components: &[Component<'_>]) -> String {
+    components
+        .iter()
         .filter_map(|component| match component {
             Component::Normal(value) => value.to_str(),
             Component::ParentDir => Some(".."),
