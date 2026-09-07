@@ -20,7 +20,9 @@ Backup archives are untrusted input. Verification rejects path traversal, links 
 
 ## Network and privacy
 
-The binary has no telemetry, automatic networking, HTTP server, MCP server, cloud account, built-in LLM, source downloader or synchronization. Future LAN access is an optional capability and must require explicit binding, authentication and transport policy; it is not enabled by the current binary.
+The binary has no telemetry, automatic outbound networking, MCP server, cloud account, built-in LLM, source downloader or synchronization. Its optional `kb serve` HTTP adapter defaults to loopback and read-only operation. Non-loopback binding and write-enabled operation require an explicit token file; when a token is configured, every route requires it. The process is fixed to one Vault identity, and operation inspection/apply rejects IDs belonging to another Vault.
+
+The HTTP adapter is plain text and sends no permissive CORS headers. Use non-loopback binding only on a trusted network or behind a user-managed TLS reverse proxy. A bearer token protects application access but does not encrypt Vault content, URLs, headers or responses in transit. Keep token files outside the Vault and version control, protect them with operating-system permissions, and do not pass tokens in command arguments or URLs. HTTP request bodies are bounded, but the service has not undergone denial-of-service hardening or hostile-network testing. See the [HTTP reference](docs/reference/http.md).
 
 Do not include private Vault content, credentials, personal paths or source documents in a vulnerability report. Provide the smallest synthetic reproduction, affected version, operating system, expected boundary and observed result. Until a private reporting channel is published, do not open a public report containing sensitive data.
 

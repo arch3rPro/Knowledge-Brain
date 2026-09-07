@@ -80,13 +80,19 @@
 
 ## Stage 4 — Agent 与应用入口
 
-**Status:** planned
+**Status:** in progress
 
 - 可移植 Agent Skill
 - MCP 适配器
-- 本机 HTTP 与 SSE
+- 本机/局域网可选 HTTP（Stage 4A implemented）；SSE planned
 - 可选局域网访问策略
 - WebUI 和 GUI 共用的应用接口
+
+### Stage 4A — 可选 HTTP 适配器
+
+**Status:** implemented（定向本地测试）。`kb serve` 默认回环只读；局域网监听和 operation apply 要求 token 文件及显式权限。服务固定到启动时解析的 Vault ID，路由通过 `kb-app` 复用状态、诊断、查询、lint、来源 review、知识计划、operation 查看与 apply，不接受任意 Vault 或文件路径。CLI 子进程和真实 TCP 测试覆盖启动信封、鉴权、请求限制、只读拒绝、跨 Vault 拒绝及显式保存。
+
+当前没有 TLS、daemon、自启动或 SSE。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。未运行 workspace 全量测试、release 二进制流程、浏览器 WebUI、拒绝服务加固或 Windows/Linux 原生验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
 
 ## Stage 5 — 搜索、备份与发布
 

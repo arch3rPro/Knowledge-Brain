@@ -3,7 +3,7 @@
 Knowledge-Brain 把可迁移的 Vault 数据、机器本地状态和产品程序分开。Vault 复制到其他位置或系统后仍携带自己的身份、配置和人类内容；注册表、执行进度和宿主缓存不随 Vault 迁移。
 
 ```text
-CLI / future GUI / future WebUI / future MCP / future HTTP
+CLI / HTTP / future GUI / future WebUI / future MCP
                          │
                          ▼
                   kb-app application layer
@@ -20,6 +20,7 @@ CLI / future GUI / future WebUI / future MCP / future HTTP
 - `kb-app`：完整用例、Vault 选择、配置合并、无损编辑、注册、锁、采用计划、来源保存、搜索、备份、状态和诊断。所有入口应调用这里的 `AppRequest → AppResponse`。
 - `kb-protocol`：带 `schema_version` 的成功与错误 JSON 信封。
 - `kb-cli`：解析命令参数并渲染人类或 JSON 输出；不直接读写 Vault 文件。
+- `kb-server`：HTTP 路由、鉴权、请求大小和状态码映射；只调用固定 Vault 的应用请求。
 
 ## 数据边界
 
@@ -52,6 +53,10 @@ Vault 注册表可以保存本机绝对路径；Vault 内生成的相对路径�
 来源保存也使用独立 review/apply 流程。记录、对象和日志共同恢复，读取入口在未完成保存时拒绝读取混合状态。来源快照与恢复规则由[来源参考](../reference/sources.md)定义；目录缓存及查询行为由[搜索参考](../reference/search.md)定义。
 
 CLI 和未来应用入口消费同一个 `LintReport`。文档规则和 CLI 的 strict 退出策略由 [Wiki lint 参考](../reference/lint.md)定义。
+
+## HTTP 边界
+
+`kb serve` 在同一可执行文件中按需启动，不把 CLI 变成 daemon 客户端。服务启动时把一个 Vault 解析为稳定 ID，之后每个路由只构造该 Vault 的 typed `AppRequest`。HTTP 的 token、监听地址和写入开关属于进程启动策略，不进入可迁移 Vault 配置。完整路由与网络限制见 [HTTP 参考](../reference/http.md)。
 
 ## 备份边界
 

@@ -99,3 +99,11 @@ kb capabilities [--json]
 `doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
 
 `version` 报告程序与 schema 版本。`capabilities` 明确报告功能是否实现；客户端不能从程序版本号推断能力。
+
+## HTTP 服务
+
+```text
+kb serve [--bind <IP:PORT>] [--token-file <PATH>] [--allow-write] [--vault <PATH_OR_ID>]
+```
+
+默认回环、只读且无需 token；局域网监听和 HTTP apply 都要求 token 文件。服务固定使用启动时选中的 Vault，不能从请求切换路径。路由、鉴权和明文网络边界见 [HTTP 参考](http.md)。
