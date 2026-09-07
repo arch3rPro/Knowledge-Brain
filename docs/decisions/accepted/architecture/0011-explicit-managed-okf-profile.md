@@ -26,4 +26,3 @@ concept 文档只有在 frontmatter 包含 `kb.managed: true` 时才应用 Knowl
 人工和外部 OKF 内容可以逐步进入同一个 Wiki，不需要先满足 Knowledge-Brain 的全部生成契约。受管理文档的所有权边界可由人和工具直接读取，也不随移动或生成器名称变化。
 
 删除 `kb.managed` 会让文档退出严格 Profile。lint 会忠实报告当前标记，而后续知识写入流程需要把标记纳入计划快照与保存前核对。
-

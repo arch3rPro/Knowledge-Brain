@@ -26,4 +26,3 @@ CLI、未来 MCP、HTTP、WebUI 和 GUI 都需要相同的知识结构检查。�
 CLI、未来 MCP、HTTP、WebUI 和 GUI 共享字段、严重度和 finding code。CLI 自动化可以选择失败退出，而交互使用可以一次读取完整报告。
 
 只检查默认退出码的脚本不会把 findings 当作失败；命令帮助和参考文档明确要求自动化使用 `--strict` 或读取报告。
-
