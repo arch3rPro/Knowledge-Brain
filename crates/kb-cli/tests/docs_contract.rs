@@ -1,6 +1,32 @@
 use assert_cmd::Command;
 
 const COMMAND_REFERENCE: &str = include_str!("../../../docs/reference/commands.md");
+const PROJECT_README: &str = include_str!("../../../README.md");
+
+#[test]
+fn project_readme_covers_the_first_run_contract() {
+    for section in [
+        "## 为什么选择 Knowledge-Brain",
+        "## Vault 如何组织",
+        "## 快速开始",
+        "## 当前能力",
+        "## 开发",
+        "## 文档",
+    ] {
+        assert!(PROJECT_README.contains(section), "missing {section}");
+    }
+
+    for contract in [
+        "admission.yml",
+        "Wiki/external-sources",
+        "Wiki/research",
+        "Wiki/articles",
+        "docs/reference/commands.md",
+        "docs/reference/configuration.md",
+    ] {
+        assert!(PROJECT_README.contains(contract), "missing {contract}");
+    }
+}
 
 #[test]
 fn command_reference_names_every_real_top_level_command() {
