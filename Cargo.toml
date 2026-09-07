@@ -17,6 +17,7 @@ publish = false
 globset = "=0.4.18"
 html2text = "=0.17.1"
 scraper = "=0.24.0"
+quick-xml = "=0.38.3"
 time = { version = "=0.3.45", features = ["formatting", "parsing"] }
 atomic-write-file = "0.3"
 clap = { version = "4.6", features = ["derive"] }
@@ -31,6 +32,7 @@ thiserror = "2"
 unicode-normalization = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 yaml-edit = "0.3"
+zip = { version = "=2.4.2", default-features = false, features = ["deflate"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

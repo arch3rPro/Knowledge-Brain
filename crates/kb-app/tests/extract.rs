@@ -3,6 +3,8 @@ use kb_core::{
     ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, MediaType, SourceLocation,
 };
 use std::path::Path;
+use std::{io::Write, io::Cursor};
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 #[test]
 fn document_extensions_have_distinct_media_types() {
@@ -91,6 +93,73 @@ fn html_without_reliable_text_is_metadata_only() {
     let empty = extract_bytes(MediaType::Html, b"<script>nothing visible</script>");
     assert_eq!(empty.status, ExtractionStatus::MetadataOnly);
     assert!(empty.blocks.is_empty());
+}
+
+#[test]
+fn epub_uses_package_title_and_spine_order_with_locations() {
+    let epub = zip_bytes(&[
+        (
+            "META-INF/container.xml",
+            br#"<?xml version="1.0"?><container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>"#,
+        ),
+        (
+            "OPS/package.opf",
+            br#"<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <metadata><dc:title>Portable Book</dc:title></metadata><manifest>
+            <item id="first" href="text/z.xhtml" media-type="application/xhtml+xml"/>
+            <item id="second" href="text/a.xhtml" media-type="application/xhtml+xml"/>
+            </manifest><spine><itemref idref="first"/><itemref idref="second"/></spine></package>"#,
+        ),
+        (
+            "OPS/text/a.xhtml",
+            br#"<html><body><h1 id="end">Second</h1><p>Second chapter.</p></body></html>"#,
+        ),
+        (
+            "OPS/text/z.xhtml",
+            br#"<html><body><h1>First</h1><p>First chapter. <a href="a.xhtml#end">Continue</a></p></body></html>"#,
+        ),
+    ]);
+
+    let document = extract_bytes(MediaType::Epub, &epub);
+
+    assert_eq!(document.status, ExtractionStatus::TextReady);
+    assert_eq!(document.extractor_id, "builtin-epub");
+    assert_eq!(document.title.as_deref(), Some("Portable Book"));
+    assert_eq!(document.blocks.len(), 2);
+    assert!(document.blocks[0].text.contains("First chapter."));
+    assert!(document.blocks[1].text.contains("Second chapter."));
+    assert_eq!(
+        document.blocks[0].location,
+        Some(SourceLocation::Epub {
+            resource: "OPS/text/z.xhtml".into(),
+            block: 1,
+        })
+    );
+    assert_eq!(document.links[0].target, "OPS/text/a.xhtml#end");
+    assert_eq!(document.links[0].text.as_deref(), Some("Continue"));
+}
+
+#[test]
+fn epub_rejects_invalid_or_excessively_expanded_archives() {
+    let corrupt = extract_bytes(MediaType::Epub, b"not a zip archive");
+    assert_eq!(corrupt.status, ExtractionStatus::MetadataOnly);
+    assert!(corrupt.warnings[0].contains("EPUB"));
+
+    let oversized = vec![b'x'; 16 * 1024 * 1024 + 1];
+    let archive = zip_bytes(&[("META-INF/container.xml", oversized.as_slice())]);
+    let document = extract_bytes(MediaType::Epub, &archive);
+    assert_eq!(document.status, ExtractionStatus::MetadataOnly);
+    assert!(document.warnings[0].contains("limit"));
+}
+
+fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    for (name, contents) in entries {
+        writer.start_file(*name, options).unwrap();
+        writer.write_all(contents).unwrap();
+    }
+    writer.finish().unwrap().into_inner()
 }
 #[test]
 fn headings_inside_fences_are_not_sections_and_lines_remain_original() {

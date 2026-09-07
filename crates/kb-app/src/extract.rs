@@ -2,6 +2,8 @@ use kb_core::{ExtractedBlock, ExtractedDocument, ExtractionStatus, Extractor, Me
 use std::path::Path;
 
 mod html;
+mod archive;
+mod epub;
 #[must_use]
 pub fn classify_media_type(path: &Path) -> MediaType {
     match path
@@ -30,6 +32,7 @@ pub fn extract_bytes(media: MediaType, bytes: &[u8]) -> ExtractedDocument {
     } else {
         match media {
             MediaType::Html => html::extract(bytes),
+            MediaType::Epub => epub::extract(bytes),
             _ => unavailable(media),
         }
     }
