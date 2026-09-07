@@ -749,6 +749,15 @@ pub(crate) fn ensure_mutation_allowed(root: &std::path::Path) -> Result<(), KbEr
             false,
             "Run the migration workflow with a compatible Knowledge-Brain version.",
         )),
+        SchemaCompatibility::OlderUnsupported => Err(KbError::new(
+            ErrorCode::MigrationUnavailable,
+            format!(
+                "Vault schema {} has no registered migration path.",
+                identity.schema_version
+            ),
+            false,
+            "Use a Knowledge-Brain version that supports this vault schema.",
+        )),
         SchemaCompatibility::NewerMinorReadOnly | SchemaCompatibility::NewerMajorDiagnosticOnly => {
             Err(KbError::new(
                 ErrorCode::SchemaTooNew,
