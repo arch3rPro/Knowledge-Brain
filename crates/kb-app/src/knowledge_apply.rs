@@ -6,7 +6,7 @@ use crate::{
 };
 use kb_core::{
     CURRENT_SCHEMA_VERSION, EffectiveConfig, ErrorCode, KbError, KnowledgePlan,
-    KnowledgePlanResult, OperationId, OperationKind, PortableRelativePath,
+    KnowledgePlanResult, OperationEventKind, OperationId, OperationKind, PortableRelativePath,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fs, path::Path};
@@ -38,7 +38,11 @@ pub fn apply_knowledge(
     id: OperationId,
     overrides: &ConfigOverrides,
 ) -> Result<KnowledgePlanResult, KbError> {
-    apply_inner(paths, id, overrides, None)
+    let result = apply_inner(paths, id, overrides, None);
+    if result.is_err() {
+        crate::operation_events::record_failed_if_known(paths, id);
+    }
+    result
 }
 
 fn apply_inner(
@@ -81,8 +85,23 @@ fn apply_inner(
         }
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
+        crate::operation_events::record_operation_event_now(
+            paths,
+            id,
+            OperationEventKind::Applied,
+            Some((plan.writes.len() as u64, plan.writes.len() as u64)),
+            "Knowledge save is complete.",
+        )?;
         return finish_housekeeping(root, &result_path, result);
     }
+
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applying,
+        Some((0, plan.writes.len() as u64)),
+        "Knowledge apply started.",
+    )?;
 
     let config = load_effective_config(root, paths, overrides)?;
     if config.schema_version != CURRENT_SCHEMA_VERSION || config.vault_id != plan.vault_id {
@@ -90,6 +109,13 @@ fn apply_inner(
     }
     validate_write_set(&plan)?;
     if progress_path.exists() {
+        crate::operation_events::record_operation_event_now(
+            paths,
+            id,
+            OperationEventKind::Recovering,
+            None,
+            "Interrupted knowledge save is being restored.",
+        )?;
         let progress: Progress = read_json(&progress_path)?;
         validate_progress(&plan, &progress)?;
         restore(root, &progress, &config)?;
@@ -97,7 +123,7 @@ fn apply_inner(
         remove_if_present(&marker)?;
     }
     preflight(&plan, &config)?;
-    save_writes(root, &config, id, &directory, &plan, fail_after)?;
+    save_writes(paths, root, &config, id, &directory, &plan, fail_after)?;
 
     let result = KnowledgePlanResult {
         kind: OperationKind::SaveKnowledge,
@@ -110,6 +136,13 @@ fn apply_inner(
     // The durable receipt is the commit point. Before it exists, retry restores
     // all operation-owned writes and starts from the reviewed preflight state.
     write_json(&result_path, &result)?;
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applied,
+        Some((plan.writes.len() as u64, plan.writes.len() as u64)),
+        "Knowledge save is complete.",
+    )?;
     #[cfg(test)]
     crash_for_test("receipt");
     remove_if_present(&marker)?;
@@ -247,6 +280,7 @@ fn preflight(plan: &KnowledgePlan, config: &EffectiveConfig) -> Result<(), KbErr
 }
 
 fn save_writes(
+    paths: &UserPaths,
     root: &Path,
     config: &EffectiveConfig,
     id: OperationId,
@@ -294,6 +328,13 @@ fn save_writes(
             } else {
                 crate::storage::create_new(&destination, bytes)?;
             }
+            crate::operation_events::record_operation_event_now(
+                paths,
+                id,
+                OperationEventKind::Progress,
+                Some((progress.entries.len() as u64, plan.writes.len() as u64)),
+                "Knowledge save progress was recorded.",
+            )?;
             #[cfg(test)]
             crash_for_test(&format!("write-{}", progress.entries.len()));
             if fail_after == Some(progress.entries.len()) {
@@ -409,7 +450,9 @@ fn crash_for_test(point: &str) {
 mod tests {
     use super::*;
     use crate::{InitRequest, create_knowledge_plan, init_vault};
-    use kb_core::{KnowledgeChangeRequest, KnowledgePlanRequest, PortableRelativePath};
+    use kb_core::{
+        KnowledgeChangeRequest, KnowledgePlanRequest, OperationEventKind, PortableRelativePath,
+    };
 
     fn paths(base: &Path) -> UserPaths {
         UserPaths::new(base.join("config"), base.join("state"), base.join("cache"))
@@ -504,6 +547,32 @@ mod tests {
                     write.content
                 );
             }
+            let events =
+                crate::operation_events::operation_events(&user_paths, plan.operation_id).unwrap();
+            assert_eq!(
+                events.events.first().unwrap().kind,
+                OperationEventKind::Planned
+            );
+            assert_eq!(
+                events
+                    .events
+                    .iter()
+                    .any(|event| event.kind == OperationEventKind::Recovering),
+                point != "receipt"
+            );
+            assert_eq!(
+                events.events.last().unwrap().kind,
+                OperationEventKind::Applied
+            );
+            let event_count = events.events.len();
+            apply_knowledge(&user_paths, plan.operation_id, &ConfigOverrides::default()).unwrap();
+            assert_eq!(
+                crate::operation_events::operation_events(&user_paths, plan.operation_id)
+                    .unwrap()
+                    .events
+                    .len(),
+                event_count
+            );
         }
     }
 

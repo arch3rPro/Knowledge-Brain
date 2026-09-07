@@ -16,9 +16,9 @@
 
 ### Task 2: Operation lifecycle integration
 
-- [ ] Record plan creation for adoption, source capture and knowledge save.
-- [ ] Record applying, durable progress, recovery, failure and completion transitions.
-- [ ] Verify process-exit recovery and completed-operation retry do not duplicate transitions.
+- [x] Record plan creation for adoption, source capture and knowledge save.
+- [x] Record applying, durable progress, recovery, failure and completion transitions.
+- [x] Verify process-exit recovery and completed-operation retry do not duplicate transitions.
 
 ### Task 3: Shared read request
 

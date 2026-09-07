@@ -301,7 +301,15 @@ fn persist_plan(user_paths: &UserPaths, plan: &KnowledgePlan) -> Result<(), KbEr
     write_json(&directory.join("plan.json"), plan)?;
     let bytes = serde_json::to_vec(plan)
         .map_err(|error| KbError::invalid_config("knowledge plan", error.to_string()))?;
-    write_json(&directory.join("plan.sha256"), &hash(&bytes))
+    write_json(&directory.join("plan.sha256"), &hash(&bytes))?;
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        plan.operation_id,
+        kb_core::OperationEventKind::Planned,
+        Some((0, plan.writes.len() as u64)),
+        "Knowledge save plan is ready for review.",
+    )?;
+    Ok(())
 }
 
 fn utf8<'a>(path: &PortableRelativePath, bytes: &'a [u8]) -> Result<&'a str, KbError> {

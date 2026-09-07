@@ -75,7 +75,15 @@ pub(crate) fn operation_directory(user_paths: &UserPaths, operation_id: Operatio
 pub(crate) fn save_plan(user_paths: &UserPaths, plan: &AdoptionPlan) -> Result<(), KbError> {
     let directory = operation_directory(user_paths, plan.operation_id);
     create_private_directory_all(&directory)?;
-    write_json(&directory.join("plan.json"), plan)
+    write_json(&directory.join("plan.json"), plan)?;
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        plan.operation_id,
+        kb_core::OperationEventKind::Planned,
+        Some((0, plan.creates.len() as u64)),
+        "Adoption plan is ready for review.",
+    )?;
+    Ok(())
 }
 
 pub(crate) fn save_result(user_paths: &UserPaths, result: &AdoptionResult) -> Result<(), KbError> {

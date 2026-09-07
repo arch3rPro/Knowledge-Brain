@@ -9,7 +9,8 @@ use std::{
 
 use kb_core::{
     AdoptionPlan, CURRENT_SCHEMA_VERSION, ErrorCode, KbError, ObservedEntry, ObservedKind,
-    OperationId, OperationKind, PlannedFile, PortableRelativePath, portability_key,
+    OperationEventKind, OperationId, OperationKind, PlannedFile, PortableRelativePath,
+    portability_key,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -101,7 +102,11 @@ pub fn apply_operation(
     user_paths: &UserPaths,
     operation_id: OperationId,
 ) -> Result<AdoptionResult, KbError> {
-    apply_operation_inner(user_paths, operation_id, None)
+    let result = apply_operation_inner(user_paths, operation_id, None);
+    if result.is_err() {
+        crate::operation_events::record_failed_if_known(user_paths, operation_id);
+    }
+    result
 }
 
 fn apply_operation_inner(
@@ -111,7 +116,16 @@ fn apply_operation_inner(
 ) -> Result<AdoptionResult, KbError> {
     let _lock = operation_lock(user_paths)?;
     let plan = match inspect_operation(user_paths, operation_id)? {
-        OperationState::Applied(result) => return Ok(result),
+        OperationState::Applied(result) => {
+            crate::operation_events::record_operation_event_now(
+                user_paths,
+                operation_id,
+                OperationEventKind::Applied,
+                None,
+                "Vault adoption is complete.",
+            )?;
+            return Ok(result);
+        }
         OperationState::Planned(plan) => plan,
         OperationState::PlannedSource(_)
         | OperationState::AppliedSource(_)
@@ -124,12 +138,26 @@ fn apply_operation_inner(
         }
     };
     validate_plan_identity(&plan, operation_id)?;
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        operation_id,
+        OperationEventKind::Applying,
+        Some((0, plan.creates.len() as u64)),
+        "Vault adoption started.",
+    )?;
 
     let receipt_path = vault_receipt_path(&plan);
     if receipt_path.is_file() {
         let result: AdoptionResult = read_json(&receipt_path)?;
         verify_result(&plan, &result)?;
         save_result(user_paths, &result)?;
+        crate::operation_events::record_operation_event_now(
+            user_paths,
+            operation_id,
+            OperationEventKind::Applied,
+            None,
+            "Vault adoption is complete.",
+        )?;
         return Ok(result);
     }
 
@@ -137,6 +165,13 @@ fn apply_operation_inner(
     verify_planned_files(&plan, &generated)?;
     let progress_path = progress_path(user_paths, operation_id);
     if progress_path.is_file() {
+        crate::operation_events::record_operation_event_now(
+            user_paths,
+            operation_id,
+            OperationEventKind::Recovering,
+            None,
+            "Interrupted Vault adoption is being restored.",
+        )?;
         let progress: ApplyProgress = read_json(&progress_path)?;
         validate_progress(&plan, &progress, &generated)?;
         if generated_is_complete(&plan.target, &generated)? {
@@ -181,7 +216,14 @@ fn apply_operation_inner(
         progress,
         fail_after_installed_file,
     };
-    let install = install_generated(&plan.target, &stage, &generated, &mut install_state);
+    let install = install_generated(
+        user_paths,
+        operation_id,
+        &plan.target,
+        &stage,
+        &generated,
+        &mut install_state,
+    );
     if let Err(error) = install {
         return rollback_or_recovery(
             &plan.target,
@@ -241,10 +283,19 @@ fn finish_adoption(user_paths: &UserPaths, plan: &AdoptionPlan) -> Result<Adopti
     }
     write_json(&receipt_path, &result)?;
     save_result(user_paths, &result)?;
+    crate::operation_events::record_operation_event_now(
+        user_paths,
+        plan.operation_id,
+        OperationEventKind::Applied,
+        None,
+        "Vault adoption is complete.",
+    )?;
     Ok(result)
 }
 
 fn install_generated(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
     target: &Path,
     stage: &Path,
     generated: &[(PortableRelativePath, Vec<u8>)],
@@ -272,6 +323,16 @@ fn install_generated(
         fs::remove_file(&source)
             .map_err(|error| io_error("remove staged file", &source, &error))?;
         tracking.installed_files.push(destination);
+        crate::operation_events::record_operation_event_now(
+            user_paths,
+            operation_id,
+            OperationEventKind::Progress,
+            Some((
+                tracking.installed_files.len() as u64,
+                generated.len() as u64,
+            )),
+            "Vault adoption progress was recorded.",
+        )?;
         if tracking.fail_after_installed_file == Some(tracking.installed_files.len()) {
             return Err(KbError::io_failure(
                 "continue injected adoption",

@@ -61,6 +61,36 @@ pub(crate) fn record_operation_event(
     Ok(event)
 }
 
+pub(crate) fn record_operation_event_now(
+    user_paths: &UserPaths,
+    operation_id: OperationId,
+    kind: OperationEventKind,
+    progress: Option<(u64, u64)>,
+    message: &str,
+) -> Result<OperationEvent, KbError> {
+    record_operation_event(
+        user_paths,
+        operation_id,
+        kind,
+        progress,
+        message,
+        OffsetDateTime::now_utc(),
+    )
+}
+
+pub(crate) fn record_failed_if_known(user_paths: &UserPaths, operation_id: OperationId) {
+    let directory = operation_directory(user_paths, operation_id);
+    if directory.join("plan.json").is_file() || directory.join("result.json").is_file() {
+        let _ = record_operation_event_now(
+            user_paths,
+            operation_id,
+            OperationEventKind::Failed,
+            None,
+            "Operation stopped with an error.",
+        );
+    }
+}
+
 pub fn operation_events(
     user_paths: &UserPaths,
     operation_id: OperationId,
@@ -91,7 +121,7 @@ fn synthetic_log(
             OperationEventKind::Planned,
             Some((0, value.creates.len() as u64)),
             "Operation plan is ready for review.",
-            value.created_at,
+            normalize_time(&value.created_at)?,
         ),
         OperationState::PlannedSource(value) => (
             OperationEventKind::Planned,
@@ -172,6 +202,18 @@ fn format_time(value: OffsetDateTime) -> Result<String, KbError> {
     value
         .format(&Rfc3339)
         .map_err(|error| KbError::invalid_config("operation event timestamp", error.to_string()))
+}
+
+fn normalize_time(value: &str) -> Result<String, KbError> {
+    if OffsetDateTime::parse(value, &Rfc3339).is_ok() {
+        return Ok(value.to_owned());
+    }
+    let seconds = value
+        .parse::<i64>()
+        .map_err(|error| KbError::invalid_config("operation timestamp", error.to_string()))?;
+    let timestamp = OffsetDateTime::from_unix_timestamp(seconds)
+        .map_err(|error| KbError::invalid_config("operation timestamp", error.to_string()))?;
+    format_time(timestamp)
 }
 
 #[cfg(test)]

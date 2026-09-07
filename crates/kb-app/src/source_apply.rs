@@ -6,7 +6,8 @@ use crate::{
     source_record,
 };
 use kb_core::{
-    CURRENT_SCHEMA_VERSION, EffectiveConfig, ErrorCode, KbError, OperationId, PortableRelativePath,
+    CURRENT_SCHEMA_VERSION, EffectiveConfig, ErrorCode, KbError, OperationEventKind, OperationId,
+    PortableRelativePath,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fs, path::Path};
@@ -31,7 +32,11 @@ pub(crate) fn apply_capture(
     id: OperationId,
     overrides: &ConfigOverrides,
 ) -> Result<SourceCaptureResult, KbError> {
-    apply_inner(paths, id, overrides, None)
+    let result = apply_inner(paths, id, overrides, None);
+    if result.is_err() {
+        crate::operation_events::record_failed_if_known(paths, id);
+    }
+    result
 }
 fn stale(message: impl Into<String>) -> KbError {
     KbError::new(
@@ -106,14 +111,35 @@ fn apply_inner(
         // A durable receipt means knowledge was saved; only housekeeping remains.
         remove_if_present(&marker)?;
         remove_if_present(&progress_path)?;
+        crate::operation_events::record_operation_event_now(
+            paths,
+            id,
+            OperationEventKind::Applied,
+            Some((plan.writes.len() as u64, plan.writes.len() as u64)),
+            "Source capture is complete.",
+        )?;
         return finish_housekeeping(root, &result_path, result);
     }
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applying,
+        Some((0, plan.writes.len() as u64)),
+        "Source capture apply started.",
+    )?;
     let config = load_effective_config(root, paths, overrides)?;
     if config.schema_version != CURRENT_SCHEMA_VERSION || config.vault_id != plan.vault_id {
         return Err(stale("Vault schema or identity changed."));
     }
     validate_plan(&plan)?;
     if progress_path.exists() {
+        crate::operation_events::record_operation_event_now(
+            paths,
+            id,
+            OperationEventKind::Recovering,
+            None,
+            "Interrupted source capture is being restored.",
+        )?;
         let progress: Progress = read_json(&progress_path)?;
         validate_progress(&plan, &progress)?;
         restore(root, &progress, &config)?;
@@ -124,7 +150,7 @@ fn apply_inner(
     }
     preflight(&plan, paths, overrides, &config)?;
     let outputs = prepare_outputs(&plan, &config)?;
-    save_outputs(root, &config, id, &directory, outputs, fail_after)?;
+    save_outputs(paths, root, &config, id, &directory, outputs, fail_after)?;
     let result = SourceCaptureResult {
         kind: CaptureKind::CaptureSources,
         operation_id: id,
@@ -146,6 +172,13 @@ fn apply_inner(
     };
     // The receipt is the commit point. Until it exists, recovery restores the old knowledge.
     write_json(&result_path, &result)?;
+    crate::operation_events::record_operation_event_now(
+        paths,
+        id,
+        OperationEventKind::Applied,
+        Some((plan.writes.len() as u64, plan.writes.len() as u64)),
+        "Source capture is complete.",
+    )?;
     #[cfg(test)]
     crash_for_test("receipt");
     fs::remove_file(&marker).map_err(|e| io("remove marker", &marker, e))?;
@@ -241,6 +274,7 @@ fn prepare_outputs(
     Ok(outputs)
 }
 fn save_outputs(
+    paths: &UserPaths,
     root: &Path,
     config: &EffectiveConfig,
     id: OperationId,
@@ -248,6 +282,7 @@ fn save_outputs(
     outputs: Vec<Output>,
     fail_after: Option<usize>,
 ) -> Result<(), KbError> {
+    let total = outputs.len() as u64;
     let marker = safe_path(root, MARKER)?;
     let progress_path = directory.join("source-progress.json");
     let mut progress = Progress {
@@ -291,6 +326,13 @@ fn save_outputs(
             } else {
                 crate::atomic_replace(&dest, &bytes)?;
             }
+            crate::operation_events::record_operation_event_now(
+                paths,
+                id,
+                OperationEventKind::Progress,
+                Some((progress.entries.len() as u64, total)),
+                "Source capture progress was saved.",
+            )?;
             #[cfg(test)]
             crash_for_test(&format!("write-{}", progress.entries.len()));
             if fail_after == Some(progress.entries.len()) {
@@ -547,6 +589,7 @@ fn restore(root: &Path, p: &Progress, c: &EffectiveConfig) -> Result<(), KbError
 mod tests {
     use super::*;
     use crate::{InitRequest, init_vault, review_sources};
+    use kb_core::OperationEventKind;
     fn paths(base: &Path) -> UserPaths {
         UserPaths::new(base.join("config"), base.join("state"), base.join("cache"))
     }
@@ -627,6 +670,32 @@ mod tests {
                     .unwrap()
                     .operation_id
                     .is_none()
+            );
+            let events =
+                crate::operation_events::operation_events(&user, plan.operation_id).unwrap();
+            assert_eq!(
+                events.events.first().unwrap().kind,
+                OperationEventKind::Planned
+            );
+            assert_eq!(
+                events
+                    .events
+                    .iter()
+                    .any(|event| event.kind == OperationEventKind::Recovering),
+                point != "receipt"
+            );
+            assert_eq!(
+                events.events.last().unwrap().kind,
+                OperationEventKind::Applied
+            );
+            let event_count = events.events.len();
+            apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap();
+            assert_eq!(
+                crate::operation_events::operation_events(&user, plan.operation_id)
+                    .unwrap()
+                    .events
+                    .len(),
+                event_count
             );
         }
     }

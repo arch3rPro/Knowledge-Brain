@@ -249,6 +249,13 @@ fn persist_plan(
                 .map_err(|e| KbError::invalid_config("plan", e.to_string()))?,
         );
         write_json(&directory.join("plan.sha256"), &digest)?;
+        crate::operation_events::record_operation_event_now(
+            paths,
+            id,
+            kb_core::OperationEventKind::Planned,
+            Some((0, plan.writes.len() as u64)),
+            "Source capture plan is ready for review.",
+        )?;
         Some(id)
     })
 }
