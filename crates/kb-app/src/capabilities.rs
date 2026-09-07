@@ -8,6 +8,7 @@ pub struct Capabilities {
     pub schema_version: SchemaVersion,
     pub direct_search: bool,
     pub bm25: bool,
+    pub agent_skill: bool,
     pub extractors: Vec<String>,
     pub mcp: bool,
     pub http: bool,
@@ -21,6 +22,7 @@ pub fn capabilities() -> Capabilities {
         schema_version: CURRENT_SCHEMA_VERSION,
         direct_search: true,
         bm25: true,
+        agent_skill: true,
         extractors: vec![
             "builtin-text".into(),
             "builtin-html".into(),
@@ -41,6 +43,7 @@ pub fn capabilities() -> Capabilities {
             "lint",
             "cache",
             "source",
+            "skills",
             "operation",
             "config",
             "status",

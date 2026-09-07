@@ -3,9 +3,9 @@ use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
-    InitRequest, OperationRequest, VaultRequest,
+    InitRequest, OperationRequest, SkillRequest, VaultRequest,
 };
-use kb_core::{KnowledgePlanRequest, OperationId};
+use kb_core::{KnowledgePlanRequest, OperationId, SkillHost, SkillInstallMode, SkillScope};
 use uuid::Uuid;
 
 pub(crate) enum ParsedCommand {
@@ -101,6 +101,11 @@ enum Commands {
     Source {
         #[command(subcommand)]
         command: SourceCommands,
+    },
+    /// Install and inspect the portable Knowledge-Brain Agent Skill.
+    Skills {
+        #[command(subcommand)]
+        command: SkillCommands,
     },
     /// Create a minimum Vault in a nonexistent or empty directory.
     Init {
@@ -251,6 +256,44 @@ enum CacheCommands {
 #[derive(Subcommand)]
 enum SourceCommands {
     Verify {
+        #[command(flatten)]
+        context: VaultContext,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillCommands {
+    /// Detect supported Agent hosts without changing files.
+    Detect {
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Create a reviewable Skill installation plan.
+    Install {
+        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        host: String,
+        #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
+        scope: String,
+        #[arg(long, default_value = "copy", value_parser = ["copy", "symlink"])]
+        mode: String,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Report whether the installed Skill matches the embedded version.
+    Status {
+        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        host: String,
+        #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
+        scope: String,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Create a reviewable plan that removes only unchanged managed files.
+    Uninstall {
+        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        host: String,
+        #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
+        scope: String,
         #[command(flatten)]
         context: VaultContext,
     },
@@ -451,6 +494,7 @@ impl Cli {
                 json: context.json,
                 fail_on_findings: false,
             },
+            Commands::Skills { command } => skill_command(command),
             Commands::Init { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Init(InitRequest { target })),
                 json,
@@ -509,6 +553,98 @@ impl Cli {
                 fail_on_findings: false,
             },
         }
+    }
+}
+
+fn skill_command(command: SkillCommands) -> ParsedCommand {
+    let (request, json) = match command {
+        SkillCommands::Detect { context } => (
+            Ok(AppRequest::Skills(SkillRequest::Detect {
+                vault: context.vault,
+            })),
+            context.json,
+        ),
+        SkillCommands::Install {
+            host,
+            scope,
+            mode,
+            context,
+        } => (
+            parse_skill_host(&host).map(|host| {
+                AppRequest::Skills(SkillRequest::Install {
+                    vault: context.vault,
+                    host,
+                    scope: parse_skill_scope(&scope),
+                    mode: parse_skill_mode(&mode),
+                })
+            }),
+            context.json,
+        ),
+        SkillCommands::Status {
+            host,
+            scope,
+            context,
+        } => (
+            parse_skill_host(&host).map(|host| {
+                AppRequest::Skills(SkillRequest::Status {
+                    vault: context.vault,
+                    host,
+                    scope: parse_skill_scope(&scope),
+                })
+            }),
+            context.json,
+        ),
+        SkillCommands::Uninstall {
+            host,
+            scope,
+            context,
+        } => (
+            parse_skill_host(&host).map(|host| {
+                AppRequest::Skills(SkillRequest::Uninstall {
+                    vault: context.vault,
+                    host,
+                    scope: parse_skill_scope(&scope),
+                })
+            }),
+            context.json,
+        ),
+    };
+    ParsedCommand::App {
+        request,
+        json,
+        fail_on_findings: false,
+    }
+}
+
+fn parse_skill_host(value: &str) -> Result<Option<SkillHost>, kb_core::KbError> {
+    Ok(match value {
+        "auto" => None,
+        "codex" => Some(SkillHost::Codex),
+        "claude-code" => Some(SkillHost::ClaudeCode),
+        "gemini-cli" => Some(SkillHost::GeminiCli),
+        "opencode" => Some(SkillHost::OpenCode),
+        _ => {
+            return Err(kb_core::KbError::invalid_config(
+                "Skill host",
+                "unsupported host",
+            ));
+        }
+    })
+}
+
+fn parse_skill_scope(value: &str) -> SkillScope {
+    if value == "user" {
+        SkillScope::User
+    } else {
+        SkillScope::Vault
+    }
+}
+
+fn parse_skill_mode(value: &str) -> SkillInstallMode {
+    if value == "symlink" {
+        SkillInstallMode::Symlink
+    } else {
+        SkillInstallMode::Copy
     }
 }
 
