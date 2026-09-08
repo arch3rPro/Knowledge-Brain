@@ -110,8 +110,29 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         ]
     );
     assert!(!names.contains(&"kb_apply_operation"));
+    let query_tool = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "kb_query")
+        .unwrap();
+    assert_eq!(
+        query_tool["inputSchema"]["properties"]["match_mode"],
+        json!({"type":"string","enum":["relevant","exact"],"default":"relevant"})
+    );
 
-    let status = call(&mut server, 3, "kb_status", &json!({}));
+    let exact = call(
+        &mut server,
+        3,
+        "kb_query",
+        &json!({"query":"needle","match_mode":"exact"}),
+    );
+    assert_eq!(
+        exact["result"]["structuredContent"]["data"]["match_mode"],
+        "exact"
+    );
+
+    let status = call(&mut server, 4, "kb_status", &json!({}));
     assert_eq!(status["result"]["isError"], false);
     assert_eq!(
         status["result"]["structuredContent"]["data"]["vault_id"],
@@ -120,7 +141,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
 
     let denied = call(
         &mut server,
-        4,
+        5,
         "kb_apply_operation",
         &json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
     );

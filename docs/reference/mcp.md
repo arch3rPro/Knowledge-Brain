@@ -35,6 +35,8 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 | `kb_plan_knowledge` | 从结构化请求创建 research/article 计划 |
 | `kb_operation_show` | 查看属于固定 Vault 的计划或结果 |
 
+`kb_query` 接受必填的 `query`，以及可选的 `scope`、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)与[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#查询意图)。
+
 默认不注册 `kb_apply_operation`。创建来源或知识计划只会返回 operation ID，不会写入 Vault。
 
 显式传入 `--allow-write` 后才注册 `kb_apply_operation`。调用者仍须提供一个已经审阅并获准执行的 operation ID；应用层会重新核对 operation 归属、Vault 身份、文件旧状态和恢复状态。属于其他 Vault 的 ID 会被拒绝。

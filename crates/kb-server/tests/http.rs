@@ -140,6 +140,17 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     assert_eq!(response["schema_version"], "v1.0");
     assert_eq!(response["data"]["root"], vault.display().to_string());
 
+    let (status, response) = request(
+        &server,
+        "POST",
+        "/query",
+        None,
+        r#"{"query":"needle","scope":"wiki","limit":10,"strict_backend":false,"match_mode":"exact"}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{response}");
+    assert_eq!(response["data"]["match_mode"], "exact");
+
     let (status, response) = request(&server, "POST", "/query", None, "{").await;
     assert_eq!(status, 400);
     assert_eq!(response["error"]["code"], "invalid_config");

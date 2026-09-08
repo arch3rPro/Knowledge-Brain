@@ -33,7 +33,7 @@ Authorization: Bearer <token>
 | `GET /operations/{id}/events` | 无 | 订阅可重连的 operation SSE |
 | `POST /operations/{id}/apply` | 无 | 应用计划，仅 `--allow-write` |
 
-`SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit` 和 `strict_backend`。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
+`SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)与[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#查询意图)。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
 
 成功与失败都使用和 CLI `--json` 相同的 `schema_version: v1.0` 信封。常见 HTTP 映射是：鉴权缺失 `401`、权限不足 `403`、Vault/operation 不存在 `404`、陈旧计划或恢复冲突 `409`、请求或领域校验失败 `400`、内部 I/O 失败 `500`。客户端仍应以稳定的 `error.code` 判断业务原因。
 

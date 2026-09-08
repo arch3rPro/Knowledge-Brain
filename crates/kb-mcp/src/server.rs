@@ -1,5 +1,7 @@
 use kb_app::{AppContext, AppRequest, OperationRequest};
-use kb_core::{KbError, KnowledgePlanRequest, OperationId, SearchRequest, SearchScope};
+use kb_core::{
+    KbError, KnowledgePlanRequest, OperationId, SearchMatchMode, SearchRequest, SearchScope,
+};
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -82,6 +84,7 @@ impl McpServer {
                         "query":{"type":"string","minLength":1},
                         "scope":{"type":"string","enum":["wiki","sources","all"],"default":"wiki"},
                         "limit":{"type":"integer","minimum":1,"maximum":100,"default":10},
+                        "match_mode":{"type":"string","enum":["relevant","exact"],"default":"relevant"},
                         "strict_backend":{"type":"boolean","default":false}
                     },
                     "required":["query"],
@@ -189,6 +192,7 @@ impl McpServer {
                     scope: args.scope.into(),
                     limit: args.limit,
                     strict_backend: args.strict_backend,
+                    match_mode: args.match_mode,
                 },
             }),
             "kb_lint" => empty(&arguments).map(|()| AppRequest::Lint {
@@ -241,6 +245,8 @@ struct QueryArguments {
     scope: WireScope,
     #[serde(default = "default_limit")]
     limit: usize,
+    #[serde(default)]
+    match_mode: SearchMatchMode,
     #[serde(default)]
     strict_backend: bool,
 }

@@ -5,7 +5,9 @@ use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
     InitRequest, OperationRequest, SkillRequest, VaultRequest,
 };
-use kb_core::{KnowledgePlanRequest, OperationId, SkillHost, SkillInstallMode, SkillScope};
+use kb_core::{
+    KnowledgePlanRequest, OperationId, SearchMatchMode, SkillHost, SkillInstallMode, SkillScope,
+};
 use uuid::Uuid;
 
 pub(crate) enum ParsedCommand {
@@ -92,6 +94,9 @@ enum Commands {
         scope: String,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Verify a case-sensitive literal instead of discovering relevant results.
+        #[arg(long)]
+        exact: bool,
         /// Fail instead of falling back when the selected backend is unavailable.
         #[arg(long)]
         strict_backend: bool,
@@ -491,9 +496,10 @@ impl Cli {
                 query,
                 scope,
                 limit,
+                exact,
                 strict_backend,
                 context,
-            } => query_command(query, &scope, limit, strict_backend, context),
+            } => query_command(query, &scope, limit, exact, strict_backend, context),
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
@@ -759,6 +765,7 @@ fn query_command(
     query: String,
     scope: &str,
     limit: usize,
+    exact: bool,
     strict_backend: bool,
     context: VaultContext,
 ) -> ParsedCommand {
@@ -769,6 +776,11 @@ fn query_command(
                 query,
                 limit,
                 strict_backend,
+                match_mode: if exact {
+                    SearchMatchMode::Exact
+                } else {
+                    SearchMatchMode::Relevant
+                },
                 scope: match scope {
                     "sources" => kb_core::SearchScope::Sources,
                     "all" => kb_core::SearchScope::All,

@@ -35,6 +35,12 @@ fn optional_bm25f_is_ranked_explainable_incremental_and_strict_when_requested() 
 
     let fallback = run(base, &["query", "needle", "--vault", path, "--json"]);
     assert!(!fallback["data"]["warnings"].as_array().unwrap().is_empty());
+    assert_eq!(fallback["data"]["match_mode"], "relevant");
+    let exact = run(
+        base,
+        &["query", "needle", "--exact", "--vault", path, "--json"],
+    );
+    assert_eq!(exact["data"]["match_mode"], "exact");
     run(base, &["cache", "rebuild", "--vault", path, "--json"]);
     let ranked = run(base, &["query", "needle", "--vault", path, "--json"]);
     assert_ranked(&ranked);
