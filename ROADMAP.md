@@ -11,9 +11,9 @@
 
 ## 跨阶段使用体验
 
-**Status:** in progress
+**Status:** implemented
 
-短 Hash、人类可读操作摘要、一次最终写入确认和 relevant/exact 查询已实现。来源保存与知识保存的组合入口仍待独立设计；问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
+短 Hash、人类可读操作摘要、一次最终写入确认、relevant/exact 查询，以及 `kb source save` / `kb knowledge save` 组合入口均已实现。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
 
 实现契约见[使用体验与 Agent Skill 套件设计](docs/superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
 
@@ -90,14 +90,16 @@
 
 ## Stage 4 — Agent 与应用入口
 
-**Status:** in progress
+**Status:** implemented
 
 - 可移植 Agent Skill
 - MCP 适配器
 - 本机/局域网可选 HTTP（Stage 4A implemented）
 - 可恢复 operation 事件与 SSE（Stage 4B implemented）
 - 可选局域网访问策略
-- WebUI 和 GUI 共用的应用接口
+- CLI、MCP 和 HTTP 共用的应用接口
+
+WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞当前 Agent 与应用入口阶段。
 
 ### Stage 4C — Portable Agent Skill 与 MCP stdio
 

@@ -56,7 +56,7 @@ Agent 自动完成定位 Vault、读取配置、查询、review、生成计划�
 
 ## UX-003 — 缩短并澄清核心流程
 
-**状态：** planned。三条任务路径及单次确认语义已经落地；组合入口的实现契约见[组合保存入口设计](../superpowers/specs/2026-09-08-composite-save-entries-design.md)，将以明确领域名称保留预览与写入授权边界。
+**状态：** 已解决。`kb source save` 与 `kb knowledge save` 提供组合入口；默认准备摘要，`--confirm` 提交同一份已准备内容，`--yes` 用于调用前已经取得授权的单次执行。底层 `review`、`plan create`、`operation show` 和 `apply` 继续用于高级编排。
 
 查询是随时可用的读取能力，不是写笔记或入库后的强制步骤。核心体验分为三个独立路径。
 
@@ -72,7 +72,7 @@ Agent 自动完成定位 Vault、读取配置、查询、review、生成计划�
 保存来源版本
 ```
 
-Agent 面向用户描述“发现了什么变化”和“将保存什么”，无需暴露每个内部命令。CLI 仍可保留 `review`、`operation show` 和 `apply` 作为可组合的底层能力；后续可以增加组合入口，但命令名称和参数需在实现前单独设计。
+Agent 面向用户描述“发现了什么变化”和“将保存什么”，无需暴露每个内部命令。CLI 使用 `kb source save` 完成该流程，并保留 `review`、`operation show` 和 `apply` 作为可组合的底层能力。
 
 ### 查询知识
 
@@ -176,9 +176,8 @@ doctor 应分别命名 Vault 结构检查与机器级运行目录检查，并说
 - 不在问题定义阶段确定新的组合命令名称。
 - 不取消陈旧计划检测、中断恢复、并发锁或人工修改保护。
 
-## 后续实施顺序
+## 实现结果
 
 Portable Agent Skill 的交互约束已由八项 `kb-*` Skill 落地：只读动作不要求确认，创建计划与最终 apply 保持一次明确确认；`kb skills` 与 `npx skills add` 的文件所有权互不覆盖。
 
-1. 设计来源保存与知识保存的组合入口，同时保留现有底层命令。
-2. 将相同语义用于 WebUI 和 GUI，并完成真实端到端工作流验证。
+来源与知识的组合入口复用同一应用层语义，CLI、MCP 和 HTTP 均保留预览、确认、陈旧状态复核与恢复规则。WebUI 和 GUI 的界面实现单独列入[未来扩展](future-extensions.md)。
