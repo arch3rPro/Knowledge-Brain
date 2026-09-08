@@ -643,9 +643,14 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
     let host = resolve_skill_host(explicit_host, &detected)?;
     let roots = context.agent_roots()?;
     match request {
-        SkillRequest::Status { .. } => {
-            to_value(crate::skill_status(&selected.root, &roots, host, scope)?)
-        }
+        SkillRequest::Status { .. } => to_value(crate::skill_status(
+            context.user_paths()?,
+            &selected.root,
+            selected.vault_id,
+            &roots,
+            host,
+            scope,
+        )?),
         SkillRequest::Install { mode, .. } => {
             ensure_mutation_allowed(&selected.root)?;
             let _lock = VaultLock::acquire(
@@ -670,7 +675,7 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
         SkillRequest::Uninstall { .. } => {
             ensure_mutation_allowed(&selected.root)?;
             let target = skill_target(&selected.root, &roots, host, scope)?;
-            let mode = match std::fs::symlink_metadata(&target.skill_dir) {
+            let mode = match std::fs::symlink_metadata(target.skills_root.join("kb-vault")) {
                 Ok(metadata) if metadata.file_type().is_symlink() => SkillInstallMode::Symlink,
                 _ => SkillInstallMode::Copy,
             };

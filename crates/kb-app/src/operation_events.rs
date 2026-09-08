@@ -153,7 +153,7 @@ fn synthetic_log(
             OperationEventKind::Planned,
             Some((
                 0,
-                value.files.len() as u64 + u64::from(value.link.is_some()),
+                value.files.len() as u64 + value.all_links().count() as u64,
             )),
             "Skill change plan is ready for review.",
             normalize_time(&value.created_at)?,

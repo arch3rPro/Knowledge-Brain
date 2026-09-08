@@ -64,7 +64,8 @@ fn override_path(
 pub struct SkillTarget {
     pub host: SkillHost,
     pub scope: SkillScope,
-    pub skill_dir: PathBuf,
+    pub skills_root: PathBuf,
+    pub legacy_skill_dir: PathBuf,
     pub bridge_file: PathBuf,
 }
 
@@ -122,7 +123,8 @@ pub fn skill_target(
     Ok(SkillTarget {
         host,
         scope,
-        skill_dir: base.join("skills/knowledge-brain"),
+        skills_root: base.join("skills"),
+        legacy_skill_dir: base.join("skills/knowledge-brain"),
         bridge_file,
     })
 }

@@ -1,7 +1,7 @@
 use kb_core::{
-    CURRENT_SCHEMA_VERSION, ErrorCode, KbError, OperationEventKind, OperationId, OperationKind,
-    SkillAction, SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillLinkChange,
-    SkillPlan, SkillScope,
+    CURRENT_SCHEMA_VERSION, ErrorCode, KbError, ManagedSkillAsset, ManagedSkillInstallation,
+    OperationEventKind, OperationId, OperationKind, SkillAction, SkillApplyResult, SkillFileChange,
+    SkillHost, SkillInstallMode, SkillLinkChange, SkillPlan, SkillScope,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -13,10 +13,12 @@ use std::{
 use uuid::Uuid;
 
 use crate::{
-    AgentRoots, OperationState, SkillTarget, UserPaths, VaultLock, atomic_replace,
-    inspect_operation,
+    AgentRoots, OperationState, SKILL_NAMES, SkillTarget, UserPaths, VaultLock, atomic_replace,
+    inspect_operation, legacy_skill_assets,
     lock::LockMode,
-    operation::{save_skill_plan, save_skill_result},
+    operation::{
+        create_private_directory_all, read_json, save_skill_plan, save_skill_result, write_json,
+    },
     skill_assets, skill_target,
 };
 
@@ -28,7 +30,10 @@ const BRIDGE_BLOCK: &str = "<!-- knowledge-brain:start -->\nWhen the active dire
 pub enum SkillInstallState {
     Absent,
     Current,
+    Partial,
     Modified,
+    External,
+    Legacy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -36,7 +41,7 @@ pub struct SkillStatusReport {
     pub host: SkillHost,
     pub scope: SkillScope,
     pub state: SkillInstallState,
-    pub skill_dir: PathBuf,
+    pub skills_root: PathBuf,
     pub bridge_file: PathBuf,
 }
 
@@ -46,56 +51,41 @@ pub struct SkillStatusReport {
 ///
 /// Returns an error when target paths or managed files cannot be inspected.
 pub fn skill_status(
+    user_paths: &UserPaths,
     vault_root: &Path,
+    vault_id: Uuid,
     roots: &AgentRoots,
     host: SkillHost,
     scope: SkillScope,
 ) -> Result<SkillStatusReport, KbError> {
     let target = skill_target(vault_root, roots, host, scope)?;
-    let metadata = fs::symlink_metadata(&target.skill_dir).ok();
-    let assets_state = match metadata {
-        None => SkillInstallState::Absent,
-        Some(metadata) if metadata.file_type().is_symlink() => {
-            if symlink_assets_match(&target.skill_dir)? {
-                SkillInstallState::Current
-            } else {
-                SkillInstallState::Modified
-            }
-        }
-        Some(metadata) if metadata.is_dir() => {
-            if copied_assets_match(&target.skill_dir)? {
-                SkillInstallState::Current
-            } else {
-                SkillInstallState::Modified
-            }
-        }
-        Some(_) => SkillInstallState::Modified,
+    let legacy_present = match fs::symlink_metadata(&target.legacy_skill_dir) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(io("inspect legacy Skill", &target.legacy_skill_dir, &error)),
     };
-    let bridge_state = match read_optional_file(&target.bridge_file)? {
-        None => SkillInstallState::Absent,
-        Some(bytes) => {
-            let text = std::str::from_utf8(&bytes).map_err(|error| {
-                KbError::invalid_config(target.bridge_file.display().to_string(), error.to_string())
-            })?;
-            if text.ends_with(BRIDGE_BLOCK) {
-                SkillInstallState::Current
-            } else if text.contains("<!-- knowledge-brain:") {
-                SkillInstallState::Modified
-            } else {
-                SkillInstallState::Absent
-            }
+    let state = if legacy_present {
+        if legacy_assets_match(&target.legacy_skill_dir)? {
+            SkillInstallState::Legacy
+        } else {
+            SkillInstallState::Modified
         }
-    };
-    let state = match (assets_state, bridge_state) {
-        (SkillInstallState::Absent, SkillInstallState::Absent) => SkillInstallState::Absent,
-        (SkillInstallState::Current, SkillInstallState::Current) => SkillInstallState::Current,
-        _ => SkillInstallState::Modified,
+    } else if let Some(record) = load_installation(user_paths, vault_id, host, scope)? {
+        if scope == SkillScope::Vault && record.vault_id != vault_id {
+            SkillInstallState::Modified
+        } else {
+            managed_state(&record, user_paths, &target)?
+        }
+    } else if has_external_skill(&target.skills_root)? {
+        SkillInstallState::External
+    } else {
+        SkillInstallState::Absent
     };
     Ok(SkillStatusReport {
         host,
         scope,
         state,
-        skill_dir: target.skill_dir,
+        skills_root: target.skills_root,
         bridge_file: target.bridge_file,
     })
 }
@@ -124,27 +114,32 @@ pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, Kb
         request.scope,
     )?;
     let status = skill_status(
+        request.user_paths,
         request.vault_root,
+        request.vault_id,
         request.roots,
         request.host,
         request.scope,
     )?;
     match (request.action, status.state) {
-        (SkillAction::Install | SkillAction::Uninstall, SkillInstallState::Modified) => {
+        (
+            _,
+            SkillInstallState::Modified | SkillInstallState::Partial | SkillInstallState::External,
+        ) => {
             return Err(stale(
-                &target.skill_dir,
-                "managed Skill content was modified",
+                &target.skills_root,
+                "managed Skill content changed or is not owned",
             ));
         }
         (SkillAction::Uninstall, SkillInstallState::Absent) => {
-            return Err(stale(&target.skill_dir, "managed Skill is not installed"));
+            return Err(stale(&target.skills_root, "managed Skill is not installed"));
         }
         _ => {}
     }
 
-    let (files, link) = match request.action {
-        SkillAction::Install => install_changes(request, &target)?,
-        SkillAction::Uninstall => uninstall_changes(request, &target)?,
+    let (files, links) = match request.action {
+        SkillAction::Install => install_changes(request, &target, status.state)?,
+        SkillAction::Uninstall => uninstall_changes(request, &target, status.state)?,
     };
     let plan = SkillPlan {
         schema_version: CURRENT_SCHEMA_VERSION,
@@ -157,7 +152,8 @@ pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, Kb
         mode: request.mode,
         action: request.action,
         files,
-        link,
+        links,
+        link: None,
         created_at: time::OffsetDateTime::now_utc().unix_timestamp().to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
     };
@@ -168,66 +164,307 @@ pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, Kb
 fn install_changes(
     request: &SkillPlanRequest<'_>,
     target: &SkillTarget,
-) -> Result<(Vec<SkillFileChange>, Option<SkillLinkChange>), KbError> {
-    let (asset_root, link) = match request.mode {
+    state: SkillInstallState,
+) -> Result<(Vec<SkillFileChange>, Vec<SkillLinkChange>), KbError> {
+    let (asset_root, links) = match request.mode {
         SkillInstallMode::Copy => {
-            reject_link(&target.skill_dir)?;
-            (target.skill_dir.clone(), None)
+            reject_skill_links(&target.skills_root)?;
+            (target.skills_root.clone(), Vec::new())
         }
         SkillInstallMode::Symlink => {
-            let canonical = request.user_paths.config_dir.join("skills/knowledge-brain");
-            validate_link_for_install(&target.skill_dir, &canonical)?;
-            (
-                canonical.clone(),
-                Some(SkillLinkChange {
-                    path: target.skill_dir.clone(),
-                    target: canonical,
-                    create: true,
-                }),
-            )
+            let canonical = request.user_paths.config_dir.join("skills");
+            let links = SKILL_NAMES
+                .iter()
+                .map(|name| {
+                    let path = target.skills_root.join(name);
+                    let target = canonical.join(name);
+                    validate_link_for_install(&path, &target)?;
+                    Ok(SkillLinkChange {
+                        path,
+                        target,
+                        create: true,
+                    })
+                })
+                .collect::<Result<Vec<_>, KbError>>()?;
+            (canonical, links)
         }
     };
     let mut files = asset_changes(&asset_root, true)?;
+    if state == SkillInstallState::Legacy {
+        files.extend(legacy_asset_changes(&target.legacy_skill_dir)?);
+    }
     files.push(bridge_install_change(&target.bridge_file)?);
-    Ok((files, link))
+    Ok((files, links))
 }
 
 fn uninstall_changes(
     request: &SkillPlanRequest<'_>,
     target: &SkillTarget,
-) -> Result<(Vec<SkillFileChange>, Option<SkillLinkChange>), KbError> {
-    let mut files = Vec::new();
-    let link = match fs::symlink_metadata(&target.skill_dir) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Some(SkillLinkChange {
-            path: target.skill_dir.clone(),
-            target: fs::read_link(&target.skill_dir)
-                .map_err(|error| io("read Skill link", &target.skill_dir, &error))?,
-            create: false,
-        }),
-        Ok(metadata) if metadata.is_dir() => {
-            files.extend(asset_changes(&target.skill_dir, false)?);
-            None
+    state: SkillInstallState,
+) -> Result<(Vec<SkillFileChange>, Vec<SkillLinkChange>), KbError> {
+    if state == SkillInstallState::Legacy {
+        let mut files = legacy_asset_changes(&target.legacy_skill_dir)?;
+        if fs::symlink_metadata(&target.bridge_file).is_ok() {
+            files.push(bridge_uninstall_change(&target.bridge_file)?);
         }
-        Ok(_) => return Err(stale(&target.skill_dir, "Skill target is not a directory")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(stale(&target.skill_dir, "managed Skill is not installed"));
+        return Ok((files, Vec::new()));
+    }
+    let record = load_installation(
+        request.user_paths,
+        request.vault_id,
+        request.host,
+        request.scope,
+    )?
+    .ok_or_else(|| {
+        stale(
+            &target.skills_root,
+            "managed Skill ownership record is missing",
+        )
+    })?;
+    if record.mode != request.mode {
+        return Err(stale(
+            &target.skills_root,
+            "installed Skill uses a different mode",
+        ));
+    }
+    let mut files = managed_asset_removals(&record.assets)?;
+    files.push(bridge_uninstall_change(&record.bridge_file)?);
+    Ok((
+        files,
+        record
+            .links
+            .into_iter()
+            .map(|link| SkillLinkChange {
+                create: false,
+                ..link
+            })
+            .collect(),
+    ))
+}
+
+fn installation_path(
+    user_paths: &UserPaths,
+    vault_id: Uuid,
+    host: SkillHost,
+    scope: SkillScope,
+) -> PathBuf {
+    let root = user_paths.state_dir.join("skill-installations");
+    match scope {
+        SkillScope::Vault => root
+            .join("vault")
+            .join(vault_id.to_string())
+            .join(format!("{}.json", host.as_str())),
+        SkillScope::User => root.join("user").join(format!("{}.json", host.as_str())),
+    }
+}
+
+fn load_installation(
+    user_paths: &UserPaths,
+    vault_id: Uuid,
+    host: SkillHost,
+    scope: SkillScope,
+) -> Result<Option<ManagedSkillInstallation>, KbError> {
+    let path = installation_path(user_paths, vault_id, host, scope);
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_json(&path).map(Some)
+}
+
+fn save_installation(
+    user_paths: &UserPaths,
+    installation: &ManagedSkillInstallation,
+) -> Result<(), KbError> {
+    let path = installation_path(
+        user_paths,
+        installation.vault_id,
+        installation.host,
+        installation.scope,
+    );
+    let parent = path
+        .parent()
+        .ok_or_else(|| KbError::invalid_config("Skill ownership", "missing parent"))?;
+    create_private_directory_all(parent)?;
+    write_json(&path, installation)
+}
+
+fn remove_installation(user_paths: &UserPaths, plan: &SkillPlan) -> Result<(), KbError> {
+    let path = installation_path(user_paths, plan.vault_id, plan.host, plan.scope);
+    fs::remove_file(&path).map_err(|error| io("remove Skill ownership", &path, &error))?;
+    for parent in [path.parent(), path.parent().and_then(Path::parent)] {
+        if let Some(parent) = parent {
+            let _ = fs::remove_dir(parent);
         }
-        Err(error) => return Err(io("inspect Skill target", &target.skill_dir, &error)),
+    }
+    Ok(())
+}
+
+fn has_external_skill(root: &Path) -> Result<bool, KbError> {
+    for name in SKILL_NAMES {
+        match fs::symlink_metadata(root.join(name)) {
+            Ok(_) => return Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io("inspect Skill target", &root.join(name), &error)),
+        }
+    }
+    Ok(false)
+}
+
+fn legacy_assets_match(root: &Path) -> Result<bool, KbError> {
+    let metadata =
+        fs::symlink_metadata(root).map_err(|error| io("inspect legacy Skill", root, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Ok(false);
+    }
+    for asset in legacy_skill_assets() {
+        if read_optional_file(&root.join(asset.path))?.as_deref() != Some(asset.bytes) {
+            return Ok(false);
+        }
+    }
+    Ok(walk_file_count(root)? == legacy_skill_assets().len())
+}
+
+fn legacy_asset_changes(root: &Path) -> Result<Vec<SkillFileChange>, KbError> {
+    legacy_skill_assets()
+        .iter()
+        .map(|asset| {
+            let path = root.join(asset.path);
+            let before = digest_optional_file(&path)?;
+            if before.as_deref() != Some(&asset.sha256) {
+                return Err(stale(
+                    &path,
+                    "legacy Skill bytes differ from the frozen fixture",
+                ));
+            }
+            Ok(SkillFileChange {
+                path,
+                before_sha256: before,
+                after: None,
+            })
+        })
+        .collect()
+}
+
+fn managed_asset_removals(assets: &[ManagedSkillAsset]) -> Result<Vec<SkillFileChange>, KbError> {
+    assets
+        .iter()
+        .map(|asset| {
+            let before = digest_optional_file(&asset.path)?;
+            if before.as_deref() != Some(&asset.sha256) {
+                return Err(stale(&asset.path, "managed Skill asset was modified"));
+            }
+            Ok(SkillFileChange {
+                path: asset.path.clone(),
+                before_sha256: before,
+                after: None,
+            })
+        })
+        .collect()
+}
+
+fn managed_state(
+    record: &ManagedSkillInstallation,
+    user_paths: &UserPaths,
+    target: &SkillTarget,
+) -> Result<SkillInstallState, KbError> {
+    let asset_root = if record.mode == SkillInstallMode::Symlink {
+        user_paths.config_dir.join("skills")
+    } else {
+        target.skills_root.clone()
     };
-    files.push(bridge_uninstall_change(&target.bridge_file)?);
-    if request.mode == SkillInstallMode::Copy && link.is_some() {
-        return Err(stale(
-            &target.skill_dir,
-            "installed Skill uses symlink mode, not copy mode",
-        ));
+    if record.schema_version != CURRENT_SCHEMA_VERSION
+        || record.host != target.host
+        || record.scope != target.scope
+        || record.skills_root != target.skills_root
+        || record.assets.len() != skill_assets().len()
+        || record.canonical_paths.len() != record.assets.len()
+        || record
+            .canonical_paths
+            .iter()
+            .zip(&record.assets)
+            .any(|(path, asset)| path != &asset.path)
+        || record
+            .assets
+            .iter()
+            .zip(skill_assets())
+            .any(|(managed, asset)| managed.path != asset_root.join(asset.path))
+        || record
+            .assets
+            .iter()
+            .zip(skill_assets())
+            .any(|(managed, asset)| managed.sha256 != asset.sha256)
+        || record.links != expected_links(target, user_paths, record.mode, true)
+    {
+        return Ok(SkillInstallState::Modified);
     }
-    if request.mode == SkillInstallMode::Symlink && link.is_none() {
-        return Err(stale(
-            &target.skill_dir,
-            "installed Skill uses copy mode, not symlink mode",
-        ));
+    let mut missing = false;
+    for asset in &record.assets {
+        match digest_optional_file(&asset.path)? {
+            None => missing = true,
+            Some(actual) if actual == asset.sha256 => {}
+            Some(_) => return Ok(SkillInstallState::Modified),
+        }
     }
-    Ok((files, link))
+    for link in &record.links {
+        match fs::symlink_metadata(&link.path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => missing = true,
+            Ok(metadata)
+                if metadata.file_type().is_symlink()
+                    && link.create
+                    && fs::read_link(&link.path).is_ok_and(|actual| actual == link.target) => {}
+            Ok(_) => return Ok(SkillInstallState::Modified),
+            Err(error) => return Err(io("inspect managed Skill link", &link.path, &error)),
+        }
+    }
+    match digest_optional_file(&record.bridge_file)? {
+        None => missing = true,
+        Some(actual) if actual == record.bridge_sha256 => {}
+        Some(_) => return Ok(SkillInstallState::Modified),
+    }
+    Ok(if missing {
+        SkillInstallState::Partial
+    } else {
+        SkillInstallState::Current
+    })
+}
+
+fn installation_from_plan(
+    plan: &SkillPlan,
+    user_paths: &UserPaths,
+    roots: &AgentRoots,
+) -> Result<ManagedSkillInstallation, KbError> {
+    let target = skill_target(&plan.vault_root, roots, plan.host, plan.scope)?;
+    let asset_root = if plan.mode == SkillInstallMode::Symlink {
+        user_paths.config_dir.join("skills")
+    } else {
+        target.skills_root.clone()
+    };
+    let assets = skill_assets()
+        .iter()
+        .map(|asset| ManagedSkillAsset {
+            path: asset_root.join(asset.path),
+            sha256: asset.sha256.clone(),
+        })
+        .collect::<Vec<_>>();
+    let bridge = plan
+        .files
+        .iter()
+        .find(|change| change.path == target.bridge_file)
+        .and_then(|change| change.after.as_deref())
+        .ok_or_else(|| KbError::invalid_config("Skill plan bridge", "missing installed bridge"))?;
+    Ok(ManagedSkillInstallation {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        vault_id: plan.vault_id,
+        host: plan.host,
+        scope: plan.scope,
+        mode: plan.mode,
+        skills_root: target.skills_root,
+        bridge_file: target.bridge_file,
+        bridge_sha256: hash(bridge.as_bytes()),
+        canonical_paths: assets.iter().map(|asset| asset.path.clone()).collect(),
+        assets,
+        links: plan.links.clone(),
+    })
 }
 
 fn asset_changes(root: &Path, install: bool) -> Result<Vec<SkillFileChange>, KbError> {
@@ -345,8 +582,7 @@ fn apply_skill_plan_inner(
         "apply Skill plan",
         Some(operation_id),
     )?;
-    let recovering =
-        plan.files.iter().any(file_is_after) || plan.link.as_ref().is_some_and(link_is_after);
+    let recovering = plan.files.iter().any(file_is_after) || plan.all_links().any(link_is_after);
     crate::operation_events::record_operation_event_now(
         user_paths,
         operation_id,
@@ -355,7 +591,7 @@ fn apply_skill_plan_inner(
         } else {
             OperationEventKind::Applying
         },
-        Some((0, plan.files.len() as u64 + u64::from(plan.link.is_some()))),
+        Some((0, plan.files.len() as u64 + plan.all_links().count() as u64)),
         if recovering {
             "Interrupted Skill change is continuing."
         } else {
@@ -364,7 +600,7 @@ fn apply_skill_plan_inner(
     )?;
     preflight(&plan)?;
 
-    let total = plan.files.len() + usize::from(plan.link.is_some());
+    let total = plan.files.len() + plan.all_links().count();
     let mut changed = Vec::new();
     let mut completed = 0;
     for change in &plan.files {
@@ -376,7 +612,7 @@ fn apply_skill_plan_inner(
         #[cfg(test)]
         crash_for_test(&format!("write-{completed}"));
     }
-    if let Some(link) = &plan.link {
+    for link in plan.all_links() {
         if apply_link_change(link)? {
             changed.push(link.path.clone());
         }
@@ -384,6 +620,7 @@ fn apply_skill_plan_inner(
         record_progress(user_paths, operation_id, completed, total)?;
     }
     cleanup_empty_skill_directories(&plan);
+    finalize_ownership(user_paths, roots, &plan)?;
     let result = SkillApplyResult {
         kind: OperationKind::ManageSkill,
         operation_id,
@@ -413,92 +650,268 @@ fn validate_plan_paths(
     roots: &AgentRoots,
 ) -> Result<(), KbError> {
     let target = skill_target(&plan.vault_root, roots, plan.host, plan.scope)?;
-    let mut allowed = BTreeSet::new();
-    if plan.mode == SkillInstallMode::Copy || plan.action == SkillAction::Install {
-        let asset_root = if plan.mode == SkillInstallMode::Symlink {
-            user_paths.config_dir.join("skills/knowledge-brain")
+    if plan.links.is_empty() && plan.link.is_some() {
+        return validate_legacy_single_link_plan(plan, user_paths, &target);
+    }
+    match plan.action {
+        SkillAction::Install => validate_install_plan(plan, user_paths, &target),
+        SkillAction::Uninstall => validate_uninstall_plan(plan, user_paths, &target),
+    }
+}
+
+fn validate_install_plan(
+    plan: &SkillPlan,
+    user_paths: &UserPaths,
+    target: &SkillTarget,
+) -> Result<(), KbError> {
+    let asset_root = if plan.mode == SkillInstallMode::Symlink {
+        user_paths.config_dir.join("skills")
+    } else {
+        target.skills_root.clone()
+    };
+    let expected_assets = skill_assets()
+        .iter()
+        .map(|asset| (asset_root.join(asset.path), asset.bytes))
+        .collect::<Vec<_>>();
+    let mut expected = expected_assets
+        .iter()
+        .map(|(path, _)| path.clone())
+        .collect::<BTreeSet<_>>();
+    expected.insert(target.bridge_file.clone());
+    for asset in legacy_skill_assets() {
+        let path = target.legacy_skill_dir.join(asset.path);
+        if plan.files.iter().any(|change| change.path == path) {
+            expected.insert(path);
+        }
+    }
+    ensure_exact_file_paths(plan, &expected)?;
+    for change in &plan.files {
+        if change.path == target.bridge_file {
+            if !change
+                .after
+                .as_deref()
+                .is_some_and(|after| after.ends_with(BRIDGE_BLOCK))
+            {
+                return invalid_plan("Skill plan bridge", "managed bridge content is invalid");
+            }
+        } else if let Some((_, bytes)) = expected_assets
+            .iter()
+            .find(|(path, _)| *path == change.path)
+        {
+            if change.after.as_deref().map(str::as_bytes) != Some(*bytes) {
+                return invalid_plan("Skill plan asset", "embedded Skill content is invalid");
+            }
+        } else if legacy_skill_assets().iter().any(|asset| {
+            change.path == target.legacy_skill_dir.join(asset.path) && change.after.is_none()
+        }) {
         } else {
-            target.skill_dir.clone()
-        };
-        allowed.extend(
-            skill_assets()
-                .iter()
-                .map(|asset| asset_root.join(asset.path)),
+            return invalid_plan("Skill plan", "contains an invalid install path");
+        }
+    }
+    validate_links(plan, user_paths, target)
+}
+
+fn validate_uninstall_plan(
+    plan: &SkillPlan,
+    user_paths: &UserPaths,
+    target: &SkillTarget,
+) -> Result<(), KbError> {
+    let record = load_installation(user_paths, plan.vault_id, plan.host, plan.scope)?;
+    let expected = if let Some(record) = record {
+        if record.mode != plan.mode {
+            return invalid_plan("Skill plan", "mode differs from owned installation");
+        }
+        validate_record_links(plan, &record)?;
+        let mut paths = record
+            .assets
+            .iter()
+            .map(|asset| asset.path.clone())
+            .collect::<BTreeSet<_>>();
+        paths.insert(record.bridge_file.clone());
+        paths
+    } else {
+        let mut paths = legacy_skill_assets()
+            .iter()
+            .map(|asset| target.legacy_skill_dir.join(asset.path))
+            .collect::<BTreeSet<_>>();
+        if plan
+            .files
+            .iter()
+            .any(|change| change.path == target.bridge_file)
+        {
+            paths.insert(target.bridge_file.clone());
+        }
+        paths
+    };
+    ensure_exact_file_paths(plan, &expected)?;
+    if plan
+        .files
+        .iter()
+        .any(|change| change.path != target.bridge_file && change.after.is_some())
+    {
+        return invalid_plan("Skill plan", "uninstall may only remove owned content");
+    }
+    Ok(())
+}
+
+fn validate_legacy_single_link_plan(
+    plan: &SkillPlan,
+    user_paths: &UserPaths,
+    target: &SkillTarget,
+) -> Result<(), KbError> {
+    let asset_root = if plan.mode == SkillInstallMode::Symlink {
+        user_paths.config_dir.join("skills/knowledge-brain")
+    } else {
+        target.legacy_skill_dir.clone()
+    };
+    let mut expected = skill_assets()
+        .iter()
+        .map(|asset| asset_root.join(asset.path))
+        .collect::<BTreeSet<_>>();
+    expected.insert(target.bridge_file.clone());
+    ensure_exact_file_paths(plan, &expected)?;
+    let link = plan.link.as_ref().expect("checked above");
+    if plan.mode == SkillInstallMode::Symlink && link.path != target.legacy_skill_dir {
+        return invalid_plan("Skill plan link", "legacy link path is invalid");
+    }
+    Ok(())
+}
+
+fn validate_links(
+    plan: &SkillPlan,
+    user_paths: &UserPaths,
+    target: &SkillTarget,
+) -> Result<(), KbError> {
+    if plan.mode == SkillInstallMode::Copy && plan.links.is_empty() {
+        return Ok(());
+    }
+    let expected = expected_links(target, user_paths, SkillInstallMode::Symlink, true);
+    if plan.links != expected {
+        return invalid_plan(
+            "Skill plan link",
+            "links do not match resolved Skill targets",
         );
     }
-    allowed.insert(target.bridge_file.clone());
+    Ok(())
+}
+
+fn expected_links(
+    target: &SkillTarget,
+    user_paths: &UserPaths,
+    mode: SkillInstallMode,
+    create: bool,
+) -> Vec<SkillLinkChange> {
+    if mode == SkillInstallMode::Copy {
+        return Vec::new();
+    }
+    SKILL_NAMES
+        .iter()
+        .map(|name| SkillLinkChange {
+            path: target.skills_root.join(name),
+            target: user_paths.config_dir.join("skills").join(name),
+            create,
+        })
+        .collect()
+}
+
+fn validate_record_links(
+    plan: &SkillPlan,
+    record: &ManagedSkillInstallation,
+) -> Result<(), KbError> {
+    let expected = record
+        .links
+        .iter()
+        .cloned()
+        .map(|link| SkillLinkChange {
+            create: false,
+            ..link
+        })
+        .collect::<Vec<_>>();
+    if plan.links != expected {
+        return invalid_plan(
+            "Skill plan link",
+            "uninstall links differ from owned installation",
+        );
+    }
+    Ok(())
+}
+
+fn ensure_exact_file_paths(plan: &SkillPlan, expected: &BTreeSet<PathBuf>) -> Result<(), KbError> {
     let actual = plan
         .files
         .iter()
         .map(|change| change.path.clone())
         .collect::<BTreeSet<_>>();
-    if actual != allowed || actual.len() != plan.files.len() {
-        return Err(KbError::new(
-            ErrorCode::AuthDenied,
-            "Skill plan contains a path outside its resolved target.",
-            false,
-            "Create a new Skill plan.",
-        ));
-    }
-    for change in &plan.files {
-        if change.path == target.bridge_file {
-            let valid = match (plan.action, change.after.as_deref()) {
-                (SkillAction::Install, Some(after)) => after.ends_with(BRIDGE_BLOCK),
-                (SkillAction::Uninstall, Some(after)) => !after.contains("<!-- knowledge-brain:"),
-                (SkillAction::Uninstall, None) => true,
-                (SkillAction::Install, None) => false,
-            };
-            if !valid {
-                return Err(KbError::invalid_config(
-                    "Skill plan bridge",
-                    "managed bridge content is invalid",
-                ));
-            }
-            continue;
-        }
-        let relative = skill_assets().iter().find(|asset| {
-            change
-                .path
-                .strip_prefix(asset_root_for(plan, user_paths, &target))
-                .is_ok_and(|path| path == Path::new(asset.path))
-        });
-        let valid = match (plan.action, relative, change.after.as_deref()) {
-            (SkillAction::Install, Some(asset), Some(after)) => after.as_bytes() == asset.bytes,
-            (SkillAction::Uninstall, Some(_), None) => true,
-            _ => false,
-        };
-        if !valid {
-            return Err(KbError::invalid_config(
-                "Skill plan asset",
-                "embedded Skill content is invalid",
-            ));
-        }
-    }
-    match (&plan.link, plan.mode, plan.action) {
-        (None, SkillInstallMode::Copy, _)
-        | (None, SkillInstallMode::Symlink, SkillAction::Uninstall) => {}
-        (Some(link), SkillInstallMode::Symlink, SkillAction::Install)
-            if link.path == target.skill_dir
-                && link.target == user_paths.config_dir.join("skills/knowledge-brain") => {}
-        (Some(link), SkillInstallMode::Symlink, SkillAction::Uninstall)
-            if link.path == target.skill_dir => {}
-        _ => {
-            return Err(KbError::new(
-                ErrorCode::AuthDenied,
-                "Skill link does not match its resolved target.",
-                false,
-                "Create a new Skill plan.",
-            ));
-        }
+    if actual != *expected || actual.len() != plan.files.len() {
+        return invalid_plan("Skill plan", "contains a path outside its resolved target");
     }
     Ok(())
 }
 
-fn asset_root_for(plan: &SkillPlan, user_paths: &UserPaths, target: &SkillTarget) -> PathBuf {
-    if plan.mode == SkillInstallMode::Symlink && plan.action == SkillAction::Install {
-        user_paths.config_dir.join("skills/knowledge-brain")
-    } else {
-        target.skill_dir.clone()
+fn invalid_plan<T>(_context: &str, message: &str) -> Result<T, KbError> {
+    Err(KbError::new(
+        ErrorCode::AuthDenied,
+        message,
+        false,
+        "Create a new Skill plan.",
+    ))
+}
+
+fn finalize_ownership(
+    user_paths: &UserPaths,
+    roots: &AgentRoots,
+    plan: &SkillPlan,
+) -> Result<(), KbError> {
+    match plan.action {
+        SkillAction::Install if !(plan.links.is_empty() && plan.link.is_some()) => {
+            let installation = installation_from_plan(plan, user_paths, roots)?;
+            let target = skill_target(&plan.vault_root, roots, plan.host, plan.scope)?;
+            if managed_state(&installation, user_paths, &target)? != SkillInstallState::Current {
+                return Err(stale(
+                    &target.skills_root,
+                    "installed Skill suite did not verify",
+                ));
+            }
+            save_installation(user_paths, &installation)
+        }
+        SkillAction::Uninstall => {
+            let Some(installation) =
+                load_installation(user_paths, plan.vault_id, plan.host, plan.scope)?
+            else {
+                return Ok(());
+            };
+            for asset in &installation.assets {
+                if digest_optional_file(&asset.path)?.is_some() {
+                    return Err(stale(
+                        &asset.path,
+                        "managed Skill asset remains after uninstall",
+                    ));
+                }
+            }
+            for link in &installation.links {
+                if fs::symlink_metadata(&link.path).is_ok() {
+                    return Err(stale(
+                        &link.path,
+                        "managed Skill link remains after uninstall",
+                    ));
+                }
+            }
+            let bridge_after = plan
+                .files
+                .iter()
+                .find(|change| change.path == installation.bridge_file)
+                .and_then(|change| change.after.as_deref())
+                .map(|text| hash(text.as_bytes()));
+            if digest_optional_file(&installation.bridge_file)? != bridge_after {
+                return Err(stale(
+                    &installation.bridge_file,
+                    "managed bridge differs after uninstall",
+                ));
+            }
+            remove_installation(user_paths, plan)?;
+            Ok(())
+        }
+        SkillAction::Install => Ok(()),
     }
 }
 
@@ -513,7 +926,7 @@ fn preflight(plan: &SkillPlan) -> Result<(), KbError> {
             ));
         }
     }
-    if let Some(link) = &plan.link {
+    for link in plan.all_links() {
         let after = link_is_after(link);
         let before = link_is_before(link);
         if !before && !after {
@@ -614,21 +1027,6 @@ fn remove_directory_symlink(link: &Path) -> Result<(), KbError> {
     fs::remove_dir(link).map_err(|error| io("remove Skill directory symlink", link, &error))
 }
 
-fn copied_assets_match(root: &Path) -> Result<bool, KbError> {
-    for asset in skill_assets() {
-        if digest_optional_file(&root.join(asset.path))?.as_deref() != Some(&asset.sha256) {
-            return Ok(false);
-        }
-    }
-    let count = walk_file_count(root)?;
-    Ok(count == skill_assets().len())
-}
-
-fn symlink_assets_match(link: &Path) -> Result<bool, KbError> {
-    let target = fs::read_link(link).map_err(|error| io("read Skill symlink", link, &error))?;
-    copied_assets_match(&target)
-}
-
 fn walk_file_count(root: &Path) -> Result<usize, KbError> {
     let mut count = 0;
     let mut pending = vec![root.to_path_buf()];
@@ -669,16 +1067,20 @@ fn validate_link_for_install(link: &Path, target: &Path) -> Result<(), KbError> 
     }
 }
 
-fn reject_link(path: &Path) -> Result<(), KbError> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(stale(
-            path,
-            "copy mode refuses an existing link-shaped target",
-        )),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(io("inspect Skill directory", path, &error)),
+fn reject_skill_links(root: &Path) -> Result<(), KbError> {
+    for name in SKILL_NAMES {
+        let path = root.join(name);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => Err(stale(
+                &path,
+                "copy mode refuses an existing link-shaped target",
+            )),
+            Ok(_) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(io("inspect Skill directory", &path, &error)),
+        }?;
     }
+    Ok(())
 }
 
 fn read_optional_file(path: &Path) -> Result<Option<Vec<u8>>, KbError> {
@@ -724,20 +1126,28 @@ fn record_progress(
 }
 
 fn cleanup_empty_skill_directories(plan: &SkillPlan) {
-    if plan.action != SkillAction::Uninstall {
+    if !plan.files.iter().any(|change| change.after.is_none()) {
         return;
     }
-    let Some(skill_dir) = plan
-        .files
-        .iter()
-        .find(|change| change.path.ends_with("SKILL.md"))
-        .and_then(|change| change.path.parent())
-    else {
-        return;
-    };
-    let references = skill_dir.join("references");
-    let _ = fs::remove_dir(&references);
-    let _ = fs::remove_dir(skill_dir);
+    let mut directories = BTreeSet::new();
+    for change in &plan.files {
+        if change.after.is_some() {
+            continue;
+        }
+        let mut parent = change.path.parent();
+        while let Some(path) = parent {
+            if path.file_name().is_some_and(|name| name == "skills") {
+                break;
+            }
+            directories.insert(path.to_path_buf());
+            parent = path.parent();
+        }
+    }
+    let mut directories = directories.into_iter().collect::<Vec<_>>();
+    directories.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    for directory in directories {
+        let _ = fs::remove_dir(directory);
+    }
 }
 
 fn stale(path: &Path, reason: &str) -> KbError {
@@ -841,7 +1251,9 @@ mod tests {
             let result = apply_skill_plan(&user_paths, &agent_roots, plan.operation_id).unwrap();
             assert_eq!(result.action, SkillAction::Install);
             let status = skill_status(
+                &user_paths,
                 &plan.vault_root,
+                plan.vault_id,
                 &agent_roots,
                 SkillHost::Codex,
                 SkillScope::Vault,

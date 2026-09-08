@@ -1,4 +1,4 @@
-use kb_app::{AppContext, AppRequest, InitRequest, SkillRequest, init_vault};
+use kb_app::{AppContext, AppRequest, InitRequest, SkillRequest, init_vault, legacy_skill_assets};
 use kb_core::{ErrorCode, OperationId, SkillHost, SkillInstallMode, SkillScope};
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path};
@@ -25,7 +25,7 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
         &context,
     )
     .unwrap();
-    assert!(!vault.join(".agents/skills/knowledge-brain").exists());
+    assert!(!vault.join(".agents/skills/kb-vault").exists());
     let install_id = operation_id(&plan);
 
     kb_app::run(
@@ -35,11 +35,25 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
         &context,
     )
     .unwrap();
-    assert!(
-        vault
-            .join(".agents/skills/knowledge-brain/SKILL.md")
-            .is_file()
-    );
+    for name in [
+        "kb-vault",
+        "kb-config",
+        "kb-ingest",
+        "kb-query",
+        "kb-save",
+        "kb-ops",
+        "kb-backup",
+        "kb-connect",
+    ] {
+        assert!(
+            vault
+                .join(".agents/skills")
+                .join(name)
+                .join("SKILL.md")
+                .is_file()
+        );
+    }
+    assert!(temp.path().join("state/skill-installations/vault").exists());
     let bridge = fs::read_to_string(vault.join("AGENTS.md")).unwrap();
     assert!(bridge.starts_with(original));
     assert_eq!(bridge.matches("<!-- knowledge-brain:start -->").count(), 1);
@@ -71,7 +85,8 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
         &context,
     )
     .unwrap();
-    assert!(!vault.join(".agents/skills/knowledge-brain").exists());
+    assert!(!vault.join(".agents/skills/kb-vault").exists());
+    assert!(!temp.path().join("state/skill-installations/vault").exists());
     assert_eq!(
         fs::read_to_string(vault.join("AGENTS.md")).unwrap(),
         original
@@ -105,7 +120,7 @@ fn uninstall_refuses_a_user_modified_asset() {
     )
     .unwrap();
     fs::write(
-        vault.join(".gemini/skills/knowledge-brain/SKILL.md"),
+        vault.join(".gemini/skills/kb-vault/SKILL.md"),
         "user modification\n",
     )
     .unwrap();
@@ -203,7 +218,7 @@ fn explicit_symlink_mode_materializes_a_canonical_copy() {
     )
     .unwrap();
 
-    let link = vault.join(".claude/skills/knowledge-brain");
+    let link = vault.join(".claude/skills/kb-query");
     assert!(
         fs::symlink_metadata(&link)
             .unwrap()
@@ -213,7 +228,7 @@ fn explicit_symlink_mode_materializes_a_canonical_copy() {
     assert!(link.join("SKILL.md").is_file());
     assert!(
         temp.path()
-            .join("config/skills/knowledge-brain/SKILL.md")
+            .join("config/skills/kb-query/SKILL.md")
             .is_file()
     );
 
@@ -234,6 +249,218 @@ fn explicit_symlink_mode_materializes_a_canonical_copy() {
     )
     .unwrap();
     assert!(fs::symlink_metadata(link).is_err());
+}
+
+#[test]
+fn unrecorded_kb_skill_is_external_and_never_overwritten() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let path = vault.join(".agents/skills/kb-query/SKILL.md");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let original = "unmanaged user skill\n";
+    fs::write(&path, original).unwrap();
+    let context = context(temp.path());
+
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "external"
+    );
+    let error = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+    assert_eq!(fs::read_to_string(path).unwrap(), original);
+}
+
+#[test]
+fn managed_missing_asset_is_partial_and_modified_asset_is_modified() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let context = context(temp.path());
+    let plan = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&plan),
+        },
+        &context,
+    )
+    .unwrap();
+
+    fs::remove_file(vault.join(".agents/skills/kb-backup/SKILL.md")).unwrap();
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "partial"
+    );
+    fs::write(
+        vault.join(".agents/skills/kb-vault/SKILL.md"),
+        "user modification\n",
+    )
+    .unwrap();
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "modified"
+    );
+}
+
+#[test]
+fn intact_legacy_bundle_is_migratable_and_uninstallable() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let legacy = vault.join(".agents/skills/knowledge-brain");
+    for asset in legacy_skill_assets() {
+        let path = legacy.join(asset.path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, asset.bytes).unwrap();
+    }
+    let context = context(temp.path());
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "legacy"
+    );
+    let plan = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&plan),
+        },
+        &context,
+    )
+    .unwrap();
+    assert!(!legacy.exists());
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "current"
+    );
+}
+
+#[test]
+fn altered_legacy_bundle_is_modified_and_cannot_be_overwritten() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let legacy = vault.join(".agents/skills/knowledge-brain");
+    for asset in legacy_skill_assets() {
+        let path = legacy.join(asset.path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, asset.bytes).unwrap();
+    }
+    fs::write(legacy.join("references/query.md"), "changed\n").unwrap();
+    let context = context(temp.path());
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "modified"
+    );
+    let error = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+}
+
+#[test]
+fn user_scope_ownership_is_global_across_selected_vaults() {
+    let temp = tempfile::tempdir().unwrap();
+    let first = temp.path().join("first");
+    let second = temp.path().join("second");
+    init_vault(&InitRequest {
+        target: first.clone(),
+    })
+    .unwrap();
+    init_vault(&InitRequest {
+        target: second.clone(),
+    })
+    .unwrap();
+    let context = context(temp.path());
+    let plan = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(first.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::User,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&plan),
+        },
+        &context,
+    )
+    .unwrap();
+
+    assert!(
+        temp.path()
+            .join("state/skill-installations/user/codex.json")
+            .is_file()
+    );
+    let status = kb_app::run(
+        AppRequest::Skills(SkillRequest::Status {
+            vault: Some(second.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::User,
+        }),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(status["state"], "current");
+}
+
+fn skills_status(context: &AppContext, vault: &Path, host: SkillHost) -> Value {
+    kb_app::run(
+        AppRequest::Skills(SkillRequest::Status {
+            vault: Some(vault.display().to_string()),
+            host: Some(host),
+            scope: SkillScope::Vault,
+        }),
+        context,
+    )
+    .unwrap()
 }
 
 fn context(base: &Path) -> AppContext {

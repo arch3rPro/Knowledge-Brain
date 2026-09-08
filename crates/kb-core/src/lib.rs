@@ -22,8 +22,8 @@ pub use search::{
     SearchGroup, SearchHit, SearchMatchMode, SearchRequest, SearchResponse, SearchScope,
 };
 pub use skill::{
-    SkillAction, SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillLinkChange,
-    SkillPlan, SkillScope,
+    ManagedSkillAsset, ManagedSkillInstallation, SkillAction, SkillApplyResult, SkillFileChange,
+    SkillHost, SkillInstallMode, SkillLinkChange, SkillPlan, SkillScope,
 };
 pub use source::{SourceId, SourceVersion};
 

@@ -135,6 +135,7 @@ fn user_skill_summaries_ignore_misleading_root_components_and_use_portable_separ
             before_sha256: None,
             after: Some("content".into()),
         }],
+        links: Vec::new(),
         link: None,
         created_at: "2026-09-08T00:00:00Z".into(),
         app_version: "test".into(),
@@ -165,6 +166,34 @@ fn user_skill_summaries_ignore_misleading_root_components_and_use_portable_separ
     );
     assert!(!planned.affected_paths[0].contains('\\'));
     assert!(!applied.affected_paths[0].contains('\\'));
+}
+
+#[test]
+fn legacy_single_link_plan_deserializes_as_one_link() {
+    let mut value = serde_json::to_value(SkillPlan {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        operation_id: OperationId::new(),
+        kind: OperationKind::ManageSkill,
+        vault_id: Uuid::new_v4(),
+        vault_root: "/vault".into(),
+        host: SkillHost::Codex,
+        scope: SkillScope::Vault,
+        mode: SkillInstallMode::Symlink,
+        action: SkillAction::Install,
+        files: Vec::new(),
+        links: Vec::new(),
+        link: Some(kb_core::SkillLinkChange {
+            path: "/vault/.agents/skills/knowledge-brain".into(),
+            target: "/config/skills/knowledge-brain".into(),
+            create: true,
+        }),
+        created_at: "2026-09-08T00:00:00Z".into(),
+        app_version: "test".into(),
+    })
+    .unwrap();
+    value.as_object_mut().unwrap().remove("links");
+    let plan: SkillPlan = serde_json::from_value(value).unwrap();
+    assert_eq!(plan.all_links().count(), 1);
 }
 
 #[test]

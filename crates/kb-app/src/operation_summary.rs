@@ -123,7 +123,7 @@ pub fn summary_for_skill_plan(plan: &SkillPlan) -> OperationSummary {
         .files
         .iter()
         .map(|change| host_relative_path(&change.path, &plan.vault_root, plan.scope, plan.host))
-        .chain(plan.link.iter().map(|change| {
+        .chain(plan.all_links().map(|change| {
             host_relative_path(&change.path, &plan.vault_root, plan.scope, plan.host)
         }))
         .collect();

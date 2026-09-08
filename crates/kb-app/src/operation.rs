@@ -84,7 +84,7 @@ pub(crate) fn save_skill_plan(user_paths: &UserPaths, plan: &SkillPlan) -> Resul
         user_paths,
         plan.operation_id,
         kb_core::OperationEventKind::Planned,
-        Some((0, plan.files.len() as u64 + u64::from(plan.link.is_some()))),
+        Some((0, plan.files.len() as u64 + plan.all_links().count() as u64)),
         "Skill change plan is ready for review.",
     )?;
     Ok(())
