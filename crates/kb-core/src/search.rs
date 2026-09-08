@@ -93,6 +93,7 @@ pub struct SearchGroup {
 pub struct SearchResponse {
     pub schema_version: SchemaVersion,
     pub query: String,
+    #[serde(default)]
     pub match_mode: SearchMatchMode,
     pub groups: Vec<SearchGroup>,
     pub warnings: Vec<String>,

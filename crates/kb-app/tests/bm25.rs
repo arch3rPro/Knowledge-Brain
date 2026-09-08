@@ -1,9 +1,10 @@
 use kb_app::{
-    ConfigOverrides, InitRequest, UserPaths, init_vault, load_effective_config, query,
-    rebuild_catalog,
+    AppContext, AppRequest, ConfigOverrides, InitRequest, UserPaths, init_vault,
+    load_effective_config, query, rebuild_catalog, review_sources, run,
 };
 use kb_core::{ErrorCode, SearchBackend, SearchMatchMode, SearchMode, SearchRequest, SearchScope};
-use std::{fs, path::Path};
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, fs, path::Path};
 
 fn setup() -> (
     tempfile::TempDir,
@@ -41,13 +42,46 @@ fn exact_request(query: &str) -> SearchRequest {
 }
 
 fn exact_request_with_strict_backend(query: &str, strict_backend: bool) -> SearchRequest {
+    exact_request_for(query, SearchScope::Wiki, 10, strict_backend)
+}
+
+fn exact_request_for(
+    query: &str,
+    scope: SearchScope,
+    limit: usize,
+    strict_backend: bool,
+) -> SearchRequest {
     SearchRequest {
         query: query.into(),
-        scope: SearchScope::Wiki,
-        limit: 10,
+        scope,
+        limit,
         strict_backend,
         match_mode: SearchMatchMode::Exact,
     }
+}
+
+fn user_paths(base: &Path) -> UserPaths {
+    UserPaths::new(base.join("config"), base.join("state"), base.join("cache"))
+}
+
+fn app_context(base: &Path) -> AppContext {
+    AppContext::new(
+        BTreeMap::from([
+            (
+                "KB_CONFIG_DIR".to_owned(),
+                base.join("config").display().to_string(),
+            ),
+            (
+                "KB_STATE_DIR".to_owned(),
+                base.join("state").display().to_string(),
+            ),
+            (
+                "KB_CACHE_DIR".to_owned(),
+                base.join("cache").display().to_string(),
+            ),
+        ]),
+        base.to_path_buf(),
+    )
 }
 
 fn article(title: &str, body: &str) -> String {
@@ -187,7 +221,9 @@ fn exact_match_is_case_sensitive_literal_and_ignores_a_stale_bm25_cache() {
     )
     .unwrap();
     rebuild_catalog(&vault, &config).unwrap();
-    fs::write(vault.join(".kb/cache/bm25.json"), "{broken").unwrap();
+    let cache_path = vault.join(".kb/cache/bm25.json");
+    fs::write(&cache_path, "{broken").unwrap();
+    let cache_before = fs::read(&cache_path).unwrap();
 
     let result = query(
         &vault,
@@ -228,6 +264,136 @@ fn exact_match_is_case_sensitive_literal_and_ignores_a_stale_bm25_cache() {
     )
     .unwrap();
     assert!(strict.warnings.is_empty());
+    assert_eq!(fs::read(cache_path).unwrap(), cache_before);
+}
+
+#[test]
+fn exact_all_limits_each_group_preserves_source_metadata_and_does_not_rewrite_bm25() {
+    let temporary = tempfile::tempdir().unwrap();
+    let vault = temporary.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/wiki-a.md"),
+        article(
+            "Wiki A",
+            "exact-source-needle first\nexact-source-needle second",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/wiki-b.md"),
+        article("Wiki B", "exact-source-needle once"),
+    )
+    .unwrap();
+    fs::create_dir(vault.join("Notes")).unwrap();
+    let source_a = "# Source A\nexact-source-needle first\nexact-source-needle second\n";
+    fs::write(vault.join("Notes/a.md"), source_a).unwrap();
+    fs::write(
+        vault.join("Notes/b.md"),
+        "# Source B\nexact-source-needle once\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("admission.yml"),
+        "schema_version: v1.0\ndirectories:\n  - id: notes\n    path: Notes\n    enabled: true\n",
+    )
+    .unwrap();
+
+    let paths = user_paths(temporary.path());
+    let mut config = load_effective_config(&vault, &paths, &ConfigOverrides::default()).unwrap();
+    let operation_id = review_sources(&vault, &paths, &config)
+        .unwrap()
+        .operation_id
+        .unwrap();
+    run(
+        AppRequest::Apply { operation_id },
+        &app_context(temporary.path()),
+    )
+    .unwrap();
+    config.search.mode.value = SearchMode::Bm25;
+    rebuild_catalog(&vault, &config).unwrap();
+    let cache_path = vault.join(".kb/cache/bm25.json");
+    let cache_before = fs::read(&cache_path).unwrap();
+
+    let all = query(
+        &vault,
+        &exact_request_for("exact-source-needle", SearchScope::All, 10, false),
+        &config,
+    )
+    .unwrap();
+    assert_eq!(all.match_mode, SearchMatchMode::Exact);
+    assert_eq!(all.groups.len(), 2);
+    assert_eq!(
+        all.groups
+            .iter()
+            .map(|group| group.scope)
+            .collect::<Vec<_>>(),
+        vec![SearchScope::Wiki, SearchScope::Sources]
+    );
+    assert!(all.groups.iter().all(|group| group.results.len() >= 2));
+
+    let limited = query(
+        &vault,
+        &exact_request_for("exact-source-needle", SearchScope::All, 1, false),
+        &config,
+    )
+    .unwrap();
+    assert_eq!(limited.groups.len(), 2);
+    assert!(limited.groups.iter().all(|group| group.results.len() == 1));
+    let source_hit = &limited
+        .groups
+        .iter()
+        .find(|group| group.scope == SearchScope::Sources)
+        .unwrap()
+        .results[0];
+    let source_sha = format!("{:x}", Sha256::digest(source_a.as_bytes()));
+    let source_uri = format!("kb-source://notes/a.md?sha256={source_sha}");
+    let record_sha = format!("{:x}", Sha256::digest(b"kb-source://notes/a.md"));
+    assert_eq!(
+        source_hit.path.as_str(),
+        format!(
+            "Wiki/external-sources/records/{}/{}.md",
+            &record_sha[..2],
+            record_sha
+        )
+    );
+    assert_eq!(
+        source_hit.content_path.as_str(),
+        format!(
+            "Wiki/external-sources/.objects/sha256/{}/{}",
+            &source_sha[..2],
+            source_sha
+        )
+    );
+    assert_eq!(source_hit.source_uri.as_deref(), Some(source_uri.as_str()));
+    assert_eq!(source_hit.title, "Source A");
+    assert_eq!(source_hit.heading.as_deref(), Some("Source A"));
+    assert_eq!(source_hit.line_start, Some(1));
+    assert_eq!(source_hit.location, None);
+    assert_eq!(source_hit.snippet, "exact-source-needle first");
+    assert_eq!(source_hit.match_count, 2);
+    assert_eq!(source_hit.backend, Some(SearchBackend::Direct));
+    assert_eq!(source_hit.score_micros, None);
+    assert_eq!(source_hit.explanation, None);
+    assert!(limited.warnings.is_empty());
+    assert_eq!(fs::read(cache_path).unwrap(), cache_before);
+}
+
+#[test]
+fn exact_requests_reuse_query_validation() {
+    let (_temporary, vault, config) = setup();
+    for (query_text, limit) in [("", 10), ("   ", 10), ("valid", 0), ("valid", 101)] {
+        let error = query(
+            &vault,
+            &exact_request_for(query_text, SearchScope::Wiki, limit, false),
+            &config,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidQuery);
+    }
 }
 
 fn index(vault: &Path) -> serde_json::Value {
