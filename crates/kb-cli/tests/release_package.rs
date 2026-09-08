@@ -41,7 +41,10 @@ fn unix_release_archive_has_the_target_specific_name_and_required_entries() {
         .unwrap();
     assert!(entries.status.success());
     assert_eq!(
-        String::from_utf8(entries.stdout).unwrap().lines().collect::<Vec<_>>(),
+        String::from_utf8(entries.stdout)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
         ["INSTALL.md", "LICENSE", "kb"]
     );
 }
@@ -66,7 +69,9 @@ fn unix_release_package_rejects_a_binary_name_mismatch() {
 #[test]
 fn windows_archive_layout_is_readable_when_created_by_the_platform_script() {
     let temp = tempfile::tempdir().unwrap();
-    let archive = temp.path().join("knowledge-brain-v0.1.0-x86_64-pc-windows-msvc.zip");
+    let archive = temp
+        .path()
+        .join("knowledge-brain-v0.1.0-x86_64-pc-windows-msvc.zip");
     create_windows_layout_fixture(&archive);
 
     let mut archive = ZipArchive::new(fs::File::open(&archive).unwrap()).unwrap();

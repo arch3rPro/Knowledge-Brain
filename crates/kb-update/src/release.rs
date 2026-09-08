@@ -38,9 +38,9 @@ pub fn parse_latest_release(
     response: &Value,
 ) -> Result<UpdateCheck, UpdateError> {
     let current = identity.version().clone();
-    let target = identity
-        .target()
-        .ok_or_else(|| UpdateError::InvalidRelease("this installation is not an official release".into()))?;
+    let target = identity.target().ok_or_else(|| {
+        UpdateError::InvalidRelease("this installation is not an official release".into())
+    })?;
     if !identity.can_update() {
         return Err(UpdateError::InvalidRelease(
             "this installation has no embedded update verification key".into(),
@@ -54,9 +54,10 @@ pub fn parse_latest_release(
         ));
     }
     let tag = required_string(response, "tag_name")?;
-    let version = Version::parse(tag.strip_prefix('v').ok_or_else(|| {
-        UpdateError::InvalidRelease("release tag must start with v".into())
-    })?)
+    let version = Version::parse(
+        tag.strip_prefix('v')
+            .ok_or_else(|| UpdateError::InvalidRelease("release tag must start with v".into()))?,
+    )
     .map_err(|error| UpdateError::InvalidRelease(format!("invalid release tag {tag}: {error}")))?;
     if !version.pre.is_empty() {
         return Err(UpdateError::InvalidRelease(
@@ -148,4 +149,6 @@ pub enum UpdateError {
     Transport(String),
     #[error("release verification failed: {0}")]
     VerificationFailed(String),
+    #[error("executable replacement failed: {0}")]
+    ReplacementFailed(String),
 }

@@ -19,6 +19,9 @@ pub(crate) enum ParsedCommand {
     },
     Serve(ServeCommand),
     Mcp(McpCommand),
+    Update(UpdateCommand),
+    Replace(ReplaceCommand),
+    Cleanup(CleanupCommand),
 }
 
 pub(crate) struct McpCommand {
@@ -31,6 +34,31 @@ pub(crate) struct ServeCommand {
     pub token_file: Option<PathBuf>,
     pub allow_write: bool,
     pub vault: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct UpdateCommand {
+    pub check_only: bool,
+    pub json: bool,
+}
+
+pub(crate) struct ReplaceCommand {
+    pub parent_pid: u32,
+    pub parent_start_time: u64,
+    pub from: PathBuf,
+    pub to: PathBuf,
+    pub backup: PathBuf,
+    pub expected_sha256: String,
+    pub cleanup_dir: PathBuf,
+    pub cleanup_token: String,
+    pub json: bool,
+}
+
+pub(crate) struct CleanupCommand {
+    pub parent_pid: u32,
+    pub parent_start_time: u64,
+    pub directory: PathBuf,
+    pub token: String,
 }
 
 pub(crate) fn parse() -> ParsedCommand {
@@ -189,8 +217,56 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Check for or install a newer official release binary.
+    Update {
+        #[command(subcommand)]
+        command: Option<UpdateCommands>,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(name = "__replace", hide = true)]
+    Replace {
+        #[arg(long)]
+        parent_pid: u32,
+        #[arg(long)]
+        parent_start_time: u64,
+        #[arg(long)]
+        from: PathBuf,
+        #[arg(long)]
+        to: PathBuf,
+        #[arg(long)]
+        backup: PathBuf,
+        #[arg(long)]
+        expected_sha256: String,
+        #[arg(long)]
+        cleanup_dir: PathBuf,
+        #[arg(long)]
+        cleanup_token: String,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(name = "__cleanup", hide = true)]
+    Cleanup {
+        #[arg(long)]
+        parent_pid: u32,
+        #[arg(long)]
+        parent_start_time: u64,
+        #[arg(long)]
+        directory: PathBuf,
+        #[arg(long)]
+        token: String,
+    },
     /// Show implemented and unavailable capabilities explicitly.
     Capabilities {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum UpdateCommands {
+    /// Check the latest official stable release without changing this installation.
+    Check {
         #[arg(long)]
         json: bool,
     },
@@ -623,6 +699,45 @@ impl Cli {
                 fail_on_findings: false,
                 full_hashes: false,
             },
+            Commands::Update { command, json } => {
+                let (check_only, json) = match command {
+                    Some(UpdateCommands::Check { json }) => (true, json),
+                    None => (false, json),
+                };
+                ParsedCommand::Update(UpdateCommand { check_only, json })
+            }
+            Commands::Replace {
+                parent_pid,
+                parent_start_time,
+                from,
+                to,
+                backup,
+                expected_sha256,
+                cleanup_dir,
+                cleanup_token,
+                json,
+            } => ParsedCommand::Replace(ReplaceCommand {
+                parent_pid,
+                parent_start_time,
+                from,
+                to,
+                backup,
+                expected_sha256,
+                cleanup_dir,
+                cleanup_token,
+                json,
+            }),
+            Commands::Cleanup {
+                parent_pid,
+                parent_start_time,
+                directory,
+                token,
+            } => ParsedCommand::Cleanup(CleanupCommand {
+                parent_pid,
+                parent_start_time,
+                directory,
+                token,
+            }),
             Commands::Capabilities { json } => ParsedCommand::App {
                 request: Ok(AppRequest::Capabilities),
                 json,

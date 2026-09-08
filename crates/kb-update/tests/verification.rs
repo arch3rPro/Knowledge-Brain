@@ -41,7 +41,10 @@ fn resolver_rejects_prerelease_and_missing_target_archive() {
 
     assert!(matches!(
         parse_latest_release(&identity, &missing_target),
-        Err(UpdateError::MissingAsset { target: ReleaseTarget::LinuxX64, .. })
+        Err(UpdateError::MissingAsset {
+            target: ReleaseTarget::LinuxX64,
+            ..
+        })
     ));
 }
 
@@ -63,41 +66,49 @@ fn resolver_accepts_only_a_strictly_newer_stable_release() {
     assert_eq!(check.current.to_string(), "0.2.0");
     assert!(check.latest.is_none());
     assert!(!check.update_available);
-    assert_eq!(RELEASES_LATEST_URL, "https://api.github.com/repos/arch3rPro/Knowledge-Brain/releases/latest");
+    assert_eq!(
+        RELEASES_LATEST_URL,
+        "https://api.github.com/repos/arch3rPro/Knowledge-Brain/releases/latest"
+    );
 }
 
 #[test]
 fn verifier_rejects_a_bad_signature_before_downloading_the_archive() {
     let keypair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
-    let identity = BuildIdentity::official(
-        "0.1.0",
-        "x86_64-pc-windows-msvc",
-        &keypair.pk.to_base64(),
-    )
-    .unwrap();
+    let identity =
+        BuildIdentity::official("0.1.0", "x86_64-pc-windows-msvc", &keypair.pk.to_base64())
+            .unwrap();
     let release = release();
     let transport = MemoryTransport::new([
         (release.checksums_url.clone(), b"00 archive.zip\n".to_vec()),
         (release.signature_url.clone(), b"not a signature".to_vec()),
-        (release.archive_url.clone(), b"must not be downloaded".to_vec()),
+        (
+            release.archive_url.clone(),
+            b"must not be downloaded".to_vec(),
+        ),
     ]);
 
-    let error = verify_release(&identity, release.clone(), &transport, tempfile::tempdir().unwrap().path())
-        .unwrap_err();
+    let error = verify_release(
+        &identity,
+        release.clone(),
+        &transport,
+        tempfile::tempdir().unwrap().path(),
+    )
+    .unwrap_err();
 
     assert!(matches!(error, UpdateError::VerificationFailed(_)));
-    assert_eq!(transport.requests(), [release.checksums_url, release.signature_url]);
+    assert_eq!(
+        transport.requests(),
+        [release.checksums_url, release.signature_url]
+    );
 }
 
 #[test]
 fn verifier_rejects_a_digest_mismatch_and_an_archive_path_escape() {
     let keypair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
-    let identity = BuildIdentity::official(
-        "0.1.0",
-        "x86_64-pc-windows-msvc",
-        &keypair.pk.to_base64(),
-    )
-    .unwrap();
+    let identity =
+        BuildIdentity::official("0.1.0", "x86_64-pc-windows-msvc", &keypair.pk.to_base64())
+            .unwrap();
     let release = release();
     let valid_archive = archive(&["kb.exe", "LICENSE", "INSTALL.md"]);
     let wrong_digest_value = "0".repeat(64);
@@ -134,14 +145,90 @@ fn verifier_rejects_a_digest_mismatch_and_an_archive_path_escape() {
     assert!(matches!(escaped_error, UpdateError::VerificationFailed(_)));
 }
 
+#[test]
+fn verifier_reports_the_extracted_executable_digest() {
+    let keypair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+    let identity =
+        BuildIdentity::official("0.1.0", "x86_64-pc-windows-msvc", &keypair.pk.to_base64())
+            .unwrap();
+    let release = release();
+    let archive = archive(&["kb.exe", "LICENSE", "INSTALL.md"]);
+    let archive_digest = sha256(&archive);
+    let signed = signed_checksums(&keypair, &release, &archive_digest);
+    let transport = MemoryTransport::new([
+        (release.checksums_url.clone(), signed.0),
+        (release.signature_url.clone(), signed.1),
+        (release.archive_url.clone(), archive),
+    ]);
+    let stage = tempfile::tempdir().unwrap();
+
+    let verified = verify_release(&identity, release, &transport, stage.path()).unwrap();
+
+    assert_eq!(verified.executable_sha256, sha256(b"fixture binary"));
+    assert_eq!(
+        std::fs::read(verified.executable).unwrap(),
+        b"fixture binary"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn verifier_makes_unix_release_binary_executable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let keypair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+    let identity =
+        BuildIdentity::official("0.1.0", "x86_64-unknown-linux-gnu", &keypair.pk.to_base64())
+            .unwrap();
+    let release = release_for(ReleaseTarget::LinuxX64);
+    let archive = tar_gz_archive();
+    let archive_digest = sha256(&archive);
+    let signed = signed_checksums(&keypair, &release, &archive_digest);
+    let transport = MemoryTransport::new([
+        (release.checksums_url.clone(), signed.0),
+        (release.signature_url.clone(), signed.1),
+        (release.archive_url.clone(), archive),
+    ]);
+    let stage = tempfile::tempdir().unwrap();
+
+    let verified = verify_release(&identity, release, &transport, stage.path()).unwrap();
+
+    let mode = std::fs::metadata(verified.executable)
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_ne!(mode & 0o111, 0);
+}
+
 fn release() -> AvailableRelease {
+    release_for(ReleaseTarget::WindowsX64)
+}
+
+fn release_for(target: ReleaseTarget) -> AvailableRelease {
     AvailableRelease {
         version: "0.2.0".parse().unwrap(),
-        target: ReleaseTarget::WindowsX64,
+        target,
         archive_url: "https://example.invalid/archive".into(),
         checksums_url: "https://example.invalid/checksums".into(),
         signature_url: "https://example.invalid/signature".into(),
     }
+}
+
+#[cfg(unix)]
+fn tar_gz_archive() -> Vec<u8> {
+    use flate2::{Compression, write::GzEncoder};
+
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+    for (name, mode) in [("kb", 0o755), ("LICENSE", 0o644), ("INSTALL.md", 0o644)] {
+        let bytes = b"fixture binary";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(mode);
+        header.set_cksum();
+        archive.append_data(&mut header, name, &bytes[..]).unwrap();
+    }
+    archive.into_inner().unwrap().finish().unwrap()
 }
 
 fn signed_checksums(
@@ -149,7 +236,10 @@ fn signed_checksums(
     release: &AvailableRelease,
     digest: &str,
 ) -> (Vec<u8>, Vec<u8>) {
-    let checksums = format!("{digest}  {}\n", release.target.asset_name(&release.version));
+    let checksums = format!(
+        "{digest}  {}\n",
+        release.target.asset_name(&release.version)
+    );
     let signature = minisign::sign(
         Some(&keypair.pk),
         &keypair.sk,
@@ -198,7 +288,9 @@ impl MemoryTransport {
 
 impl ReleaseTransport for MemoryTransport {
     fn get_json(&self, _url: &str) -> Result<serde_json::Value, UpdateError> {
-        Err(UpdateError::Transport("JSON is not used by this test".into()))
+        Err(UpdateError::Transport(
+            "JSON is not used by this test".into(),
+        ))
     }
 
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, UpdateError> {

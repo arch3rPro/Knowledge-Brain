@@ -7,6 +7,7 @@ use thiserror::Error;
 pub enum ErrorCode {
     LimitExceeded,
     SourceIntegrityFailed,
+    UpdateVerificationFailed,
     InvalidQuery,
     InvalidConfig,
     MigrationRequired,

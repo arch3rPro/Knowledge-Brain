@@ -19,6 +19,7 @@ pub struct VerifiedArchive {
     pub archive: PathBuf,
     pub executable: PathBuf,
     pub sha256: String,
+    pub executable_sha256: String,
 }
 
 /// Verifies, downloads, and safely extracts one official target archive.
@@ -53,20 +54,48 @@ pub fn verify_release(
     }
 
     let archive_path = prepare_stage(stage, &expected_name, &archive)?;
-    let executable = stage.join("verified").join(release.target.executable_name());
+    let executable = stage
+        .join("verified")
+        .join(release.target.executable_name());
     match release.target {
         ReleaseTarget::WindowsX64 => extract_zip(&archive, release.target, stage)?,
         ReleaseTarget::LinuxX64 | ReleaseTarget::MacosArm64 => {
             extract_tar_gz(&archive, release.target, stage)?;
+            make_executable(&executable)?;
         }
     }
+    let executable_sha256 =
+        hex::encode(Sha256::digest(fs::read(&executable).map_err(|error| {
+            UpdateError::VerificationFailed(format!("read extracted executable: {error}"))
+        })?));
     Ok(VerifiedArchive {
         version: release.version,
         target: release.target,
         archive: archive_path,
         executable,
         sha256: actual_digest,
+        executable_sha256,
     })
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), UpdateError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|error| {
+            UpdateError::VerificationFailed(format!("read executable permissions: {error}"))
+        })?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).map_err(|error| {
+        UpdateError::VerificationFailed(format!("set executable permissions: {error}"))
+    })
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<(), UpdateError> {
+    Ok(())
 }
 
 fn verify_checksums_signature(
@@ -74,8 +103,9 @@ fn verify_checksums_signature(
     checksums: &[u8],
     signature: &[u8],
 ) -> Result<(), UpdateError> {
-    let signature = std::str::from_utf8(signature)
-        .map_err(|error| UpdateError::VerificationFailed(format!("signature is not UTF-8: {error}")))?;
+    let signature = std::str::from_utf8(signature).map_err(|error| {
+        UpdateError::VerificationFailed(format!("signature is not UTF-8: {error}"))
+    })?;
     let signature = SignatureBox::from_string(signature)
         .map_err(|error| UpdateError::VerificationFailed(format!("parse signature: {error}")))?;
     minisign::verify(
@@ -92,8 +122,9 @@ fn verify_checksums_signature(
 }
 
 fn checksum_for(checksums: &[u8], expected_name: &str) -> Result<String, UpdateError> {
-    let content = std::str::from_utf8(checksums)
-        .map_err(|error| UpdateError::VerificationFailed(format!("checksums are not UTF-8: {error}")))?;
+    let content = std::str::from_utf8(checksums).map_err(|error| {
+        UpdateError::VerificationFailed(format!("checksums are not UTF-8: {error}"))
+    })?;
     let mut matches = Vec::new();
     for line in content.lines().filter(|line| !line.trim().is_empty()) {
         let fields = line.split_whitespace().collect::<Vec<_>>();
@@ -123,17 +154,20 @@ fn checksum_for(checksums: &[u8], expected_name: &str) -> Result<String, UpdateE
 }
 
 fn prepare_stage(stage: &Path, asset_name: &str, archive: &[u8]) -> Result<PathBuf, UpdateError> {
-    fs::create_dir_all(stage)
-        .map_err(|error| UpdateError::VerificationFailed(format!("create update stage: {error}")))?;
+    fs::create_dir_all(stage).map_err(|error| {
+        UpdateError::VerificationFailed(format!("create update stage: {error}"))
+    })?;
     let archive_path = stage.join(asset_name);
     let mut output = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&archive_path)
-        .map_err(|error| UpdateError::VerificationFailed(format!("create staged archive: {error}")))?;
-    output
-        .write_all(archive)
-        .map_err(|error| UpdateError::VerificationFailed(format!("write staged archive: {error}")))?;
+        .map_err(|error| {
+            UpdateError::VerificationFailed(format!("create staged archive: {error}"))
+        })?;
+    output.write_all(archive).map_err(|error| {
+        UpdateError::VerificationFailed(format!("write staged archive: {error}"))
+    })?;
     Ok(archive_path)
 }
 
@@ -148,8 +182,9 @@ fn extract_zip(archive: &[u8], target: ReleaseTarget, stage: &Path) -> Result<()
         .map_err(|error| UpdateError::VerificationFailed(format!("open ZIP archive: {error}")))?;
     let expected = expected_entries(target);
     let extracted = stage.join("verified");
-    fs::create_dir(&extracted)
-        .map_err(|error| UpdateError::VerificationFailed(format!("create extraction stage: {error}")))?;
+    fs::create_dir(&extracted).map_err(|error| {
+        UpdateError::VerificationFailed(format!("create extraction stage: {error}"))
+    })?;
     let mut found = BTreeSet::new();
     for index in 0..archive.len() {
         let mut entry = archive
@@ -169,8 +204,9 @@ fn extract_zip(archive: &[u8], target: ReleaseTarget, stage: &Path) -> Result<()
 fn extract_tar_gz(archive: &[u8], target: ReleaseTarget, stage: &Path) -> Result<(), UpdateError> {
     let expected = expected_entries(target);
     let extracted = stage.join("verified");
-    fs::create_dir(&extracted)
-        .map_err(|error| UpdateError::VerificationFailed(format!("create extraction stage: {error}")))?;
+    fs::create_dir(&extracted).map_err(|error| {
+        UpdateError::VerificationFailed(format!("create extraction stage: {error}"))
+    })?;
     let decoder = GzDecoder::new(Cursor::new(archive));
     let mut archive = tar::Archive::new(decoder);
     let mut found = BTreeSet::new();
@@ -203,8 +239,9 @@ fn extract_tar_gz(archive: &[u8], target: ReleaseTarget, stage: &Path) -> Result
 }
 
 fn copy_entry(reader: &mut impl Read, target: &Path) -> Result<(), UpdateError> {
-    let mut output = File::create(target)
-        .map_err(|error| UpdateError::VerificationFailed(format!("create extracted file: {error}")))?;
+    let mut output = File::create(target).map_err(|error| {
+        UpdateError::VerificationFailed(format!("create extracted file: {error}"))
+    })?;
     std::io::copy(reader, &mut output)
         .map_err(|error| UpdateError::VerificationFailed(format!("extract file: {error}")))?;
     output
