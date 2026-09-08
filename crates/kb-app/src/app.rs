@@ -528,11 +528,42 @@ fn change_summary(preview: &Value) -> Result<Value, KbError> {
         .get("operation_summary")
         .and_then(Value::as_object)
         .ok_or_else(|| KbError::invalid_config("prepared save", "operation summary is missing"))?;
+    let operation_kind = summary
+        .get("operation_kind")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let (change_count, affected_paths, summary_text) = if operation_kind == "save_knowledge"
+        && let Some(writes) = preview.get("writes").and_then(Value::as_array)
+    {
+        let paths = writes
+            .iter()
+            .map(|write| {
+                write.get("path").cloned().ok_or_else(|| {
+                    KbError::invalid_config("knowledge save preview", "write path is missing")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let count = paths.len();
+        (
+            json!(count),
+            Value::Array(paths),
+            json!(format!("Save knowledge: {count} planned change(s).")),
+        )
+    } else {
+        (
+            summary.get("change_count").cloned().unwrap_or(Value::Null),
+            summary
+                .get("affected_paths")
+                .cloned()
+                .unwrap_or(Value::Null),
+            summary.get("summary").cloned().unwrap_or(Value::Null),
+        )
+    };
     Ok(json!({
-        "operation_kind": summary.get("operation_kind").cloned().unwrap_or(Value::Null),
-        "change_count": summary.get("change_count").cloned().unwrap_or(Value::Null),
-        "affected_paths": summary.get("affected_paths").cloned().unwrap_or(Value::Null),
-        "summary": summary.get("summary").cloned().unwrap_or(Value::Null),
+        "operation_kind": operation_kind,
+        "change_count": change_count,
+        "affected_paths": affected_paths,
+        "summary": summary_text,
     }))
 }
 

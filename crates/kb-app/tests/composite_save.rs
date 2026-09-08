@@ -129,7 +129,11 @@ fn knowledge_save_confirms_the_prepared_wiki_change() {
     .unwrap();
 
     assert_eq!(prepared["phase"], "awaiting_confirmation");
-    assert_eq!(prepared["change_summary"]["change_count"], 1);
+    assert_eq!(prepared["change_summary"]["change_count"], 3);
+    assert_eq!(
+        prepared["change_summary"]["affected_paths"],
+        serde_json::json!(["Wiki/articles/composite.md", "Wiki/index.md", "Wiki/log.md"])
+    );
     assert!(!article.exists());
     let token = prepared["confirmation_token"]
         .as_str()
