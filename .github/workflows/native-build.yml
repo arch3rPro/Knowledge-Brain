@@ -47,11 +47,7 @@ jobs:
         with:
           toolchain: 1.85.0
       - run: cargo test --workspace
-      - name: Build native verification binary
-        if: ${{ !inputs.package }}
-        run: cargo build --release -p kb-cli
       - name: Build official release binary
-        if: ${{ inputs.package }}
         env:
           KB_RELEASE_TARGET: ${{ matrix.target }}
         run: cargo build --release -p kb-cli
