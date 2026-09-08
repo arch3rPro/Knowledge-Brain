@@ -18,7 +18,7 @@ pub use discovery::{DiscoveredSource, DiscoverySnapshot, SkippedSource, discover
 pub use extract::{BuiltinTextExtractor, classify_media_type, extract_bytes};
 pub use review::review_sources;
 pub use search::{query, rebuild_catalog};
-pub use skill_assets::{SkillAsset, skill_assets};
+pub use skill_assets::{SKILL_NAMES, SkillAsset, legacy_skill_assets, skill_assets};
 pub use skill_hosts::{
     AgentRoots, DetectedSkillHost, SkillTarget, detect_skill_hosts, resolve_skill_host,
     skill_target,
