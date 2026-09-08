@@ -25,13 +25,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            release_binary: target/release/kb
+          - os: macos-latest
+            release_binary: target/release/kb
+          - os: windows-latest
+            release_binary: target/release/kb.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85
       - run: cargo test --workspace
       - run: cargo build --release -p kb-cli
+      - name: Run release CLI journey
+        env:
+          KB_TEST_BINARY: ${{ github.workspace }}/${{ matrix.release_binary }}
+        run: cargo test -p kb-cli --test phase2_journey
 
   skill-distribution:
     name: Skill distribution
