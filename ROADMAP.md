@@ -11,15 +11,15 @@
 
 ## 跨阶段使用体验
 
-**Status:** planned
+**Status:** in progress
 
-真实 Vault 工作流需要缩短 Hash 的默认展示、把确认集中到最终写入，并将来源保存、查询和知识整理表达为三条独立路径。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
+短 Hash、人类可读操作摘要、一次最终写入确认和 relevant/exact 查询已实现。来源保存与知识保存的组合入口仍待独立设计；问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
 
 实现契约见[使用体验与 Agent Skill 套件设计](docs/superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
 
 ## Stage 1 — Vault 基础
 
-**Status:** implemented；macOS 工作流已验证，Windows 和 Linux 等待原生 CI 证据。
+**Status:** implemented；GitHub Actions 已用 Rust 1.85 验证 Linux、macOS 和 Windows 的 workspace 测试与 release CLI 旅程。
 
 - 最小 Vault 初始化与已有目录采用
 - `admission.yml` 准入管理
@@ -32,7 +32,7 @@
 
 ## Stage 2 — 来源与读取
 
-**Status:** implemented（定向本地测试）；跨平台验收仍待原生 CI。
+**Status:** implemented；GitHub Actions 已完成三平台 workspace 测试与 release CLI 旅程。
 
 当前实施计划：[Source Discovery and Direct Search](docs/superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
 
@@ -48,23 +48,23 @@
 
 ### Stage 2A — 本地来源与直接搜索
 
-**Status:** implemented（macOS 本地工作流）；跨平台验收仍待原生 CI。
+**Status:** implemented；本地工作流和三平台 CI 均已验证。
 
 已经提供 `review → operation show → apply`、来源版本历史、`query`、`cache rebuild` 和 `source verify`。来源保存更新原始对象、来源记录和日志，不修改主题文件。
 
 本地验证使用 Rust/Cargo 1.95.0：格式、Clippy、workspace 测试、release 构建，以及 release 二进制的真实 CLI 工作流。覆盖新增/修改/移动/删除、规则排除、陈旧计划、版本完整性、缓存缺失/损坏/写入失败、中文查询、移动后重开及独立用户状态。另有子进程在对象、记录、日志和回执写入后直接退出的恢复测试，以及人工改动保护测试。
 
-未验证：Windows/Linux 原生运行、Rust 1.85 原生构建、断电恢复。CI 配置使用 Rust 1.85 和三平台原生任务，但尚不能当作通过证据。
+三平台 CI 使用 Rust 1.85 完成原生构建、workspace 测试和 release CLI 旅程。真实断电恢复仍未验证；现有覆盖的是受控进程中断后的恢复。
 
 ### Stage 2B — 文档提取器
 
-**Status:** implemented（定向本地测试）。内置 HTML、EPUB 和 DOCX 提取器使用纯 Rust 依赖，实现正文、标题、链接和可引用位置。PDF 正文提取与 OCR 保持 future。全量回归、release 二进制及 Windows/Linux 原生验证未在本阶段运行。
+**Status:** implemented。内置 HTML、EPUB 和 DOCX 提取器使用纯 Rust 依赖，实现正文、标题、链接和可引用位置。PDF 正文提取与 OCR 保持 future；三平台 CI 已运行 workspace 回归与 release 构建/旅程。
 
 另使用非 Git 测试 Vault 和实际 debug 二进制完成三种格式的 `review → apply → direct query → cache rebuild → strict BM25F query` 流程。重新打开 Vault 后，HTML 可见正文、EPUB spine 章节顺序与资源位置、DOCX 标题/段落/表格行/超链接、提取缓存及来源对象校验均符合预期；HTML 脚本中的不可拆分标识未进入搜索结果。脚本-only HTML 和损坏的 EPUB、DOCX 经真实来源保存流程降级为 `metadata_only` 并报告具体原因，删除源文件后记录保留为 `present: false`，原始对象继续通过完整性校验。
 
 ## Stage 3 — 知识形成与安全保存
 
-**Status:** implemented（定向本地测试）；跨平台验收仍待原生 CI。
+**Status:** implemented；本地定向流程和三平台 CI 均已验证。
 
 - OKF v0.2 Producer Profile
 - 来源、research 和 article 之间的引用关系
@@ -76,7 +76,7 @@
 
 **Status:** implemented（定向本地测试）。`kb lint` 已实现 OKF v0.2 底线、显式受管理 Producer Profile、保留文件、Markdown 链接、孤立页、`supersedes`、精确来源版本、新鲜度和可移植路径检查。报告由应用层共享，CLI 的 `--strict` 只控制退出码。
 
-本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。知识写入计划、受管理 index/log 更新和中断恢复由 Stage 3B 提供。
+本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；三平台 CI 已完成 workspace 回归与 release CLI 旅程。知识写入计划、受管理 index/log 更新和中断恢复由 Stage 3B 提供。
 
 命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](docs/superpowers/plans/2026-09-07-wiki-lint.md)。
 
@@ -84,7 +84,7 @@
 
 **Status:** implemented（定向本地测试）。`kb plan create` 接收结构化 research/article 请求并生成不改 Vault 的可审阅计划；现有 `operation show` 和 `apply` 完成查看、旧状态复核、受管理 index/log 派生、整批保存、重复执行和中断恢复。来源保存与知识保存的恢复状态互斥，所有入口复用 `kb-app` 的 typed request/report。
 
-本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。只运行相关 crate 的定向测试、格式和 Clippy；未运行 workspace 全量测试、release 二进制流程、断电测试或 Windows/Linux 原生验证。
+本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。三平台 CI 已完成 workspace 回归与 release CLI 旅程；真实断电测试仍未执行。
 
 请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)，实施计划见[Knowledge Save](docs/superpowers/plans/2026-09-07-knowledge-save.md)。
 
@@ -105,7 +105,7 @@
 
 `kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
 
-本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、每个受管理文件写入后进程退出并重试，以及真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。只运行相关 crate 的定向测试；Windows/Linux 原生路径、Rust 1.85 原生构建及四种外部 Agent 的实际加载行为仍待 CI 或对应宿主环境验证。
+本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、每个受管理文件写入后进程退出并重试，以及真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。三平台 CI 已完成 Rust 1.85 的原生构建与测试；四种外部 Agent 的实际加载行为仍需在对应宿主环境验证。
 
 参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](docs/superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](docs/superpowers/plans/2026-09-07-mcp-stdio.md)。
 
@@ -115,7 +115,7 @@
 
 macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回环只读、Bearer token、来源 review/apply、写入后的 direct 回退、重建后的严格 BM25，以及 HTTP 与 CLI 的结果一致性。非回环 `0.0.0.0` 监听在无 token 时拒绝启动，提供 token 后启动成功并拒绝未鉴权请求。
 
-当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。未运行 workspace 全量测试、release 二进制流程、浏览器 WebUI、拒绝服务加固或 Windows/Linux 原生验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
+当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。三平台 CI 已运行 workspace 测试和 release CLI 旅程；浏览器 WebUI、拒绝服务加固与真实局域网部署仍未验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
 
 ### Stage 4B — Operation 事件与 SSE
 
@@ -123,7 +123,7 @@ macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回�
 
 真实 HTTP 进程测试观察到来源保存的 `planned → applying → progress → applied` 完整序列和终态自动关闭；使用倒数第二个事件 ID 重连时只返回最终事件，使用超前游标时返回 `invalid_config`。
 
-本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载、跨机器事件同步、release 二进制或 Windows/Linux 原生网络行为。事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](docs/superpowers/plans/2026-09-07-operation-events-sse.md)。
+本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载和跨机器事件同步。三平台 CI 已完成 workspace 测试与 release CLI 旅程；事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](docs/superpowers/plans/2026-09-07-operation-events-sse.md)。
 
 ## Stage 5 — 搜索、备份与发布
 
@@ -144,7 +144,7 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 
 **Status:** implemented（定向本地测试）。`search.mode: bm25` 提供标题、别名、章节、标签和正文加权，ASCII 词项与中文 1–3 gram、章节级结果、确定性整数评分及字段贡献解释。`.kb/cache/bm25.json` 支持未变文档复用、增改删更新和精确新鲜度核对；默认失败策略是整次 direct 回退，`--strict-backend` 返回 `index_stale`。
 
-本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。未运行 workspace 全量测试、release 二进制流程或 Windows/Linux 原生验证。
+本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。三平台 CI 已完成 workspace 回归与 release CLI 旅程。
 
 排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](docs/superpowers/plans/2026-09-07-bm25f-search.md)。
 
@@ -152,7 +152,7 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 
 **Status:** implemented（定向本地测试）。`kb backup create|verify|restore` 使用标准 ZIP 和逐文件 SHA-256 清单，完整保存 Wiki、共享配置、schema 及启用或停用的准入主题目录；本机配置、缓存、恢复状态和 Git 内部目录不迁移。可选精简归档明确标记缺少完整来源证据。恢复只面向不存在或真实空目录，并经过不可信归档校验、私有同级暂存和写入时二次哈希核对。
 
-本阶段验证了清单结构、空目录、完整/精简范围、链接和路径穿越拒绝、可移植路径冲突、哈希篡改、已有输出、Vault 内输出、非空目标、待恢复状态阻断，以及真实 CLI 创建 → 移动归档 → 独立状态目录校验 → 恢复 → 显式路径重开查询。只运行相关 crate 的定向测试、格式和 Clippy；未运行 workspace 全量测试、release 二进制流程、断电测试或 Windows/Linux 原生跨系统恢复。
+本阶段验证了清单结构、空目录、完整/精简范围、链接和路径穿越拒绝、可移植路径冲突、哈希篡改、已有输出、Vault 内输出、非空目标、待恢复状态阻断，以及真实 CLI 创建 → 移动归档 → 独立状态目录校验 → 恢复 → 显式路径重开查询。三平台 CI 已完成 workspace 回归与 release CLI 旅程；真实断电测试和跨系统手工恢复仍未执行。
 
 macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 配置的非 Git Vault 完成完整 ZIP 创建、独立校验、恢复、direct 回退、索引重建、严格 BM25 查询、lint 和来源对象校验。恢复目录不包含原 Vault 的缓存、运行状态或 Git 元数据，并使用独立机器配置和状态目录完成验证。
 
