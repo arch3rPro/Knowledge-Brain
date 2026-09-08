@@ -52,6 +52,7 @@ fn command_reference_names_every_real_top_level_command() {
         "adopt",
         "apply",
         "plan",
+        "knowledge",
         "operation",
         "config",
         "status",
@@ -101,8 +102,32 @@ fn agent_skill_and_mcp_references_own_their_public_contracts() {
         "固定 Vault",
         "stdin",
         "stdout",
+        "kb_source_save",
+        "kb_knowledge_save",
+        "confirmation_token",
     ] {
         assert!(mcp.contains(contract), "missing MCP contract: {contract}");
+    }
+}
+
+#[test]
+fn save_references_own_the_one_confirmation_contract() {
+    for contract in [
+        "kb source save",
+        "kb knowledge save",
+        "--confirm",
+        "一次确认",
+    ] {
+        assert!(COMMAND_REFERENCE.contains(contract), "missing {contract}");
+    }
+    let http = include_str!("../../../docs/reference/http.md");
+    for contract in [
+        "POST /source/save",
+        "POST /knowledge/save",
+        "confirmation_token",
+        "--allow-write",
+    ] {
+        assert!(http.contains(contract), "missing {contract}");
     }
 }
 

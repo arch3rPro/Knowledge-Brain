@@ -41,6 +41,9 @@ pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError>
     if let Some(summary) = value.get("operation_summary").and_then(Value::as_object) {
         return Ok(render_operation_summary(summary, full_hashes));
     }
+    if let Some(summary) = value.get("change_summary").and_then(Value::as_object) {
+        return Ok(render_change_summary(value, summary, full_hashes));
+    }
     if let Some(groups) = value.get("groups").and_then(Value::as_array) {
         return Ok(render_query_groups(value, groups, full_hashes));
     }
@@ -75,6 +78,29 @@ fn render_operation_summary(summary: &serde_json::Map<String, Value>, full_hashe
                 value,
                 full_hashes || identity_field(field),
             );
+        }
+    }
+    if let Some(paths) = summary.get("affected_paths").and_then(Value::as_array) {
+        output.push_str("affected_paths:\n");
+        for path in paths {
+            push_scalar_line(&mut output, 2, None, path, true);
+        }
+    }
+    output.trim_end().to_owned()
+}
+
+fn render_change_summary(
+    value: &Value,
+    summary: &serde_json::Map<String, Value>,
+    full_hashes: bool,
+) -> String {
+    let mut output = String::new();
+    if let Some(phase) = value.get("phase") {
+        push_scalar_line(&mut output, 0, Some("phase"), phase, full_hashes);
+    }
+    for field in ["summary", "operation_kind", "change_count"] {
+        if let Some(value) = summary.get(field) {
+            push_scalar_line(&mut output, 0, Some(field), value, full_hashes);
         }
     }
     if let Some(paths) = summary.get("affected_paths").and_then(Value::as_array) {

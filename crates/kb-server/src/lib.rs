@@ -9,11 +9,12 @@ use axum::{
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
-use kb_app::{AppContext, AppRequest, OperationRequest};
+use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode};
 use kb_core::{
     ErrorCode, KbError, KnowledgePlanRequest, OperationEventReport, OperationId, SearchRequest,
 };
 use kb_protocol::{Envelope, ErrorEnvelope};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::ReceiverStream;
@@ -190,7 +191,9 @@ fn router(state: ServerState) -> Router {
         .route("/query", post(query))
         .route("/lint", post(lint))
         .route("/review", post(review))
+        .route("/source/save", post(source_save))
         .route("/plans", post(create_plan))
+        .route("/knowledge/save", post(knowledge_save))
         .route("/operations/{operation_id}", get(operation))
         .route(
             "/operations/{operation_id}/events",
@@ -293,6 +296,109 @@ async fn review(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         },
     )
     .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceSaveBody {
+    #[serde(default)]
+    apply: bool,
+    confirmation_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KnowledgeSaveBody {
+    request: Option<KnowledgePlanRequest>,
+    #[serde(default)]
+    apply: bool,
+    confirmation_token: Option<String>,
+}
+
+async fn source_save(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    request: Result<Json<SourceSaveBody>, JsonRejection>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    let request = match json_request(request) {
+        Ok(request) => request,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    let mode = match save_mode(request.apply, request.confirmation_token) {
+        Ok(mode) => mode,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    if requires_write_authorization(&mode) && !state.policy.allow_write() {
+        return failure_with_status(
+            StatusCode::FORBIDDEN,
+            auth_error(
+                "HTTP save confirmation is disabled; restart with --allow-write and a token file.",
+            ),
+        );
+    }
+    match call(
+        &state,
+        AppRequest::SourceSave {
+            vault: Some(selected(&state)),
+            mode,
+        },
+    )
+    .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
+}
+
+async fn knowledge_save(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    request: Result<Json<KnowledgeSaveBody>, JsonRejection>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    let request = match json_request(request) {
+        Ok(request) => request,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    let mode = match save_mode(request.apply, request.confirmation_token) {
+        Ok(mode) => mode,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    if request.request.is_none() && !matches!(mode, SaveMode::Confirm(_)) {
+        return failure_with_status(
+            StatusCode::BAD_REQUEST,
+            KbError::invalid_config(
+                "knowledge save request",
+                "a request is required unless confirming a prepared save",
+            ),
+        );
+    }
+    if requires_write_authorization(&mode) && !state.policy.allow_write() {
+        return failure_with_status(
+            StatusCode::FORBIDDEN,
+            auth_error(
+                "HTTP save confirmation is disabled; restart with --allow-write and a token file.",
+            ),
+        );
+    }
+    match call(
+        &state,
+        AppRequest::KnowledgeSave {
+            vault: Some(selected(&state)),
+            request: request.request,
+            mode,
+        },
+    )
+    .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
 }
 
 async fn create_plan(
@@ -528,6 +634,22 @@ fn json_request<T>(request: Result<Json<T>, JsonRejection>) -> Result<T, KbError
 fn parse_operation_id(value: &str) -> Result<OperationId, KbError> {
     OperationId::from_str(value)
         .map_err(|error| KbError::invalid_config("operation_id", error.to_string()))
+}
+
+fn save_mode(apply: bool, confirmation_token: Option<String>) -> Result<SaveMode, KbError> {
+    match (apply, confirmation_token) {
+        (true, Some(_)) => Err(KbError::invalid_config(
+            "save request",
+            "apply and confirmation_token cannot be combined",
+        )),
+        (true, None) => Ok(SaveMode::ApplyImmediately),
+        (false, Some(token)) => parse_operation_id(&token).map(SaveMode::Confirm),
+        (false, None) => Ok(SaveMode::Prepare),
+    }
+}
+
+fn requires_write_authorization(mode: &SaveMode) -> bool {
+    matches!(mode, SaveMode::Confirm(_) | SaveMode::ApplyImmediately)
 }
 
 fn selected(state: &ServerState) -> String {

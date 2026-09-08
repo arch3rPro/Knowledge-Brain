@@ -31,7 +31,9 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 | `kb_status` | 读取固定 Vault 的事实状态 |
 | `kb_query` | 查询 Wiki、来源或两者；来源结果是有界的保存证据片段 |
 | `kb_lint` | 检查 Wiki 结构和引用 |
+| `kb_source_save` | 准备来源保存，或提交已确认的准备结果 |
 | `kb_review_sources` | 审阅准入来源变化并创建计划 |
+| `kb_knowledge_save` | 准备知识保存，或提交已确认的准备结果 |
 | `kb_plan_knowledge` | 从结构化请求创建 research/article 计划 |
 | `kb_operation_show` | 查看属于固定 Vault 的计划或结果 |
 
@@ -39,13 +41,15 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 
 默认不注册 `kb_apply_operation`。创建来源或知识计划只会返回 operation ID，不会写入 Vault。
 
-显式传入 `--allow-write` 后才注册 `kb_apply_operation`。调用者仍须提供一个已经审阅并获准执行的 operation ID；应用层会重新核对 operation 归属、Vault 身份、文件旧状态和恢复状态。属于其他 Vault 的 ID 会被拒绝。
+`kb_source_save({})` 和 `kb_knowledge_save({"request": {...}})` 准备普通用户流程所需的变更，返回 `change_summary` 与机器字段 `confirmation_token`。Agent 或 UI 只向用户展示摘要，并在得到一次明确确认后调用同一个工具并传入 `confirmation_token`。普通用户不需要看到 token、operation ID 或计划。调用时传入 `apply: true` 表示调用方已经获得授权，工具会在一次调用中准备并保存。
+
+显式传入 `--allow-write` 后才注册 `kb_apply_operation`，并允许两个保存工具使用 `confirmation_token` 或 `apply: true` 写入。调用者仍须先取得用户确认；应用层会重新核对 operation 归属、Vault 身份、文件旧状态和恢复状态。属于其他 Vault 的 token 或 ID 会被拒绝。
 
 ## 返回值与错误
 
 成功和业务失败都使用 MCP tool result。`structuredContent` 保留 Knowledge-Brain 的 `schema_version: v1.0` 信封；`isError` 区分业务失败。`kb_review_sources` 有变化时、`kb_plan_knowledge` 以及 `kb_operation_show` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。MCP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。参数错误、隐藏工具和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。备份归档校验与恢复目标的错误代码、`legacy_code` 迁移详情见[备份参考](backup.md#错误分类与迁移)；MCP 沿用共享错误信封，不新增备份工具或为旧客户端转换新枚举。
 
-`--allow-write` 只授予调用 apply 工具的能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `operation_summary`，在最终 `kb_apply_operation` 前取得一次明确确认，并在摘要的 `can_apply` 为 `false` 时停止提交。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+`--allow-write` 只授予写入能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `kb_source_save` 或 `kb_knowledge_save` 返回的 `change_summary`，在提交 `confirmation_token` 前取得一次明确确认。高级 `kb_apply_operation` 仍使用 `operation_summary`。完整确认语义见[一次确认的保存入口设计](../superpowers/specs/2026-09-08-composite-save-entries-design.md)。
 
 ## 安全边界
 

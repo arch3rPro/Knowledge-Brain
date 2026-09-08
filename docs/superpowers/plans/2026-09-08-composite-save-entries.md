@@ -1,421 +1,465 @@
-# Composite Save Entries Implementation Plan
+# One-Confirmation Save Entries Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (\`- [ ]\`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Add explicit source and knowledge save entry points that preview by default and apply only after a caller passes an explicit execution flag.
+**Goal:** Let Agent and UI users approve a prepared source or knowledge save once without exposing operation planning, while retaining durable exact-content checks.
 
-**Architecture:** \`kb-app\` owns a coordinator that reuses the existing source review, knowledge-plan creation, selected-Vault apply and operation-summary paths. CLI, MCP and HTTP only translate their local arguments into that coordinator, preserving existing primitive commands and fixed-Vault/write-authorization boundaries.
+**Architecture:** kb-app keeps the current operation model but introduces a SaveMode coordinator. Prepare persists an existing operation and returns a machine confirmation token plus a user-safe change summary; confirm applies that exact operation; direct execution prepares and applies in one request. CLI, MCP and HTTP only decode their transport inputs and enforce their established write policies.
 
-**Tech Stack:** Rust stable, Clap, Serde JSON, Axum, MCP JSON-RPC, existing \`kb-app\` operation persistence.
+**Tech Stack:** Rust stable, Clap, Serde JSON, Axum, MCP JSON-RPC, existing kb-app operations.
 
-**Spec:** \`docs/superpowers/specs/2026-09-08-composite-save-entries-design.md\`
+**Spec:** docs/superpowers/specs/2026-09-08-composite-save-entries-design.md
 
 ## Global Constraints
 
-- Keep \`schema_version: v1.0\`, existing operation file formats and \`capture_sources\` / \`save_knowledge\` operation kinds unchanged.
-- Add no dependencies and no interactive terminal confirmation.
-- \`kb source save\` and \`kb knowledge save\` preview by default; only \`--yes\` / \`apply: true\` requests a write.
-- Reuse existing stale-plan validation, recovery behavior, locks and selected-Vault checks; do not hold a new lock across planning and apply.
-- MCP and HTTP may execute only under their existing \`--allow-write\` policy; HTTP continues to require its existing token policy.
-- Keep full identifiers in JSON, MCP and HTTP. Run focused test targets only, then format and diff checks.
+- Keep schema_version v1.0, existing operation records, capture_sources and save_knowledge kinds unchanged.
+- Do not add dependencies, a terminal wizard, or a user requirement to enter an operation ID.
+- Default coordinated saves prepare only; confirmation tokens apply the exact prepared operation; --yes and apply: true prepare and apply in one request.
+- Do not create a new cross-operation atomicity guarantee.
+- Keep stale-plan, recovery, selected-Vault, lock, HTTP token and MCP/HTTP --allow-write protections.
+- Run only focused test targets locally, then formatter and diff checks.
 
 ---
 
 ## File Structure
 
-- \`crates/kb-app/src/app.rs\`: application request variants, selected-Vault coordination and composite response/error helpers.
-- \`crates/kb-app/tests/composite_save.rs\`: application-level source/knowledge preview, apply, no-change and stale-error metadata coverage.
-- \`crates/kb-cli/src/args.rs\`: \`source save\` and \`knowledge save\` argument parsing mapped to \`kb-app\`.
-- \`crates/kb-cli/tests/composite_save_journey.rs\`: real CLI JSON journeys for both new commands.
-- \`crates/kb-mcp/src/server.rs\`: new MCP tools, argument decoding and \`allow_write\` enforcement.
-- \`crates/kb-mcp/tests/tools.rs\`: tool visibility, preview and write authorization tests.
-- \`crates/kb-server/src/lib.rs\`: \`/source/save\` and \`/knowledge/save\` payloads, routes and policy enforcement.
-- \`crates/kb-server/tests/http.rs\`: real HTTP preview, denied write and permitted fixed-Vault apply tests.
-- \`docs/reference/{commands,mcp,http}.md\`, \`skills/{kb-ingest,kb-save}/SKILL.md\`: public command and Agent usage guidance.
-- \`crates/kb-cli/tests/docs_contract.rs\`: source-level contract check for new public names.
+- crates/kb-app/src/review.rs: split source discovery and plan construction from source plan persistence.
+- crates/kb-app/src/knowledge_plan.rs: split knowledge plan construction from persistence.
+- crates/kb-app/src/app.rs: SaveMode, source/knowledge coordinator, token validation and change summaries.
+- crates/kb-app/tests/composite_save.rs: real application preparation, confirmation, direct execution and no-change cases.
+- crates/kb-cli/src/args.rs and crates/kb-cli/tests/composite_save_journey.rs: CLI save, --yes and --confirm routes.
+- crates/kb-mcp/src/server.rs and crates/kb-mcp/tests/tools.rs: MCP prepare, confirmation and write-policy behavior.
+- crates/kb-server/src/lib.rs and crates/kb-server/tests/http.rs: HTTP request bodies, routes and policy behavior.
+- docs/reference/commands.md, docs/reference/mcp.md, docs/reference/http.md, skills/kb-ingest/SKILL.md and skills/kb-save/SKILL.md: public workflow guidance.
+- crates/kb-cli/tests/docs_contract.rs: public command/reference boundary coverage.
 
-### Task 1: Add the shared application coordinator
+### Task 1: Separate preparation from persistence
 
 **Files:**
-- Modify: \`crates/kb-app/src/app.rs\`
-- Create: \`crates/kb-app/tests/composite_save.rs\`
+- Modify: crates/kb-app/src/review.rs
+- Modify: crates/kb-app/src/knowledge_plan.rs
+- Modify: crates/kb-app/src/lib.rs
+- Test: crates/kb-app/tests/composite_save.rs
 
 **Interfaces:**
-- Consumes: \`AppRequest::Review\`, \`AppRequest::PlanCreate\`, \`run_apply_for_vault\`, \`OperationSummary\`, \`KbError::with_details\`.
-- Produces: \`AppRequest::SourceSave { vault: Option<String>, apply: bool }\` and \`AppRequest::KnowledgeSave { vault: Option<String>, request: KnowledgePlanRequest, apply: bool }\`.
-- Produces: composite \`Value\` with \`phase\`, \`preview\`, \`operation_summary\` and \`result\` fields.
+- Produces: PreparedSourceCapture containing a ReviewReport and an optional SourceCapturePlan.
+- Produces: build_knowledge_plan(root, config, request, now) returning an unpersisted KnowledgePlan.
+- Preserves: review_sources and create_knowledge_plan continue to persist exactly as before for advanced primitive callers.
 
-- [ ] **Step 1: Write the failing application tests**
+- [ ] **Step 1: Write the failing preparation tests**
 
-Create \`crates/kb-app/tests/composite_save.rs\` with isolated \`AppContext\` paths and these assertions:
+Create crates/kb-app/tests/composite_save.rs. Initialize a real Vault, add an enabled Notes directory and one Markdown file. Call the new preparation functions through the application entry added in Task 2 and assert these externally visible facts:
 
-\`\`\`rust
-#[test]
-fn source_save_previews_then_applies_only_when_requested() {
-    let preview = run(AppRequest::SourceSave { vault: Some(vault_text.clone()), apply: false }, &context).unwrap();
-    assert_eq!(preview["phase"], "planned");
-    assert_eq!(preview["result"], serde_json::Value::Null);
-    assert_eq!(preview["operation_summary"]["operation_kind"], "capture_sources");
+~~~
+default source save:
+  phase == awaiting_confirmation
+  confirmation_token is a string
+  source verify is blocked because the exact prepared operation is pending
 
-    let applied = run(AppRequest::SourceSave { vault: Some(vault_text), apply: true }, &context).unwrap();
-    assert_eq!(applied["phase"], "applied");
-    assert_eq!(applied["operation_summary"]["can_apply"], false);
-    assert!(applied["result"].is_object());
+confirm with that token:
+  phase == applied
+  source verify returns one pass check
+
+source save after capture:
+  phase == unchanged
+  confirmation_token and result are null
+~~~
+
+Add a knowledge fixture whose managed Article is valid. Assert default knowledge save leaves the Article path absent and returns awaiting_confirmation; confirmation writes that Article.
+
+- [ ] **Step 2: Run the test target to verify it fails**
+
+Run: cargo test -p kb-app --test composite_save
+
+Expected: compilation failure because AppRequest source and knowledge save variants do not exist.
+
+- [ ] **Step 3: Refactor source and knowledge preparation**
+
+In review.rs, extract the discovery, record-write and SourceCapturePlan construction into:
+
+~~~
+pub(crate) struct PreparedSourceCapture {
+    pub report: ReviewReport,
+    pub plan: Option<SourceCapturePlan>,
 }
 
-#[test]
-fn source_save_without_changes_is_unchanged() {
-    let response = run(AppRequest::SourceSave { vault: Some(vault_text), apply: false }, &context).unwrap();
-    assert_eq!(response["phase"], "unchanged");
-    assert!(response["operation_summary"].is_null());
-    assert!(response["result"].is_null());
-}
-\`\`\`
-
-Add a knowledge request fixture and assert \`KnowledgeSave { apply: false }\` returns \`planned\`, while \`apply: true\` writes the requested Wiki file and returns an applied summary. Add a unit test beside the composite helper that passes a \`PlanStale\` \`KbError\` through the post-plan failure helper and asserts \`error.details["operation_id"]\` equals the complete planned operation ID while \`error.code\` remains \`PlanStale\`.
-
-- [ ] **Step 2: Run the new test target to verify it fails**
-
-Run: \`cargo test -p kb-app --test composite_save\`
-
-Expected: compilation failure because \`SourceSave\` and \`KnowledgeSave\` do not exist.
-
-- [ ] **Step 3: Implement the minimum coordinator**
-
-In \`AppRequest\`, add:
-
-\`\`\`rust
-SourceSave { vault: Option<String>, apply: bool },
-KnowledgeSave {
-    vault: Option<String>,
-    request: kb_core::KnowledgePlanRequest,
-    apply: bool,
-},
-\`\`\`
-
-Factor current review and knowledge planning internals into helpers that accept \`&ResolvedVault\`, then let the existing \`Review\` and \`PlanCreate\` request arms select a Vault and call those helpers. Implement:
-
-\`\`\`rust
-fn run_source_save(context: &AppContext, vault: Option<String>, apply: bool) -> Result<Value, KbError>;
-fn run_knowledge_save(
-    context: &AppContext,
-    vault: Option<String>,
-    request: kb_core::KnowledgePlanRequest,
-    apply: bool,
-) -> Result<Value, KbError>;
-fn coordinated_save_response(
-    preview: Value,
-    operation_id: Option<OperationId>,
-    apply: bool,
-    apply_operation: impl FnOnce(OperationId) -> Result<Value, KbError>,
-) -> Result<Value, KbError>;
-\`\`\`
-
-\`coordinated_save_response\` returns \`{ "phase": "unchanged", "preview": preview, "operation_summary": null, "result": null }\` when no operation ID exists. For a planned ID, retain the full planner response under \`preview\`, copy its planned \`operation_summary\` to the composite root, and return \`result: null\`. When \`apply\` is true, invoke the supplied existing apply path exactly once, inspect the resulting operation state for the applied summary, and return that result under \`result\` with \`phase: "applied"\`.
-
-Create \`run_apply_for_resolved_vault(context, selected: &ResolvedVault, operation_id)\` and have the existing string-selector version call it after selection. The coordinator uses the already selected Vault, so it cannot silently switch Vaults between plan and apply. On apply error, merge \`operation_id\` into an object \`details\` payload; if original details are not an object, preserve them under \`cause\`. Do not change its error code, retryability, message or next action.
-
-- [ ] **Step 4: Run the focused application tests**
-
-Run: \`cargo test -p kb-app --test composite_save\`
-
-Expected: PASS. Confirm the test reads a stored source record after \`apply: true\`, verifies the Wiki file after knowledge apply, and sees no persisted operation for the no-change source case.
-
-- [ ] **Step 5: Commit the coordinator**
-
-\`\`\`bash
-git add crates/kb-app/src/app.rs crates/kb-app/tests/composite_save.rs
-git commit -m "feat: coordinate source and knowledge saves"
-\`\`\`
-
-### Task 2: Expose the two CLI commands
-
-**Files:**
-- Modify: \`crates/kb-cli/src/args.rs\`
-- Create: \`crates/kb-cli/tests/composite_save_journey.rs\`
-
-**Interfaces:**
-- Consumes: \`AppRequest::SourceSave\`, \`AppRequest::KnowledgeSave\`, existing \`KnowledgeRequestArg\` and \`VaultContext\`.
-- Produces: \`kb source save [--yes]\` and \`kb knowledge save <REQUEST.json> [--yes]\` real CLI entry points.
-
-- [ ] **Step 1: Write the failing CLI journey**
-
-Create a test that initializes a Vault, configures an admitted \`Notes\` directory, writes one Markdown note, then invokes:
-
-\`\`\`rust
-let preview = run(base, &["source", "save", "--vault", vault_text, "--json"]);
-assert_eq!(preview["data"]["phase"], "planned");
-assert_eq!(preview["data"]["result"], Value::Null);
-
-let saved = run(base, &["source", "save", "--yes", "--vault", vault_text, "--json"]);
-assert_eq!(saved["data"]["phase"], "applied");
-\`\`\`
-
-Add a knowledge request fixture and assert \`kb knowledge save <request> --json\` leaves \`Wiki/articles/composite.md\` absent, while the identical command with \`--yes\` creates it and returns \`phase: "applied"\`. Run \`kb source save --help\` and \`kb knowledge save --help\`; assert their output contains \`--yes\` and the corresponding domain wording.
-
-- [ ] **Step 2: Run the CLI test to verify it fails**
-
-Run: \`cargo test -p kb-cli --test composite_save_journey\`
-
-Expected: command parsing failure because \`source save\` and \`knowledge save\` are not registered.
-
-- [ ] **Step 3: Parse and map the new commands**
-
-Extend \`SourceCommands\` with:
-
-\`\`\`rust
-Save { #[arg(long)] yes: bool, #[command(flatten)] context: VaultContext }
-\`\`\`
-
-Add \`Commands::Knowledge { command: KnowledgeCommands }\` and \`KnowledgeCommands::Save { request: KnowledgeRequestArg, #[arg(long)] yes: bool, #[command(flatten)] context: VaultContext }\`. Map valid requests to the two new \`AppRequest\` variants. Preserve \`KnowledgeRequestArg::Invalid\` so missing or invalid request files keep the existing JSON error contract. Set the CLI \`json\` value from \`VaultContext\` and leave \`full_hashes\` handling unchanged.
-
-- [ ] **Step 4: Run the CLI journey**
-
-Run: \`cargo test -p kb-cli --test composite_save_journey\`
-
-Expected: PASS. Inspect filesystem assertions to confirm preview does not write source records or Wiki content, and \`--yes\` writes only through the returned operation.
-
-- [ ] **Step 5: Commit the CLI entry points**
-
-\`\`\`bash
-git add crates/kb-cli/src/args.rs crates/kb-cli/tests/composite_save_journey.rs
-git commit -m "feat: add composite save CLI commands"
-\`\`\`
-
-### Task 3: Add MCP composite tools with existing write policy
-
-**Files:**
-- Modify: \`crates/kb-mcp/src/server.rs\`
-- Modify: \`crates/kb-mcp/tests/tools.rs\`
-
-**Interfaces:**
-- Consumes: \`AppRequest::SourceSave\`, \`AppRequest::KnowledgeSave\`, fixed \`vault_selector\`, \`allow_write\`.
-- Produces: \`kb_source_save({ apply? })\` and \`kb_knowledge_save({ request, apply? })\`.
-
-- [ ] **Step 1: Write failing MCP tool tests**
-
-Add a test to the default read/planning MCP server that requires both new names in \`tools/list\`, then calls:
-
-\`\`\`rust
-let preview = call(&mut server, 3, "kb_source_save", &json!({}));
-assert_eq!(preview["result"]["isError"], false);
-assert_eq!(preview["result"]["structuredContent"]["data"]["phase"], "planned");
-
-let denied = call(&mut server, 4, "kb_source_save", &json!({"apply": true}));
-assert_eq!(denied["result"]["isError"], true);
-assert_eq!(denied["result"]["structuredContent"]["error"]["code"], "auth_denied");
-\`\`\`
-
-Add a write-enabled test calling \`kb_knowledge_save\` with \`apply: true\`; assert \`phase: "applied"\`, an applied operation summary, and the expected Wiki file. Add a second Vault fixture and prove a composite tool started for the fixed first Vault never writes the second Vault.
-
-- [ ] **Step 2: Run MCP tests to verify they fail**
-
-Run: \`cargo test -p kb-mcp --test tools\`
-
-Expected: failing tool-list assertion and unknown composite tool error.
-
-- [ ] **Step 3: Register, decode and authorize the MCP requests**
-
-Add both tools to \`McpServer::tools()\` for every server. Give \`kb_source_save\` an object schema with optional boolean \`apply\` defaulting to false. Give \`kb_knowledge_save\` an object schema with required \`request\` and optional boolean \`apply\` defaulting to false. Add \`SourceSaveArguments { #[serde(default)] apply: bool }\` and \`KnowledgeSaveArguments { request: KnowledgePlanRequest, #[serde(default)] apply: bool }\` with \`deny_unknown_fields\`.
-
-Introduce an internal dispatch result so JSON-RPC argument failures remain protocol errors while authorization failures remain stable Knowledge-Brain errors:
-
-\`\`\`rust
-enum ToolRequestError {
-    InvalidArguments(String),
-    Application(KbError),
-}
-\`\`\`
-
-Make \`app_request\` return \`Result<AppRequest, ToolRequestError>\`. In \`call_tool\`, map \`InvalidArguments\` to the existing \`-32602\` protocol error and map \`Application(error)\` to \`success(id, &tool_error(error))\`. Map \`apply: false\` to the new requests. For \`apply: true\` while \`allow_write\` is false, return \`ToolRequestError::Application(KbError::new(ErrorCode::AuthDenied, ...))\` before calling \`kb_app::run\`; do not create a plan. For a permitted request pass \`Some(self.vault_selector.clone())\` and \`apply: true\`. Keep \`kb_apply_operation\` registration and behavior unchanged.
-
-- [ ] **Step 4: Run MCP tests**
-
-Run: \`cargo test -p kb-mcp --test tools\`
-
-Expected: PASS, including default preview access, denied direct execution and write-enabled fixed-Vault behavior.
-
-- [ ] **Step 5: Commit MCP support**
-
-\`\`\`bash
-git add crates/kb-mcp/src/server.rs crates/kb-mcp/tests/tools.rs
-git commit -m "feat: expose composite saves over MCP"
-\`\`\`
-
-### Task 4: Add HTTP composite routes with existing policy
-
-**Files:**
-- Modify: \`crates/kb-server/src/lib.rs\`
-- Modify: \`crates/kb-server/tests/http.rs\`
-
-**Interfaces:**
-- Consumes: \`AppRequest::SourceSave\`, \`AppRequest::KnowledgeSave\`, \`ServerPolicy::allow_write\`, fixed \`selected(&state)\`.
-- Produces: \`POST /source/save\` and \`POST /knowledge/save\` JSON routes.
-
-- [ ] **Step 1: Write failing HTTP route tests**
-
-Add an async test that starts a token-protected, read-only server, posts \`{}\` to \`/source/save\`, and asserts \`200\` plus \`data.phase == "planned"\`. Post \`{"apply":true}\` and assert \`403\`, \`auth_denied\`, and no source record. Add a write-enabled server test:
-
-\`\`\`rust
-let body = serde_json::to_string(&json!({"request": knowledge_request(), "apply": true})).unwrap();
-let (status, response) = request(&server, "POST", "/knowledge/save", Some("secret"), &body).await;
-assert_eq!(status, 200, "{response}");
-assert_eq!(response["data"]["phase"], "applied");
-assert!(vault.join("Wiki/articles/http.md").is_file());
-\`\`\`
-
-Include an invalid body assertion (\`400\`, \`invalid_config\`) and use a second Vault operation to prove the HTTP service cannot target another Vault.
-
-- [ ] **Step 2: Run HTTP tests to verify they fail**
-
-Run: \`cargo test -p kb-server --test http\`
-
-Expected: \`404\` for both new routes before their registration.
-
-- [ ] **Step 3: Add payloads, routes and handlers**
-
-Add routes before the fallback:
-
-\`\`\`rust
-.route("/source/save", post(source_save))
-.route("/knowledge/save", post(knowledge_save))
-\`\`\`
-
-Define request payloads with Serde defaults:
-
-\`\`\`rust
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SourceSaveBody { #[serde(default)] apply: bool }
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct KnowledgeSaveBody {
+pub(crate) fn prepare_source_capture(
+    root: &Path,
+    config: &EffectiveConfig,
+) -> Result<PreparedSourceCapture, KbError>;
+
+pub(crate) fn persist_source_capture_plan(
+    root: &Path,
+    paths: &UserPaths,
+    config: &EffectiveConfig,
+    plan: &SourceCapturePlan,
+) -> Result<(), KbError>;
+~~~
+
+The preparation path assigns an OperationId only when there are source changes, but does not create the operation directory. review_sources calls prepare_source_capture, persists the optional plan, and returns the same ReviewReport operation_id semantics it had before.
+
+In knowledge_plan.rs, move the existing validation and KnowledgePlan construction into:
+
+~~~
+pub(crate) fn build_knowledge_plan(
+    root: &Path,
+    config: &EffectiveConfig,
     request: KnowledgePlanRequest,
-    #[serde(default)]
-    apply: bool,
-}
-\`\`\`
+    now: OffsetDateTime,
+) -> Result<KnowledgePlan, KbError>;
 
-Authenticate before parsing or calling the application. If \`apply\` is true and \`state.policy.allow_write()\` is false, return the same \`403\` authorization style as \`/operations/{id}/apply\` before calling the application. Otherwise call the matching \`AppRequest\` with \`vault: Some(selected(&state))\`. Keep \`/review\`, \`/plans\` and \`/operations/{id}/apply\` unchanged.
+pub(crate) fn persist_knowledge_plan(
+    user_paths: &UserPaths,
+    plan: &KnowledgePlan,
+) -> Result<(), KbError>;
+~~~
 
-- [ ] **Step 4: Run HTTP tests**
+create_knowledge_plan calls build_knowledge_plan followed by persist_knowledge_plan. Keep its public signature and behavior unchanged.
 
-Run: \`cargo test -p kb-server --test http\`
-
-Expected: PASS, including token checks, preview-only route behavior, direct write policy and fixed-Vault isolation.
-
-- [ ] **Step 5: Commit HTTP support**
-
-\`\`\`bash
-git add crates/kb-server/src/lib.rs crates/kb-server/tests/http.rs
-git commit -m "feat: expose composite saves over HTTP"
-\`\`\`
-
-### Task 5: Publish the command and Agent contract
-
-**Files:**
-- Modify: \`docs/reference/commands.md\`
-- Modify: \`docs/reference/mcp.md\`
-- Modify: \`docs/reference/http.md\`
-- Modify: \`skills/kb-ingest/SKILL.md\`
-- Modify: \`skills/kb-save/SKILL.md\`
-- Modify: \`crates/kb-cli/tests/docs_contract.rs\`
-
-**Interfaces:**
-- Consumes: the implemented CLI commands, MCP tools, HTTP routes and composite response contract.
-- Produces: one public usage description that names preview default, explicit execution, unchanged output and retained primitives.
-
-- [ ] **Step 1: Write the failing documentation contract checks**
-
-Extend the documentation tests to require these literal public names:
-
-\`\`\`rust
-for contract in [
-    "kb source save",
-    "kb knowledge save",
-    "kb_source_save",
-    "kb_knowledge_save",
-    "POST /source/save",
-    "POST /knowledge/save",
-    "apply: true",
-] {
-    assert!(reference.contains(contract), "missing {contract}");
-}
-\`\`\`
-
-Use \`kb --help\` output to assert \`knowledge\` is a real top-level command and \`commands.md\` names both composite CLI invocations.
-
-- [ ] **Step 2: Run the documentation contract test to verify it fails**
-
-Run: \`cargo test -p kb-cli --test docs_contract\`
-
-Expected: failing missing-contract assertions until the reference files are updated.
-
-- [ ] **Step 3: Update durable usage guidance**
-
-In \`commands.md\`, add a composite-save subsection that shows both commands, says preview is the default, defines \`--yes\` as the direct-write form, documents \`planned\` / \`applied\` / \`unchanged\`, and points advanced callers to existing primitives. In MCP and HTTP references, list both new interfaces and state that \`apply: true\` is denied without \`--allow-write\` before a plan is created.
-
-Update \`kb-ingest\` to prefer \`kb_source_save\` / \`kb source save\` where available, display its operation summary, and only use its explicit execution flag after user confirmation. Update \`kb-save\` equivalently for \`kb_knowledge_save\` and \`kb knowledge save\`; retain the old primitives as a fallback for inspection or custom workflow. Do not make a Skill claim that a tool call itself is user authorization.
-
-- [ ] **Step 4: Run documentation and command checks**
-
-Run: \`cargo test -p kb-cli --test docs_contract && cargo test -p kb-cli --test composite_save_journey\`
-
-Expected: PASS. Confirm \`kb --help\`, \`kb source save --help\` and \`kb knowledge save --help\` describe the same preview/write distinction as the docs.
-
-- [ ] **Step 5: Commit public contract updates**
-
-\`\`\`bash
-git add docs/reference/commands.md docs/reference/mcp.md docs/reference/http.md skills/kb-ingest/SKILL.md skills/kb-save/SKILL.md crates/kb-cli/tests/docs_contract.rs
-git commit -m "docs: document composite save workflows"
-\`\`\`
-
-### Task 6: Verify the composed user workflows and prepare the change
-
-**Files:**
-- Modify only if a focused check exposes a defect in Tasks 1–5.
-
-**Interfaces:**
-- Consumes: completed CLI, application, MCP, HTTP and documentation contracts.
-- Produces: evidence for the real preview and direct-write paths without a local full-workspace run.
-
-- [ ] **Step 1: Run the targeted verification set**
+- [ ] **Step 4: Run the existing primitive regression tests**
 
 Run:
 
-\`\`\`bash
+~~~
+cargo test -p kb-app --test knowledge_plan
+cargo test -p kb-app --test operation_summary
+~~~
+
+Expected: PASS. Existing review and knowledge-plan users still receive persisted planned operations.
+
+- [ ] **Step 5: Commit the preparation seam**
+
+~~~
+git add crates/kb-app/src/review.rs crates/kb-app/src/knowledge_plan.rs crates/kb-app/src/lib.rs
+git commit -m "refactor: separate save preparation from persistence"
+~~~
+
+### Task 2: Add the application confirmation coordinator
+
+**Files:**
+- Modify: crates/kb-app/src/app.rs
+- Modify: crates/kb-app/src/lib.rs
+- Modify: crates/kb-app/tests/composite_save.rs
+
+**Interfaces:**
+- Produces: public SaveMode enum with Prepare, Confirm(OperationId), and ApplyImmediately variants.
+- Produces: AppRequest::SourceSave and AppRequest::KnowledgeSave carrying SaveMode.
+- Produces: response fields phase, change_summary, confirmation_token, preview and result.
+
+- [ ] **Step 1: Extend the failing application test**
+
+Add a selected-Vault isolation case. Prepare a knowledge save in the second Vault, then attempt SourceSave or KnowledgeSave confirmation with its token while selecting the first Vault. Assert error.code is auth_denied and the second Vault Article is absent.
+
+Add direct execution coverage:
+
+~~~
+let applied = run(
+    AppRequest::KnowledgeSave {
+        vault: Some(vault_text),
+        request: knowledge_request(),
+        mode: SaveMode::ApplyImmediately,
+    },
+    &context,
+).unwrap();
+
+assert_eq!(applied["phase"], "applied");
+assert!(applied["confirmation_token"].is_null());
+assert!(article.is_file());
+~~~
+
+- [ ] **Step 2: Run the test to verify it still fails**
+
+Run: cargo test -p kb-app --test composite_save
+
+Expected: compilation failure because SaveMode and the two AppRequest variants are absent.
+
+- [ ] **Step 3: Implement SaveMode and the response contract**
+
+Add:
+
+~~~
+pub enum SaveMode {
+    Prepare,
+    Confirm(OperationId),
+    ApplyImmediately,
+}
+~~~
+
+Add AppRequest variants:
+
+~~~
+SourceSave { vault: Option<String>, mode: SaveMode },
+KnowledgeSave {
+    vault: Option<String>,
+    request: Option<KnowledgePlanRequest>,
+    mode: SaveMode,
+},
+~~~
+
+For Prepare, select one Vault, enforce mutation compatibility and no pending recovery, invoke the Task 1 builder, persist only when there is a plan, and return:
+
+~~~
+{
+  "phase": "awaiting_confirmation",
+  "change_summary": {
+    "operation_kind": "...",
+    "change_count": 1,
+    "affected_paths": ["..."],
+    "summary": "..."
+  },
+  "confirmation_token": "<complete operation id>",
+  "preview": { "...": "source changes or knowledge plan" },
+  "result": null
+}
+~~~
+
+For an empty source preparation, return phase unchanged with null token and null result. For Confirm, require a token, select the fixed Vault, verify that token owns that Vault and matches the requested source or knowledge operation kind, then call the existing selected-Vault apply implementation. For ApplyImmediately, execute the Prepare branch and immediately confirm its returned token; never reprepare.
+
+Derive change_summary from existing operation summary helpers but omit operation_id, vault_id and vault_root. Preserve full identifiers inside machine preview and existing primitive responses.
+
+If apply returns an error after a plan exists, preserve the stable error code and merge confirmation_token into error.details. The detail merge must retain existing object properties; a non-object original detail belongs under cause.
+
+- [ ] **Step 4: Run the application tests**
+
+Run: cargo test -p kb-app --test composite_save
+
+Expected: PASS. The test must prove preview does not write content, confirmation writes the exact pending operation, direct execution writes in one call, no-change has no token, and cross-Vault confirmation is denied.
+
+- [ ] **Step 5: Commit the application workflow**
+
+~~~
+git add crates/kb-app/src/app.rs crates/kb-app/src/lib.rs crates/kb-app/tests/composite_save.rs
+git commit -m "feat: add one-confirmation save workflow"
+~~~
+
+### Task 3: Add CLI save and confirmation commands
+
+**Files:**
+- Modify: crates/kb-cli/src/args.rs
+- Create: crates/kb-cli/tests/composite_save_journey.rs
+
+**Interfaces:**
+- Consumes: SaveMode and the new AppRequest variants.
+- Produces: kb source save [--yes | --confirm TOKEN] and kb knowledge save REQUEST [--yes | --confirm TOKEN].
+
+- [ ] **Step 1: Write the failing real CLI journey**
+
+Initialize a Vault and configure Notes. Run:
+
+~~~
+kb source save --vault <vault> --json
+~~~
+
+Assert data.phase is awaiting_confirmation, preserve data.confirmation_token in the test, and assert source verify fails due to the pending operation. Then run:
+
+~~~
+kb source save --confirm <token> --vault <vault> --json
+~~~
+
+Assert data.phase is applied and source verify succeeds.
+
+Create a knowledge request file. Assert kb knowledge save REQUEST --json leaves the requested Wiki file absent. Extract its token, then run kb knowledge save --confirm TOKEN --vault <vault> --json and assert the file exists. Add kb knowledge save REQUEST --yes --json and assert one-call applied behavior in a fresh Vault.
+
+- [ ] **Step 2: Run the CLI test to verify it fails**
+
+Run: cargo test -p kb-cli --test composite_save_journey
+
+Expected: parse failure because source save, knowledge and --confirm are not registered.
+
+- [ ] **Step 3: Parse mutually exclusive execution modes**
+
+Extend SourceCommands::Save with a Clap argument group containing --yes and --confirm <OperationId>. Map neither to SaveMode::Prepare, --yes to ApplyImmediately and --confirm to Confirm(token).
+
+Add Commands::Knowledge with KnowledgeCommands::Save. Its request argument is optional only for --confirm. Validate these combinations in the existing ParsedCommand result path:
+
+- a request is required for preparation and --yes;
+- --confirm requires no request;
+- request plus --confirm returns invalid_config;
+- --yes plus --confirm is rejected by Clap before application dispatch.
+
+Keep KnowledgeRequestArg invalid-file handling and JSON envelope behavior unchanged.
+
+- [ ] **Step 4: Run the CLI journey**
+
+Run: cargo test -p kb-cli --test composite_save_journey
+
+Expected: PASS. Also assert human --help shows --yes and --confirm but no help text tells a user to manage operation IDs.
+
+- [ ] **Step 5: Commit CLI support**
+
+~~~
+git add crates/kb-cli/src/args.rs crates/kb-cli/tests/composite_save_journey.rs
+git commit -m "feat: add confirmation save CLI commands"
+~~~
+
+### Task 4: Add MCP confirmation token support
+
+**Files:**
+- Modify: crates/kb-mcp/src/server.rs
+- Modify: crates/kb-mcp/tests/tools.rs
+
+**Interfaces:**
+- Consumes: SaveMode, fixed vault_selector and allow_write.
+- Produces: kb_source_save and kb_knowledge_save with prepare, confirm and direct modes.
+
+- [ ] **Step 1: Write failing MCP behavior tests**
+
+On a default MCP server, call kb_source_save with an empty object after creating an admitted source. Assert awaiting_confirmation and retain confirmation_token. Call kb_source_save with confirmation_token and assert a tool result error whose stable code is auth_denied; assert the source was not captured.
+
+On a write-enabled server, call kb_source_save with that token and assert phase applied. Add a write-enabled kb_knowledge_save direct call with request and apply: true; assert the Article exists. Verify a token created for another Vault returns auth_denied.
+
+- [ ] **Step 2: Run MCP tests to verify they fail**
+
+Run: cargo test -p kb-mcp --test tools
+
+Expected: missing tool names or unknown tool dispatch errors.
+
+- [ ] **Step 3: Register and validate MCP modes**
+
+Register both tools on all MCP servers. Source accepts optional apply boolean and confirmation_token string. Knowledge accepts optional request, optional apply and optional confirmation_token. Validate exactly one of these modes:
+
+- no apply and no token: Prepare;
+- apply true and no token: ApplyImmediately;
+- token and apply absent or false: Confirm;
+- token with apply true: invalid JSON-RPC parameters;
+- missing knowledge request outside Confirm: invalid JSON-RPC parameters.
+
+For Confirm and ApplyImmediately, return a stable auth_denied tool result before calling kb-app when allow_write is false. Keep malformed arguments as JSON-RPC -32602 errors and preserve kb_apply_operation.
+
+- [ ] **Step 4: Run MCP tests**
+
+Run: cargo test -p kb-mcp --test tools
+
+Expected: PASS for preparation, denied writes, permitted confirmation/direct execution and fixed-Vault isolation.
+
+- [ ] **Step 5: Commit MCP support**
+
+~~~
+git add crates/kb-mcp/src/server.rs crates/kb-mcp/tests/tools.rs
+git commit -m "feat: confirm prepared saves over MCP"
+~~~
+
+### Task 5: Add HTTP confirmation token support
+
+**Files:**
+- Modify: crates/kb-server/src/lib.rs
+- Modify: crates/kb-server/tests/http.rs
+
+**Interfaces:**
+- Consumes: SaveMode, ServerPolicy and fixed selected Vault.
+- Produces: POST /source/save and POST /knowledge/save with prepare, confirm and direct modes.
+
+- [ ] **Step 1: Write failing HTTP behavior tests**
+
+Start a token-protected read-only server with an admitted source. POST an empty JSON object to /source/save and assert 200 with awaiting_confirmation. Save the token. POST that token to the same route and assert 403 auth_denied with no source record.
+
+Start a write-enabled server and POST the prepared token; assert applied and a passing source verify. In a fresh Vault, POST a valid knowledge request with apply true and assert applied plus the Article file. Include invalid token-plus-apply and missing knowledge request cases with 400 invalid_config.
+
+- [ ] **Step 2: Run HTTP tests to verify they fail**
+
+Run: cargo test -p kb-server --test http
+
+Expected: 404 for the unregistered routes.
+
+- [ ] **Step 3: Decode, authorize and dispatch HTTP modes**
+
+Register both routes. Deserialize a source body with default apply false and optional confirmation_token. Deserialize a knowledge body with optional request, default apply false and optional confirmation_token. Convert bodies to SaveMode using one shared validation helper.
+
+Authenticate every request first. For confirmation or direct execution, require state.policy.allow_write before calling kb-app. A read-only request returns 403 auth_denied and does not create a new plan. Dispatch with vault: Some(selected(&state)). Keep review, plans and operations apply routes unchanged.
+
+- [ ] **Step 4: Run HTTP tests**
+
+Run: cargo test -p kb-server --test http
+
+Expected: PASS for authenticated prepare, denied writes, enabled confirmation/direct execution, malformed mode validation and fixed-Vault isolation.
+
+- [ ] **Step 5: Commit HTTP support**
+
+~~~
+git add crates/kb-server/src/lib.rs crates/kb-server/tests/http.rs
+git commit -m "feat: confirm prepared saves over HTTP"
+~~~
+
+### Task 6: Publish the one-confirmation workflow
+
+**Files:**
+- Modify: docs/reference/commands.md
+- Modify: docs/reference/mcp.md
+- Modify: docs/reference/http.md
+- Modify: skills/kb-ingest/SKILL.md
+- Modify: skills/kb-save/SKILL.md
+- Modify: crates/kb-cli/tests/docs_contract.rs
+
+**Interfaces:**
+- Consumes: implemented save/confirmation contracts.
+- Produces: user-facing instructions that show only one confirmation and describe tokens as Agent/UI fields.
+
+- [ ] **Step 1: Write failing contract and behavior checks**
+
+Extend docs_contract to run kb --help and assert knowledge is a top-level command. Require the command reference to name kb source save, kb knowledge save, --yes and --confirm. Require MCP and HTTP references to name kb_source_save, kb_knowledge_save, POST /source/save, POST /knowledge/save and confirmation_token.
+
+- [ ] **Step 2: Run the documentation test to verify it fails**
+
+Run: cargo test -p kb-cli --test docs_contract
+
+Expected: missing command/reference assertions until durable documentation is updated.
+
+- [ ] **Step 3: Update CLI, protocol and Skill guidance**
+
+Document that a normal Agent/UI flow prepares, shows one change summary, obtains one user confirmation and submits the machine token. State that direct --yes or apply: true is for callers that already have authorization. Explain that advanced review/plan/apply remains available but is not the ordinary user workflow.
+
+Update kb-ingest and kb-save so they never expose plan creation or operation IDs to a user. They retain tokens internally, present only change summaries, and make one confirmation request. Do not claim source capture authorizes an Agent’s earlier direct write into an admitted directory.
+
+- [ ] **Step 4: Run documentation and CLI tests**
+
+Run:
+
+~~~
+cargo test -p kb-cli --test docs_contract
+cargo test -p kb-cli --test composite_save_journey
+~~~
+
+Expected: PASS. The help output and documentation use the same prepare, confirmation and direct-execution vocabulary.
+
+- [ ] **Step 5: Commit the public contract**
+
+~~~
+git add docs/reference/commands.md docs/reference/mcp.md docs/reference/http.md skills/kb-ingest/SKILL.md skills/kb-save/SKILL.md crates/kb-cli/tests/docs_contract.rs
+git commit -m "docs: describe one-confirmation save workflow"
+~~~
+
+### Task 7: Verify the visible workflow and publish
+
+**Files:**
+- Modify only when a focused check identifies a defect.
+
+- [ ] **Step 1: Run focused automated verification**
+
+Run:
+
+~~~
 cargo test -p kb-app --test composite_save
 cargo test -p kb-cli --test composite_save_journey
 cargo test -p kb-mcp --test tools
 cargo test -p kb-server --test http
 cargo test -p kb-cli --test docs_contract
-\`\`\`
+~~~
 
-Expected: every selected test target passes.
+Expected: all five targets pass.
 
-- [ ] **Step 2: Run static outgoing checks**
+- [ ] **Step 2: Exercise the real CLI flow outside the test harness**
+
+Create a fresh temporary Vault and one admitted source note. Run kb source save --json, read the returned token without showing it as user-facing text, then run kb source save --confirm TOKEN --json. Confirm the result is applied and source verify passes. In a separate fresh Vault, repeat knowledge save preparation and confirmation, then verify the requested Wiki file exists. Finally exercise kb knowledge save REQUEST --yes in a third fresh Vault.
+
+- [ ] **Step 3: Run outgoing static checks and publish**
 
 Run:
 
-\`\`\`bash
+~~~
 cargo fmt --all -- --check
 git diff --check
 git status --short
-\`\`\`
-
-Expected: formatter and diff checks pass; status contains only the intentional commits or any documented follow-up fix.
-
-- [ ] **Step 3: Exercise direct CLI entry paths outside the test harness**
-
-Run the release or debug \`kb\` binary in a fresh temporary Vault: initialize it, add one admission entry and note, use \`kb source save --json\`, inspect \`phase: planned\`, then use \`kb source save --yes --json\` and inspect \`phase: applied\`. Create one valid knowledge request file, repeat with \`kb knowledge save\` then \`kb knowledge save --yes\`, and confirm the intended \`Wiki\` file exists. Record any discrepancy before claiming completion.
-
-- [ ] **Step 4: Push the focused, committed implementation**
-
-Run:
-
-\`\`\`bash
 git push origin HEAD:main
-\`\`\`
+~~~
 
-Expected: GitHub receives the commits; native CI then remains the evidence source for Linux, macOS and Windows full-workspace coverage.
+Expected: formatting and diff checks pass. GitHub native CI provides the full Linux, macOS and Windows evidence after the focused commits are pushed.

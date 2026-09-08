@@ -105,7 +105,9 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
             "kb_query",
             "kb_lint",
             "kb_review_sources",
+            "kb_source_save",
             "kb_plan_knowledge",
+            "kb_knowledge_save",
             "kb_operation_show",
         ]
     );
@@ -192,6 +194,73 @@ fn write_enabled_server_rejects_an_operation_owned_by_another_vault() {
         "auth_denied"
     );
     assert!(!other.join("KB.md").exists());
+}
+
+#[test]
+fn source_save_prepares_read_only_and_confirms_only_with_write_access() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized = kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    fs::create_dir(vault.join("Notes")).unwrap();
+    fs::write(vault.join("Notes/one.md"), "# One\n\nSource evidence.\n").unwrap();
+    fs::write(
+        vault.join("admission.yml"),
+        "schema_version: v1.0\ndirectories:\n  - id: notes\n    path: Notes\n    enabled: true\n",
+    )
+    .unwrap();
+    let vault_id = initialized["vault_id"].as_str().unwrap().to_owned();
+    let mut read_only = McpServer::new(context.clone(), vault_id.clone(), false);
+
+    let prepared = call(&mut read_only, 1, "kb_source_save", &json!({}));
+    assert_eq!(prepared["result"]["isError"], false);
+    assert_eq!(
+        prepared["result"]["structuredContent"]["data"]["phase"],
+        "awaiting_confirmation"
+    );
+    let token = prepared["result"]["structuredContent"]["data"]["confirmation_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let denied = call(
+        &mut read_only,
+        2,
+        "kb_source_save",
+        &json!({"confirmation_token": token}),
+    );
+    assert_eq!(denied["result"]["isError"], true);
+    assert_eq!(
+        denied["result"]["structuredContent"]["error"]["code"],
+        "auth_denied"
+    );
+
+    let mut writable = McpServer::new(context.clone(), vault_id, true);
+    let applied = call(
+        &mut writable,
+        3,
+        "kb_source_save",
+        &json!({"confirmation_token": token}),
+    );
+    assert_eq!(applied["result"]["isError"], false);
+    assert_eq!(
+        applied["result"]["structuredContent"]["data"]["phase"],
+        "applied"
+    );
+    let verified = kb_app::run(
+        AppRequest::SourceVerify {
+            vault: Some(vault.display().to_string()),
+        },
+        &context,
+    )
+    .unwrap();
+    assert_eq!(verified["checks"][0]["status"], "pass");
 }
 
 fn call(server: &mut McpServer, id: u64, name: &str, arguments: &Value) -> Value {
