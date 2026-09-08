@@ -208,6 +208,27 @@ fn restore_publishes_only_verified_bytes_into_an_empty_target() {
     assert!(!target.join("manifest.json").exists());
     assert!(!target.join(".kb/cache").exists());
 
+    assert_eq!(
+        restore_backup(&archive, Path::new("/")).unwrap_err().code,
+        ErrorCode::RestoreFailed
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let real_parent = temporary.path().join("real-parent");
+        fs::create_dir(&real_parent).unwrap();
+        let linked_parent = temporary.path().join("linked-parent");
+        symlink(&real_parent, &linked_parent).unwrap();
+        assert_eq!(
+            restore_backup(&archive, &linked_parent.join("restored"))
+                .unwrap_err()
+                .code,
+            ErrorCode::UnsafePath
+        );
+    }
+
     let nonempty = temporary.path().join("nonempty");
     fs::create_dir(&nonempty).unwrap();
     fs::write(nonempty.join("keep"), "keep").unwrap();

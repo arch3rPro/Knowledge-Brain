@@ -140,9 +140,11 @@ doctor 应分别命名 Vault 结构检查与机器级运行目录检查，并说
 
 ## UX-006 — 区分备份校验失败与恢复失败
 
+**状态：** 已解决。归档校验失败使用 `backup_verification_failed`；`error.details.reason` 提供具体原因，`error.details.legacy_code` 在迁移期间提供 `restore_failed`。恢复目标与发布错误继续使用各自的稳定代码。
+
 ### 问题
 
-`kb backup verify` 发现 ZIP 条目与 `manifest.json` 不一致时返回稳定错误码 `restore_failed`。错误消息能够说明归档校验失败，但错误码把独立校验操作归类为恢复失败；自动化、MCP、HTTP 以及未来 WebUI/GUI 无法仅凭错误码区分“归档无效”和“恢复目标写入失败”。
+此前，`kb backup verify` 发现 ZIP 条目与 `manifest.json` 不一致时返回稳定错误码 `restore_failed`。错误消息能够说明归档校验失败，但错误码把独立校验操作归类为恢复失败；自动化、MCP、HTTP 以及未来 WebUI/GUI 无法仅凭错误码区分“归档无效”和“恢复目标写入失败”。当前归档校验使用 `backup_verification_failed`，同时保留 `legacy_code: "restore_failed"` 作为迁移详情；旧客户端仍须显式升级以识别新错误码。
 
 ### 目标体验
 

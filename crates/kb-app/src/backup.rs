@@ -135,14 +135,7 @@ pub fn verify_backup(archive_path: &Path) -> Result<BackupVerifyReport, KbError>
 pub fn restore_backup(archive_path: &Path, target: &Path) -> Result<BackupRestoreReport, KbError> {
     let manifest = verify_manifest_and_entries(archive_path)?;
     let existed = validate_restore_target(target)?;
-    let parent = target.parent().ok_or_else(|| {
-        KbError::new(
-            ErrorCode::RestoreFailed,
-            "Restore target has no parent directory.",
-            false,
-            "Choose a restore target below an existing directory.",
-        )
-    })?;
+    let parent = restore_target_parent(target)?;
     let stage = tempfile::Builder::new()
         .prefix(".kb-restore-")
         .tempdir_in(parent)
@@ -660,14 +653,7 @@ fn parse_archive_name(name: &str, directory: bool) -> Result<PortableRelativePat
 }
 
 fn validate_restore_target(target: &Path) -> Result<bool, KbError> {
-    let parent = target.parent().ok_or_else(|| {
-        KbError::new(
-            ErrorCode::UnsafePath,
-            "Restore target has no parent directory.",
-            false,
-            "Choose a target below an existing directory.",
-        )
-    })?;
+    let parent = restore_target_parent(target)?;
     ensure_not_link_or_reparse_point(parent)?;
     if !parent.is_dir() {
         return Err(KbError::new(
@@ -691,6 +677,17 @@ fn validate_restore_target(target: &Path) -> Result<bool, KbError> {
         return Err(target_exists(target));
     }
     Ok(true)
+}
+
+fn restore_target_parent(target: &Path) -> Result<&Path, KbError> {
+    target.parent().ok_or_else(|| {
+        KbError::new(
+            ErrorCode::RestoreFailed,
+            "Restore target has no parent directory.",
+            false,
+            "Choose a restore target below an existing directory.",
+        )
+    })
 }
 
 fn copy_with_hash(

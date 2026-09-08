@@ -142,6 +142,20 @@ fn backup_json_errors_distinguish_invalid_archives_from_restore_targets() {
     assert_eq!(invalid["error"]["code"], "backup_verification_failed");
     assert_eq!(invalid["error"]["details"]["legacy_code"], "restore_failed");
 
+    let parentless = failure(
+        base,
+        base,
+        &[
+            "backup",
+            "restore",
+            "portable.zip",
+            "--target",
+            "/",
+            "--json",
+        ],
+    );
+    assert_eq!(parentless["error"]["code"], "restore_failed");
+
     let target = base.join("nonempty-target");
     fs::create_dir(&target).unwrap();
     fs::write(target.join("keep"), "keep").unwrap();
