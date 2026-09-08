@@ -138,7 +138,7 @@ kb apply <operation-id> --json
 
 ## Agent Skills
 
-项目发布八个可单独安装的 `kb-*` Skills。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --all -a codex -y` 或 `npx skills add . --skill kb-query -a codex -y`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
+项目发布八个可单独安装的 `kb-*` Skills。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --skill '*' --agent codex --yes` 或 `npx skills add . --skill kb-query --agent codex --yes`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
 
 ## 架构
 

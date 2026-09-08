@@ -5,10 +5,13 @@ repo_root=$(cd "$(dirname "$0")/.." && pwd)
 workspace=$(mktemp -d)
 trap 'rm -rf "$workspace"' EXIT
 
-kb_bin=${KB_BIN:-"$repo_root/target/debug/kb"}
-if [[ ! -x "$kb_bin" ]]; then
+if [[ -n ${KB_BIN:-} ]]; then
+  kb_bin=$KB_BIN
+else
   (cd "$repo_root" && cargo build -p kb-cli >/dev/null)
+  kb_bin="$repo_root/target/debug/kb"
 fi
+test -x "$kb_bin"
 
 all="$workspace/all"
 one="$workspace/one"
@@ -21,7 +24,7 @@ export KB_AGENT_HOME="$workspace/agent-home"
 export KB_AGENT_CONFIG_DIR="$workspace/agent-config"
 
 "$kb_bin" init "$all" --json >/dev/null
-(cd "$all" && npx skills add "$repo_root" --all -a codex -y)
+(cd "$all" && npx skills add "$repo_root" --skill '*' --agent codex --yes)
 
 "$kb_bin" init "$one" --json >/dev/null
 (cd "$one" && npx skills add "$repo_root" --skill kb-query -a codex -y)

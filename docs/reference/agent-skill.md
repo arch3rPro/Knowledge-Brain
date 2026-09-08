@@ -35,7 +35,7 @@ User 范围使用操作系统的用户目录或配置目录：Codex 为 `.codex/
 ## 外部安装
 
 ```bash
-npx skills add . --all -a codex -y
+npx skills add . --skill '*' --agent codex --yes
 npx skills add . --skill kb-query -a codex -y
 ```
 
