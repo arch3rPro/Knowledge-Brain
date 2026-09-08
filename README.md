@@ -16,7 +16,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Layered search** — 默认直接查询真实文件；可选 BM25F 提供字段加权、中文检索和可解释评分。
 - **Verified backups** — 生成带逐文件 SHA-256 清单的标准 ZIP，并只向空目录恢复。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
-- **Tool-independent core** — CLI 与未来的 MCP、HTTP、WebUI 和 GUI 共用同一应用层。
+- **Tool-independent core** — CLI、MCP、HTTP 与未来的 WebUI 和 GUI 共用同一应用层。
 - **Agent-ready interfaces** — 内置跨宿主 Agent Skill，并提供固定 Vault、默认只读的 MCP stdio 入口。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
 
@@ -49,20 +49,29 @@ My-Knowledge/
 
 ## 安装
 
-当前从源码安装，需要 Rust 1.85 或更高版本。在仓库根目录执行：
+官方版本从 [GitHub Releases](https://github.com/arch3rPro/Knowledge-Brain/releases) 下载。根据平台选择归档：
+
+| 平台 | 归档 |
+| --- | --- |
+| Linux x86_64 | `knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+
+解压后，把 `kb`（Windows 为 `kb.exe`）放入用户可执行目录并加入 `PATH`，然后运行：
 
 ```bash
-cargo install --path crates/kb-cli --locked
 kb version
 ```
 
-`cargo install` 会把 `kb` 安装到 Cargo 的可执行文件目录；Linux、macOS 和 Windows 使用同一条命令。如果该目录尚未加入 `PATH`，也可以不安装，直接执行：
+每个 Release 同时提供 `SHA256SUMS`、`SHA256SUMS.minisig` 和 GitHub build provenance。校验方式、自更新支持范围以及 macOS/Windows 平台签名状态见 [CLI 更新参考](docs/reference/cli-updates.md)。
+
+从源码开发需要 Rust 1.85 或更高版本：
 
 ```bash
-cargo run --release -p kb-cli -- version
+cargo install --path crates/kb-cli --locked
 ```
 
-开发构建生成的文件位于 `target/release/kb`（Windows 为 `target\release\kb.exe`）。
+源码或 Cargo 安装不会被 `kb update` 替换，仍由 Cargo 或源码工作区更新。
 
 ## 快速开始
 
@@ -78,24 +87,21 @@ mkdir ./my-knowledge/Notes
 ### 配置准入目录
 
 ```bash
-kb config admission add notes Notes --vault ./my-knowledge
 kb config admission add notes Notes --vault ./my-knowledge --yes
 ```
 
-第一次调用显示差异预览；带 `--yes` 的调用才会保存。准入操作要求目录已经存在，并且不会删除目录内容。
+这里的 `--yes` 表示本次命令已经获得写入授权；省略时只显示差异预览。准入操作要求目录已经存在，并且不会删除目录内容。
 
 ### 保存来源与查询
 
-将 Markdown 或文本放入 `Notes/`。下面的 `review` 只检查 `admission.yml` 中已启用的目录，并生成一份待确认的保存计划：
+将 Markdown 或文本放入 `Notes/`。明确要求保存时可以在一次命令内检查并写入：
 
 ```bash
-kb review --vault ./my-knowledge
-kb operation show <operation-id>
-kb apply <operation-id>
+kb source save --vault ./my-knowledge --yes
 kb query "关键词" --scope sources --vault ./my-knowledge
 ```
 
-用 `review` 返回的 ID 替换 `<operation-id>`。没有变化时不产生新计划。来源文件保持原样，保存的副本位于 `Wiki/external-sources/`。查询默认只搜索 Wiki；`--scope all` 同时返回 Wiki 与来源两组结果。见[保存与查询来源](docs/guides/capture-and-query-sources.md)。
+省略 `--yes` 时，命令返回一次变更摘要和确认 token，适合 Agent 或 UI 在最终写入前取得确认。没有变化时不要求确认。来源文件保持原样，保存的副本位于 `Wiki/external-sources/`。查询默认只搜索 Wiki；`--scope all` 同时返回 Wiki 与来源两组结果。见[保存与查询来源](docs/guides/capture-and-query-sources.md)。
 
 ### 检查结果
 
@@ -135,6 +141,7 @@ kb apply <operation-id> --json
 | `kb skills` | 检测、安装、检查或安全卸载可移植 Agent Skill |
 | `kb mcp` | 为一个固定 Vault 启动 MCP stdio 服务 |
 | `kb serve` | 按需启动固定 Vault 的可选 HTTP/SSE 接口 |
+| `kb update` | 检查或安装经过签名验证的官方 CLI 更新 |
 
 完整语法见[命令参考](docs/reference/commands.md)，配置层级和 `admission.yml` 格式见[配置参考](docs/reference/configuration.md)。
 
@@ -190,6 +197,8 @@ Windows PowerShell：
 - [Portable Agent Skill](docs/reference/agent-skill.md)
 - [MCP stdio](docs/reference/mcp.md)
 - [命令参考](docs/reference/commands.md)
+- [CLI 更新](docs/reference/cli-updates.md)
+- [发布 CLI 版本](docs/guides/release-a-cli-version.md)
 - [配置参考](docs/reference/configuration.md)
 - [架构概览](docs/architecture/overview.md)
 - [Roadmap](ROADMAP.md)

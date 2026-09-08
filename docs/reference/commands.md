@@ -112,6 +112,15 @@ kb capabilities [--json]
 
 `version` 报告程序与 schema 版本。`capabilities` 明确报告功能是否实现；客户端不能从程序版本号推断能力。
 
+## CLI 更新
+
+```text
+kb update check [--json]
+kb update [--json]
+```
+
+`kb update check` 只检查最新稳定版本；`kb update` 下载并安排安装已验证的新版本。两者仅支持官方 GitHub Release 二进制，不会由其他命令自动触发。Cargo、源码和第三方包管理器安装返回 `capability_unavailable`，继续由原安装方式管理。签名验证、替换恢复和 JSON 字段见 [CLI 更新参考](cli-updates.md)。
+
 ## HTTP 服务
 
 ```text

@@ -20,7 +20,9 @@ Backup archives are untrusted input. Verification rejects path traversal, links 
 
 ## Network and privacy
 
-The binary has no telemetry, automatic outbound networking, MCP server, cloud account, built-in LLM, source downloader or synchronization. Its optional `kb serve` HTTP adapter defaults to loopback and read-only operation. Non-loopback binding and write-enabled operation require an explicit token file; when a token is configured, every route requires it. The process is fixed to one Vault identity, and operation inspection/apply rejects IDs belonging to another Vault.
+The binary has no telemetry, automatic outbound networking, cloud account, built-in LLM, source downloader or synchronization. `kb update check` and `kb update` contact the fixed GitHub Releases endpoint only when explicitly invoked. Official updates verify the Minisign signature on `SHA256SUMS`, the selected archive digest, the archive structure, and the staged executable identity before replacement. Source and Cargo installations cannot self-update. Details and key-rotation limits are defined in the [CLI update reference](docs/reference/cli-updates.md).
+
+The optional `kb serve` HTTP adapter defaults to loopback and read-only operation. Non-loopback binding and write-enabled operation require an explicit token file; when a token is configured, every route requires it. The process is fixed to one Vault identity, and operation inspection/apply rejects IDs belonging to another Vault.
 
 The HTTP adapter is plain text and sends no permissive CORS headers. Use non-loopback binding only on a trusted network or behind a user-managed TLS reverse proxy. A bearer token protects application access but does not encrypt Vault content, URLs, headers or responses in transit. Keep token files outside the Vault and version control, protect them with operating-system permissions, and do not pass tokens in command arguments or URLs. HTTP request bodies are bounded, but the service has not undergone denial-of-service hardening or hostile-network testing. See the [HTTP reference](docs/reference/http.md).
 
@@ -30,4 +32,4 @@ Do not include private Vault content, credentials, personal paths or source docu
 
 ## Current assurance boundary
 
-Platform evidence and implementation status are recorded in [Roadmap](ROADMAP.md). Native CI jobs are configured for Windows, macOS and Linux; configuration alone is not successful native evidence. This repository is not yet described as release-ready or cross-platform verified.
+Platform evidence and implementation status are recorded in [Roadmap](ROADMAP.md). A configured workflow or local test is not by itself successful native release evidence. Release status is claimed only after the three native jobs and the published artifact workflow have completed.

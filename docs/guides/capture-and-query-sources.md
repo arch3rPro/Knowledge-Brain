@@ -3,24 +3,23 @@
 前提：已有 Vault，且 `admission.yml` 中有启用的主题目录。下例使用用户创建的 `Notes/`，并假定 `kb` 已加入 PATH。
 
 1. 在 `Notes/` 保存一份 Markdown 或 UTF-8 文本。
-2. 查看变化及将保存的内容：
+2. 检查并保存变化。已经明确要求本次写入时使用：
 
    ```bash
-   kb review --vault ./my-knowledge --json
-   kb operation show <operation-id> --json
+   kb source save --vault ./my-knowledge --yes --json
    ```
 
-   `<operation-id>` 使用 review 结果中的 ID。`null` 表示没有需要保存的变化。检查目标文件、来源版本和日志变更；原始主题文件不会被改写。
+   命令只检查 `admission.yml` 中启用的目录，在同一次调用中准备并写入。没有变化时返回 `phase: unchanged`。原始主题文件不会被改写。
 
-3. 明确执行计划：
+   如果 Agent 或 UI 尚未取得写入确认，省略 `--yes`。调用方展示返回的变更摘要，并在用户确认后提交同一个 token：
 
    ```bash
-   kb apply <operation-id> --json
+   kb source save --vault ./my-knowledge --confirm <confirmation-token> --json
    ```
 
-   如果文件、准入或读取配置在 review 后改变，先解决变化，再生成新计划。不要手工修改已审核计划来绕过校验。
+   用户只确认最终写入，不需要看到 token。文件、准入或读取配置在确认前改变时，提交会被拒绝；调用方应重新准备并展示新摘要。
 
-4. 查询并核对证据：
+3. 查询并核对证据：
 
    ```bash
    kb query "关键词" --scope sources --vault ./my-knowledge
@@ -29,7 +28,7 @@
 
    逐项检查 verify 的状态，不要仅凭命令退出成功判断所有证据完好。来源查询使用已保存版本，不读取主题目录中的尚未保存改动。
 
-5. 按需建立轻量目录：
+4. 按需建立轻量目录：
 
    ```bash
    kb cache rebuild --vault ./my-knowledge
@@ -40,7 +39,9 @@
 
 ## 来源发生变化后
 
-重复 `review → operation show → apply`。修改保留旧对象；删除只把来源记录标为不再存在；可能移动只是线索，不会自动合并两个来源身份。停用准入不会撤销以前保存的内容。
+重复 `kb source save --yes`，或由 Agent/UI 重复“准备摘要 → 一次确认 → 提交 token”。修改保留旧对象；删除只把来源记录标为不再存在；可能移动只是线索，不会自动合并两个来源身份。停用准入不会撤销以前保存的内容。
+
+需要延后执行、脚本编排或逐项人工审核时，可以使用高级流程 `kb review → kb operation show → kb apply`。不要手工修改已审核计划来绕过确认时的状态核对。
 
 ## 保存中断后
 

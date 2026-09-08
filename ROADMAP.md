@@ -159,3 +159,11 @@ macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 �
 同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 曾将归档校验错误编码为 `restore_failed`；当前使用 `backup_verification_failed`，并在 `error.details.legacy_code` 中提供 `restore_failed` 过渡值。该接口命名问题已在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)中解决。
 
 使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](docs/superpowers/plans/2026-09-07-verified-zip-backup.md)。
+
+### Stage 5C — 原生发布与 CLI 更新
+
+**Status:** in progress。普通 push 和 pull request 不触发 GitHub Actions；手动工作流按 Linux、macOS、Windows 或全部平台运行，annotated `vX.Y.Z` tag 启动正式发布。发布包、Minisign 清单签名、GitHub build provenance、稳定版本解析、安全解包、暂存程序身份核对、可恢复自替换和 Cargo/源码安装拒绝均已实现并通过本地定向测试。
+
+完成状态还需要：提交真实 Minisign public key、设置 `KB_UPDATE_SIGNING_KEY`、完成三个平台的新手动工作流验证，并发布第一个真实 Release。macOS notarization 和 Windows Authenticode 因没有对应证书而保持 future。
+
+用户行为见 [CLI 更新参考](docs/reference/cli-updates.md)，维护流程见[发布 CLI 版本](docs/guides/release-a-cli-version.md)。

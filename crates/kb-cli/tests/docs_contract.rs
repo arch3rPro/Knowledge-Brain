@@ -3,6 +3,8 @@ use assert_cmd::Command;
 const COMMAND_REFERENCE: &str = include_str!("../../../docs/reference/commands.md");
 const PROJECT_README: &str = include_str!("../../../README.md");
 const ROADMAP: &str = include_str!("../../../ROADMAP.md");
+const UPDATE_REFERENCE: &str = include_str!("../../../docs/reference/cli-updates.md");
+const RELEASE_GUIDE: &str = include_str!("../../../docs/guides/release-a-cli-version.md");
 
 #[test]
 fn project_readme_covers_the_first_run_contract() {
@@ -37,6 +39,31 @@ fn project_readme_covers_the_first_run_contract() {
 }
 
 #[test]
+fn release_and_update_documents_own_their_workflows() {
+    for command in ["kb update check", "kb update"] {
+        assert!(COMMAND_REFERENCE.contains(command), "missing {command}");
+        assert!(UPDATE_REFERENCE.contains(command), "missing {command}");
+    }
+    for contract in [
+        "SHA256SUMS.minisig",
+        "update_verification_failed",
+        "Cargo",
+        "Minisign",
+        "public key",
+    ] {
+        assert!(UPDATE_REFERENCE.contains(contract), "missing {contract}");
+    }
+    for contract in [
+        "KB_UPDATE_SIGNING_KEY",
+        "SHA256SUMS.minisig",
+        "Re-run failed jobs",
+        "annotated",
+    ] {
+        assert!(RELEASE_GUIDE.contains(contract), "missing {contract}");
+    }
+}
+
+#[test]
 fn command_reference_names_every_real_top_level_command() {
     let output = Command::cargo_bin("kb")
         .unwrap()
@@ -63,6 +90,7 @@ fn command_reference_names_every_real_top_level_command() {
         "capabilities",
         "skills",
         "mcp",
+        "update",
     ] {
         assert!(help.contains(&format!("  {command}")), "{command}");
         assert!(
