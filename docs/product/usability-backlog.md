@@ -120,9 +120,11 @@ Direct 与 BM25F 的匹配方式不同，也增加了用户判断查询结果的
 
 ## UX-005 — 明确区分 Vault 与机器目录诊断
 
+**状态：** 已解决。`vault_structure` 报告选中 Vault 的必需路径，`machine_runtime_directories` 报告机器级 configuration、state 和 cache 目录；尚未创建的按需目录为 `pass`，既有但不可用的目录才报告问题。
+
 ### 问题
 
-`kb doctor` 的 `standard_directories` 检查统计机器级 config、state 和 cache 目录。新环境中的目录尚未按需创建时，doctor 会报告 `0/3` 或 `2/3 standard directories currently exist` warning。该消息没有说明检查对象位于机器用户目录，容易被理解为 Vault 缺少主题目录、Wiki 目录或备份恢复不完整。
+此前，`kb doctor` 的 `standard_directories` 检查统计机器级 config、state 和 cache 目录。新环境中的目录尚未按需创建时，doctor 会报告 `0/3` 或 `2/3 standard directories currently exist` warning。该消息没有说明检查对象位于机器用户目录，容易被理解为 Vault 缺少主题目录、Wiki 目录或备份恢复不完整。当前已由 `vault_structure` 与 `machine_runtime_directories` 两项独立检查替代。
 
 缺少尚未使用的机器级目录不影响通过显式路径打开、查询或校验 Vault，因此 warning 也可能让正常的首次运行看起来存在故障。
 
@@ -132,10 +134,10 @@ doctor 应分别命名 Vault 结构检查与机器级运行目录检查，并说
 
 ### 验收标准
 
-- `standard_directories` 的结果明确指出检查的是机器级 config、state 和 cache 目录。
-- 每个缺失目录都说明用途、是否按需创建和实际影响。
-- Vault 目录完整性由独立检查报告，不与机器目录计数混合。
-- 新环境通过显式路径完成只读操作时，不显示无法采取行动的笼统 warning。
+- `vault_structure` 报告选中 Vault 的必需文件和目录，以及每个缺失或类型无效的 Vault 路径。
+- `machine_runtime_directories` 报告机器级 configuration、state 和 cache 目录，说明它们按需创建；普通缺失为 `pass`，既有但无法检查、不是目录或权限不可用时才报告问题。
+- Vault 目录完整性与机器运行目录由不同检查 ID 报告，不再混合为目录计数。
+- 新环境通过显式路径完成只读操作时，未创建的机器运行目录不产生无法采取行动的笼统 warning。
 - CLI、MCP、HTTP 和未来 WebUI/GUI 使用同一组诊断事实和含义。
 
 ## UX-006 — 区分备份校验失败与恢复失败

@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{Read, Write},
+    io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
@@ -338,7 +338,22 @@ fn write_archive(root: &Path, output: &Path, manifest: &BackupManifest) -> Resul
     let writer_file = temporary
         .reopen()
         .map_err(|error| io("open temporary backup", output, error))?;
-    let mut writer = ZipWriter::new(writer_file);
+    let finished = write_archive_contents(root, output, manifest, ZipWriter::new(writer_file))?;
+    finished
+        .sync_all()
+        .map_err(|error| io("synchronize backup", output, error))?;
+    temporary
+        .persist_noclobber(output)
+        .map_err(|error| io("publish backup without replacing", output, error.error))?;
+    Ok(())
+}
+
+fn write_archive_contents<W: Write + Seek>(
+    root: &Path,
+    output: &Path,
+    manifest: &BackupManifest,
+    mut writer: ZipWriter<W>,
+) -> Result<W, KbError> {
     let file_options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .unix_permissions(0o644);
@@ -348,7 +363,7 @@ fn write_archive(root: &Path, output: &Path, manifest: &BackupManifest) -> Resul
 
     writer
         .start_file(MANIFEST_NAME, file_options)
-        .map_err(|error| archive_io("write manifest entry", output, error))?;
+        .map_err(|error| archive_write_io("write manifest entry", output, error))?;
     writer
         .write_all(
             &serde_json::to_vec_pretty(manifest)
@@ -358,12 +373,12 @@ fn write_archive(root: &Path, output: &Path, manifest: &BackupManifest) -> Resul
     for directory in &manifest.directories {
         writer
             .add_directory(format!("{}/", directory.as_str()), directory_options)
-            .map_err(|error| archive_io("write directory entry", output, error))?;
+            .map_err(|error| archive_write_io("write directory entry", output, error))?;
     }
     for expected in &manifest.files {
         writer
             .start_file(expected.path.as_str(), file_options)
-            .map_err(|error| archive_io("write file entry", output, error))?;
+            .map_err(|error| archive_write_io("write file entry", output, error))?;
         let native = root.join(expected.path.to_native_path());
         let mut input = fs::File::open(&native).map_err(|error| io("open", &native, error))?;
         let (size, sha256) = copy_with_hash(&mut input, &mut writer, &native)?;
@@ -379,16 +394,9 @@ fn write_archive(root: &Path, output: &Path, manifest: &BackupManifest) -> Resul
             ));
         }
     }
-    let finished = writer
+    writer
         .finish()
-        .map_err(|error| archive_io("finish backup", output, error))?;
-    finished
-        .sync_all()
-        .map_err(|error| io("synchronize backup", output, error))?;
-    temporary
-        .persist_noclobber(output)
-        .map_err(|error| io("publish backup without replacing", output, error.error))?;
-    Ok(())
+        .map_err(|error| archive_write_io("finish backup", output, error))
 }
 
 fn verify_manifest_and_entries(path: &Path) -> Result<BackupManifest, KbError> {
@@ -755,4 +763,64 @@ fn invalid_archive(reason: &str) -> KbError {
 
 fn archive_io(action: &str, path: &Path, error: impl std::fmt::Display) -> KbError {
     invalid_archive(&format!("cannot {action} {}: {error}", path.display()))
+}
+
+fn archive_write_io(action: &str, path: &Path, error: impl std::fmt::Display) -> KbError {
+    io(action, path, error)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Seek, SeekFrom};
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct FailingWriter {
+        failed: bool,
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            if !self.failed {
+                self.failed = true;
+                return Err(io::Error::other("injected ZIP writer failure"));
+            }
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Seek for FailingWriter {
+        fn seek(&mut self, _position: SeekFrom) -> io::Result<u64> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn zip_writer_failures_are_create_output_io_failures() {
+        let manifest = BackupManifest {
+            schema_version: CURRENT_SCHEMA_VERSION,
+            vault_schema_version: CURRENT_SCHEMA_VERSION,
+            vault_id: uuid::Uuid::nil(),
+            created_at: "2026-09-08T00:00:00Z".into(),
+            app_version: "test".into(),
+            complete_source_evidence: true,
+            directories: Vec::new(),
+            files: Vec::new(),
+        };
+        let error = write_archive_contents(
+            Path::new("."),
+            Path::new("output.zip"),
+            &manifest,
+            ZipWriter::new(FailingWriter { failed: false }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::IoFailure);
+        assert!(error.details.unwrap().get("legacy_code").is_none());
+    }
 }
