@@ -148,9 +148,11 @@ fn verify_rejects_extra_traversal_and_hash_mismatch() {
     wrong_manifest.files[0].sha256 = "0".repeat(64);
     let wrong_hash = temporary.path().join("wrong-hash.zip");
     rewrite_archive(&valid, &wrong_hash, &wrong_manifest);
+    let wrong_hash_error = verify_backup(&wrong_hash).unwrap_err();
+    assert_eq!(wrong_hash_error.code, ErrorCode::BackupVerificationFailed);
     assert_eq!(
-        verify_backup(&wrong_hash).unwrap_err().code,
-        ErrorCode::RestoreFailed
+        wrong_hash_error.details.unwrap()["legacy_code"],
+        "restore_failed"
     );
 
     let archive_manifest = manifest(&valid);
@@ -168,7 +170,7 @@ fn verify_rejects_extra_traversal_and_hash_mismatch() {
 
     assert_eq!(
         verify_backup(&malicious).unwrap_err().code,
-        ErrorCode::RestoreFailed
+        ErrorCode::BackupVerificationFailed
     );
     assert!(!temporary.path().join("escape").exists());
 
@@ -185,7 +187,7 @@ fn verify_rejects_extra_traversal_and_hash_mismatch() {
     writer.finish().unwrap();
     assert_eq!(
         verify_backup(&linked).unwrap_err().code,
-        ErrorCode::RestoreFailed
+        ErrorCode::BackupVerificationFailed
     );
 }
 

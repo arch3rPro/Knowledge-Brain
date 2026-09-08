@@ -111,6 +111,56 @@ fn default_backup_output_is_a_vault_sibling() {
     assert!(archive.is_file());
 }
 
+#[test]
+fn backup_json_errors_distinguish_invalid_archives_from_restore_targets() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    initialize_captured_vault(base, &vault);
+    run(
+        base,
+        base,
+        &[
+            "backup",
+            "create",
+            "--output",
+            "portable.zip",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--json",
+        ],
+    );
+
+    let corrupt = base.join("corrupt.zip");
+    fs::write(&corrupt, "not a ZIP archive").unwrap();
+    let invalid = failure(
+        base,
+        base,
+        &["backup", "verify", corrupt.to_str().unwrap(), "--json"],
+    );
+    assert_eq!(invalid["schema_version"], "v1.0");
+    assert_eq!(invalid["error"]["code"], "backup_verification_failed");
+    assert_eq!(invalid["error"]["details"]["legacy_code"], "restore_failed");
+
+    let target = base.join("nonempty-target");
+    fs::create_dir(&target).unwrap();
+    fs::write(target.join("keep"), "keep").unwrap();
+    let rejected = failure(
+        base,
+        base,
+        &[
+            "backup",
+            "restore",
+            "portable.zip",
+            "--target",
+            target.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(rejected["error"]["code"], "target_not_empty");
+    assert_eq!(fs::read_to_string(target.join("keep")).unwrap(), "keep");
+}
+
 fn initialize_captured_vault(base: &Path, vault: &Path) {
     let vault_text = vault.to_str().unwrap();
     run(base, base, &["init", vault_text, "--json"]);
@@ -170,6 +220,22 @@ fn run(current_dir: &Path, state_root: &Path, args: &[&str]) -> Value {
     assert!(
         output.status.success(),
         "command failed: {}\nstdout: {}\nstderr: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+fn failure(current_dir: &Path, state_root: &Path, args: &[&str]) -> Value {
+    let output = command(current_dir, state_root)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "command unexpectedly succeeded: {}\nstdout: {}\nstderr: {}",
         args.join(" "),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)

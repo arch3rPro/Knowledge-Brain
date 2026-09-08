@@ -135,9 +135,14 @@ pub fn verify_backup(archive_path: &Path) -> Result<BackupVerifyReport, KbError>
 pub fn restore_backup(archive_path: &Path, target: &Path) -> Result<BackupRestoreReport, KbError> {
     let manifest = verify_manifest_and_entries(archive_path)?;
     let existed = validate_restore_target(target)?;
-    let parent = target
-        .parent()
-        .ok_or_else(|| invalid_archive("restore target has no parent"))?;
+    let parent = target.parent().ok_or_else(|| {
+        KbError::new(
+            ErrorCode::RestoreFailed,
+            "Restore target has no parent directory.",
+            false,
+            "Choose a restore target below an existing directory.",
+        )
+    })?;
     let stage = tempfile::Builder::new()
         .prefix(".kb-restore-")
         .tempdir_in(parent)
@@ -740,12 +745,15 @@ fn target_exists(path: &Path) -> KbError {
 
 fn invalid_archive(reason: &str) -> KbError {
     KbError::new(
-        ErrorCode::RestoreFailed,
+        ErrorCode::BackupVerificationFailed,
         format!("Backup verification failed: {reason}"),
         false,
         "Use an intact Knowledge-Brain backup and run verify again.",
     )
-    .with_details(serde_json::json!({ "reason": reason }))
+    .with_details(serde_json::json!({
+        "reason": reason,
+        "legacy_code": "restore_failed",
+    }))
 }
 
 fn archive_io(action: &str, path: &Path, error: impl std::fmt::Display) -> KbError {

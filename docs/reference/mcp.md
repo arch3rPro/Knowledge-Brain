@@ -43,7 +43,7 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 
 ## 返回值与错误
 
-成功和业务失败都使用 MCP tool result。`structuredContent` 保留 Knowledge-Brain 的 `schema_version: v1.0` 信封；`isError` 区分业务失败。`kb_review_sources` 有变化时、`kb_plan_knowledge` 以及 `kb_operation_show` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。MCP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。参数错误、隐藏工具和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。
+成功和业务失败都使用 MCP tool result。`structuredContent` 保留 Knowledge-Brain 的 `schema_version: v1.0` 信封；`isError` 区分业务失败。`kb_review_sources` 有变化时、`kb_plan_knowledge` 以及 `kb_operation_show` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。MCP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。参数错误、隐藏工具和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。备份归档校验与恢复目标的错误代码、`legacy_code` 迁移详情见[备份参考](backup.md#错误分类与迁移)；MCP 沿用共享错误信封，不新增备份工具或为旧客户端转换新枚举。
 
 `--allow-write` 只授予调用 apply 工具的能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `operation_summary`，在最终 `kb_apply_operation` 前取得一次明确确认，并在摘要的 `can_apply` 为 `false` 时停止提交。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
 
