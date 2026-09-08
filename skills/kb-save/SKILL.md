@@ -17,6 +17,6 @@ Use this Skill only for structured research/article plans and their approved app
 
 ## Allowed boundary and actions
 
-Create a structured request with MCP `kb_plan_knowledge` or `kb plan create <request.json> --vault <path-or-id> --json`. Inspect it with MCP `kb_operation_show` or `kb operation show <operation-id> --json`; check target paths, source URIs, managed index/log changes, and conflicts.
+For the normal workflow, create a structured request and prepare it with MCP `kb_knowledge_save` or `kb knowledge save <request.json> --vault <path-or-id> --json`. Keep the returned `confirmation_token` internal. Check target paths, source URIs, managed index/log changes, conflicts and `change_summary`; show the user only that summary.
 
-Creation and inspection are read-only. After the user gives explicit approval for the displayed operation ID, apply only that operation with MCP `kb_apply_operation` (with write access) or `kb apply <operation-id> --json`. Do not write Wiki files, indexes, or logs directly; recreate a stale plan instead of bypassing validation.
+Preparation is read-only. After one explicit user confirmation, submit only that token with MCP `kb_knowledge_save` and `confirmation_token`, or `kb knowledge save --confirm <token> --vault <path-or-id> --json`, using write access. Use `kb plan create`, `kb operation show` and `kb apply` only for advanced inspection or delayed workflows. Do not write Wiki files, indexes, or logs directly; report a stale confirmation failure instead of bypassing validation.

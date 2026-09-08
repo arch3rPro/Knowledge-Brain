@@ -17,6 +17,6 @@ Use this Skill only for admitted source review, saved versions, and source integ
 
 ## Allowed boundary and actions
 
-Inspect changes only through `kb review --vault <path-or-id> --json` or MCP `kb_review_sources`; the admitted directories in `admission.yml` are the complete readable source boundary. Verify saved history with `kb source verify --vault <path-or-id> --json`, and inspect a review plan with `kb operation show <operation-id> --json` or MCP `kb_operation_show`.
+For the normal workflow, prepare with `kb source save --vault <path-or-id> --json` or MCP `kb_source_save`. Keep the returned `confirmation_token` internal. Show the user only `change_summary`, obtain one explicit confirmation, then submit that same token with `kb source save --confirm <token> --vault <path-or-id> --json` or MCP `kb_source_save` with `confirmation_token`. The admitted directories in `admission.yml` are the complete readable source boundary. Verify saved history with `kb source verify --vault <path-or-id> --json`.
 
-Summarize added, changed, missing, and possible-move entries. Only after explicit approval may you run `kb apply <operation-id> --json` or MCP `kb_apply_operation` with write access. Never inspect unadmitted directories, alter admitted files, or write source records directly.
+Summarize added, changed, missing, and possible-move entries without showing the token or operation ID. Only after explicit approval may you submit the matching confirmation token with write access. Use `kb review`, `kb operation show` and `kb apply` only for advanced inspection or delayed workflows. Never inspect unadmitted directories, alter admitted files, or write source records directly.
