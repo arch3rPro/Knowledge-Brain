@@ -43,6 +43,8 @@ require_text .github/workflows/release.yml "MINISIGN_VERSION: '0.12'"
 require_text .github/workflows/release.yml "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73"
 reject_text .github/workflows/release.yml "cargo install minisign"
 require_text .github/workflows/release.yml "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+require_text .github/workflows/native-build.yml "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
+reject_text .github/workflows/native-build.yml "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
 
 if grep -R -E 'uses: [^#[:space:]]+@(v[0-9]+|main|master|stable)([[:space:]]|$)' .github/workflows; then
   fail "actions must use immutable commit SHAs"
