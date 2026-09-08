@@ -1,6 +1,68 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use assert_cmd::Command;
+
+#[cfg(unix)]
+struct PermissionRestore {
+    path: PathBuf,
+    permissions: fs::Permissions,
+    restored: bool,
+}
+
+#[cfg(unix)]
+impl PermissionRestore {
+    fn restore(&mut self) {
+        fs::set_permissions(&self.path, self.permissions.clone()).unwrap();
+        self.restored = true;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for PermissionRestore {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = fs::set_permissions(&self.path, self.permissions.clone());
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct AclRestore {
+    path: PathBuf,
+    acl: String,
+    restored: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl AclRestore {
+    fn restore(&mut self) {
+        assert!(
+            std::process::Command::new("chmod")
+                .args(["-a", &self.acl])
+                .arg(&self.path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        self.restored = true;
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for AclRestore {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = std::process::Command::new("chmod")
+                .args(["-a", &self.acl])
+                .arg(&self.path)
+                .status();
+        }
+    }
+}
 
 #[test]
 fn doctor_reports_independent_checks_without_editing_vault_data() {
@@ -58,6 +120,11 @@ fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access()
     let vault = temp.path().join("vault");
     run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
     let config_dir = temp.path().join("user-config");
+    let mut permissions = PermissionRestore {
+        path: config_dir.clone(),
+        permissions: fs::metadata(&config_dir).unwrap().permissions(),
+        restored: false,
+    };
     fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o755)).unwrap();
     let user = String::from_utf8(
         std::process::Command::new("id")
@@ -75,19 +142,19 @@ fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access()
             .unwrap()
             .success()
     );
+    let mut acl_restore = AclRestore {
+        path: config_dir.clone(),
+        acl,
+        restored: false,
+    };
 
     let report = run(
         temp.path(),
         &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
     );
+    acl_restore.restore();
+    permissions.restore();
 
-    assert!(
-        std::process::Command::new("chmod")
-            .args(["-a", &acl, config_dir.to_str().unwrap()])
-            .status()
-            .unwrap()
-            .success()
-    );
     let runtime = report["data"]["checks"]
         .as_array()
         .unwrap()
@@ -107,21 +174,34 @@ fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access()
 #[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access() {
-    use std::os::unix::fs::PermissionsExt;
+    use std::{io::Write, os::unix::fs::PermissionsExt};
 
     let temp = tempfile::tempdir().unwrap();
     let vault = temp.path().join("vault");
     run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
     let config_dir = temp.path().join("user-config");
-    let original_permissions = fs::metadata(&config_dir).unwrap().permissions();
+    let mut permissions = PermissionRestore {
+        path: config_dir.clone(),
+        permissions: fs::metadata(&config_dir).unwrap().permissions(),
+        restored: false,
+    };
     fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let can_write = tempfile::Builder::new()
+        .prefix(".kb-doctor-test-write-probe-")
+        .tempfile_in(&config_dir)
+        .and_then(|mut probe| probe.write_all(b"kb doctor test write probe"))
+        .is_ok();
+    if can_write {
+        permissions.restore();
+        return;
+    }
 
     let report = run(
         temp.path(),
         &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
     );
+    permissions.restore();
 
-    fs::set_permissions(&config_dir, original_permissions).unwrap();
     let runtime = report["data"]["checks"]
         .as_array()
         .unwrap()
