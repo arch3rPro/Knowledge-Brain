@@ -60,6 +60,8 @@ fn version_and_capabilities_are_explicit_contracts() {
     let version = run(temp.path(), &["version", "--json"]);
     assert_eq!(version["data"]["schema_version"], "v1.0");
     assert!(version["data"]["app_version"].as_str().is_some());
+    assert_eq!(version["data"]["distribution"]["official_release"], false);
+    assert!(version["data"]["distribution"]["target"].is_null());
 
     let capabilities = run(temp.path(), &["capabilities", "--json"]);
     assert_eq!(capabilities["data"]["direct_search"], true);

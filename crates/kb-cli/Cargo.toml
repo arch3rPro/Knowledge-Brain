@@ -16,6 +16,7 @@ kb-core = { path = "../kb-core" }
 kb-mcp = { path = "../kb-mcp" }
 kb-protocol = { path = "../kb-protocol" }
 kb-server = { path = "../kb-server" }
+kb-update = { path = "../kb-update" }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

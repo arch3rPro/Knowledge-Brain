@@ -4,8 +4,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use kb_app::AppContext;
-use kb_core::KbError;
+use kb_app::{AppContext, AppRequest};
+use kb_core::{ErrorCode, KbError};
+use serde_json::{Value, json};
 
 mod args;
 mod render;
@@ -29,7 +30,7 @@ async fn main() -> ExitCode {
             json,
             fail_on_findings,
             full_hashes,
-        } => match request.and_then(|request| kb_app::run(request, &context)) {
+        } => match request.and_then(|request| run_app_request(request, &context)) {
             Ok(value) => render::success(&value, json, fail_on_findings, full_hashes),
             Err(error) => render::error(error, json),
         },
@@ -42,6 +43,55 @@ async fn main() -> ExitCode {
             Err(error) => render::error(error, false),
         },
     }
+}
+
+fn run_app_request(request: AppRequest, context: &AppContext) -> Result<Value, KbError> {
+    if !matches!(request, AppRequest::Version) {
+        return kb_app::run(request, context);
+    }
+
+    let mut response = kb_app::run(request, context)?;
+    let identity = compiled_identity()?;
+    let object = response
+        .as_object_mut()
+        .ok_or_else(|| KbError::invalid_config("version response", "expected an object"))?;
+    object.insert(
+        "distribution".to_owned(),
+        json!({
+            "official_release": identity.can_update(),
+            "target": identity.target().map(kb_update::ReleaseTarget::triple),
+        }),
+    );
+    Ok(response)
+}
+
+fn compiled_identity() -> Result<kb_update::BuildIdentity, KbError> {
+    let identity = match (
+        option_env!("KB_RELEASE_TARGET"),
+        option_env!("KB_RELEASE_PUBLIC_KEY"),
+    ) {
+        (None, None) => kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")),
+        (Some(target), Some(public_key)) => {
+            kb_update::BuildIdentity::official(env!("CARGO_PKG_VERSION"), target, public_key)
+        }
+        _ => {
+            return Err(KbError::new(
+                ErrorCode::InvalidConfig,
+                "The executable has incomplete official release metadata.",
+                false,
+                "Reinstall an official release binary.",
+            ));
+        }
+    };
+    identity.map_err(|error| {
+        KbError::new(
+            ErrorCode::InvalidConfig,
+            "The executable has invalid official release metadata.",
+            false,
+            "Reinstall an official release binary.",
+        )
+        .with_details(json!({ "reason": error.to_string() }))
+    })
 }
 
 fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError> {
