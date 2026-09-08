@@ -20,8 +20,8 @@ bash scripts/create-release-checksums.sh "$dist"
 umask 077
 secret_file=$(mktemp)
 trap 'rm -f "$secret_file"' EXIT
-echo "$KB_UPDATE_SIGNING_KEY" > "$secret_file"
-echo "$KB_UPDATE_SIGNING_PASSWORD" | minisign -S -s "$secret_file" -m "$dist/SHA256SUMS" -x "$dist/SHA256SUMS.minisig"
+printf '%s\n' "$KB_UPDATE_SIGNING_KEY" > "$secret_file"
+printf '%s\n' "$KB_UPDATE_SIGNING_PASSWORD" | minisign -S -s "$secret_file" -m "$dist/SHA256SUMS" -x "$dist/SHA256SUMS.minisig"
 
 release_json=$(gh release view "$tag" --json isDraft 2>/dev/null || true)
 if [[ -n $release_json ]]; then
