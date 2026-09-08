@@ -7,7 +7,10 @@ if [[ $# -ne 1 ]]; then
 fi
 
 dist=$1
-mapfile -t archives < <(find "$dist" -maxdepth 1 -type f \( -name 'knowledge-brain-*.tar.gz' -o -name 'knowledge-brain-*.zip' \) -print | sort)
+archives=()
+while IFS= read -r archive; do
+  archives+=("$archive")
+done < <(find "$dist" -maxdepth 1 -type f \( -name 'knowledge-brain-*.tar.gz' -o -name 'knowledge-brain-*.zip' \) -print | sort)
 if [[ ${#archives[@]} -ne 3 ]]; then
   echo "expected exactly three release archives, found ${#archives[@]}" >&2
   exit 65

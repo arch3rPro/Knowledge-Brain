@@ -1,6 +1,6 @@
 # 发布 CLI 版本
 
-本指南面向有仓库发布权限的维护者。普通 push 和 pull request 不运行 GitHub Actions；验证由手动工作流启动，正式发布只由 annotated `vX.Y.Z` tag 启动。
+本指南面向有仓库发布权限的维护者。普通 push、pull request 和 tag push 均不运行发布任务。正式版本由一次手动工作流完成测试、构建、创建 tag 和发布。
 
 ## 首次密钥设置
 
@@ -11,22 +11,18 @@
 
 发布任务把私钥 secret 写入权限为 `0600` 的临时文件，通过标准输入提供口令，生成 `SHA256SUMS.minisig` 后删除该文件。日志不得输出 secret、私钥路径内容或解密口令。
 
-## 发布前验证
+## 可选的平台验证
 
-1. 把根 `Cargo.toml` 的 workspace version 改为目标 `X.Y.Z`，更新 `Cargo.lock`，并提交到 `main`。
-2. 在 Actions 中运行 **Verify one native platform**。分别选择 `linux`、`macos` 和 `windows`，或选择 `all`。
-3. 确认每个平台完成 workspace 测试、release binary 构建和真实 CLI journey。手动验证不创建归档或 Release。
-4. 某个平台失败时，在对应运行中选择 **Re-run failed jobs**。该操作只重跑失败任务及其依赖任务，不需要重新启动已成功的同级平台构建。
+**Verify one native platform** 用于发布前诊断，并不是正式发布的必经步骤。可以选择 `linux`、`macos`、`windows` 或 `all`；它不会创建 tag、归档或 Release。
 
 ## 创建正式版本
 
-1. 确认目标提交已在 `origin/main`，工作区版本为 `X.Y.Z`，三个平台的手动验证均成功。
-2. 编写 `docs/releases/vX.Y.Z.md`。至少说明版本用途、主要变化、安装方法、资产与校验方式、已知限制；发布脚本拒绝缺少说明的版本。
-3. 创建 annotated tag：`git tag -a vX.Y.Z -m "Knowledge-Brain vX.Y.Z"`。
-4. 推送该 tag：`git push origin vX.Y.Z`。不要通过普通分支 push 代替发布触发。
-5. 观察 **Publish tagged release**。校验任务会拒绝轻量 tag、版本不一致或无法从 `main` 到达的提交。
-6. 三个平台各自运行 workspace 测试、官方 release binary 构建、CLI journey、打包、归档检查和 build provenance。发布任务只在三者全部成功后运行。
-7. 确认公开 Release 正好包含三个平台归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查三个 provenance 证明和版本说明。
+1. 把根 `Cargo.toml` 的 workspace version 改为目标 `X.Y.Z`，更新 `Cargo.lock`，编写 `docs/releases/vX.Y.Z.md`，并将这些改动提交、推送到 `main`。
+2. 在 GitHub Actions 中手动运行 **Release CLI version**，分支选择 `main`。工作流不接收单独的版本参数。
+3. 工作流先确认运行提交就是当前 `origin/main`，再从 `Cargo.toml` 读取版本并检查版本说明。
+4. 质量检查和 Linux、macOS、Windows 三个平台在同一次运行中完成测试、构建、CLI journey、打包和 build provenance。
+5. 三个平台全部成功后，发布任务才创建 annotated `vX.Y.Z` tag、签名校验和、上传资产并公开 Release。
+6. 确认公开 Release 正好包含三个平台归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查三个 provenance 证明和版本说明。
 
 归档名称为：
 
@@ -34,13 +30,15 @@
 - `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz`
 - `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip`
 
-发布脚本从 `docs/releases/vX.Y.Z.md` 读取版本说明，再创建或复用 draft Release。它拒绝修改已经公开的 Release；完整资产上传后才取消 draft。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
+发布脚本从 `docs/releases/vX.Y.Z.md` 读取版本说明。只有三个归档、`SHA256SUMS` 和 `SHA256SUMS.minisig` 全部存在时才创建 tag；完整资产上传后才取消 draft。它拒绝修改已经公开的 Release。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
 
 ## 失败处理
 
-构建或打包失败时使用 **Re-run failed jobs**，不要重新推送或移动 tag。发布任务部分上传失败时可以重跑；脚本只允许覆盖仍处于 draft 状态的资产。
+构建或打包失败时使用 **Re-run failed jobs**。矩阵中已经成功的平台不会重新构建。此时尚未创建版本 tag。
 
-如果公开 Release 的代码或资产有误，不得移动、删除后复用或强推已有 tag。修正代码，把版本增加到新的 patch 版本，重新完成手动验证，并创建新的 annotated tag。
+发布任务在创建 tag 后上传失败时，同样使用 **Re-run failed jobs**。它会复用本次运行的内部 artifact，并且只接受指向同一运行提交的 annotated tag；脚本只允许覆盖仍处于 draft 状态的资产。
+
+如果公开 Release 的代码或资产有误，不得移动、删除后复用或强推已有 tag。修正代码，把版本增加到新的 patch 版本，再启动一次正式发布。
 
 ## 密钥轮换
 

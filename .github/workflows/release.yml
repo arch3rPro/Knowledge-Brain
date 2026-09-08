@@ -1,8 +1,7 @@
-name: Publish tagged release
+name: Release CLI version
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,13 +12,38 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.tag.outputs.version }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - id: tag
-        run: bash scripts/check-release-tag.sh "${GITHUB_REF_NAME}"
+      - name: Require the current main commit
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != refs/heads/main ]]; then
+            echo "formal releases must run from main" >&2
+            exit 1
+          fi
+          git fetch --quiet origin main
+          if [[ "${GITHUB_SHA}" != "$(git rev-parse origin/main)" ]]; then
+            echo "formal releases must run from the current origin/main commit" >&2
+            exit 1
+          fi
+      - id: candidate
+        run: bash scripts/check-release-candidate.sh "${GITHUB_SHA}"
+      - name: Reject conflicting release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release_json=$(gh release view "$RELEASE_TAG" --json isDraft 2>/dev/null || true)
+          if [[ -n $release_json && $release_json != *'"isDraft":true'* ]]; then
+            echo "release $RELEASE_TAG is already public" >&2
+            exit 1
+          fi
+          bash scripts/ensure-release-tag.sh "$RELEASE_TAG" "${GITHUB_SHA}" --check-only
 
   build:
     needs: validate
@@ -39,6 +63,8 @@ jobs:
       MINISIGN_LINUX_SHA256: 9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: release-*
@@ -61,4 +87,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           KB_UPDATE_SIGNING_KEY: ${{ secrets.KB_UPDATE_SIGNING_KEY }}
           KB_UPDATE_SIGNING_PASSWORD: ${{ secrets.KB_UPDATE_SIGNING_PASSWORD }}
-        run: bash scripts/publish-release.sh "${GITHUB_REF_NAME}" dist
+        run: bash scripts/publish-release.sh "${{ needs.validate.outputs.tag }}" dist "${GITHUB_SHA}"
