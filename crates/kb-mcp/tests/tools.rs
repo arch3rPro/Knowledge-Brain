@@ -4,6 +4,71 @@ use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 
 #[test]
+fn operation_show_preserves_plan_and_result_roots_with_additive_summary() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized = kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    let mut server = McpServer::new(
+        context,
+        initialized["vault_id"].as_str().unwrap().to_owned(),
+        true,
+    );
+
+    let planned = call(
+        &mut server,
+        1,
+        "kb_plan_knowledge",
+        &json!({"request": knowledge_request()}),
+    );
+    assert_eq!(planned["result"]["isError"], false);
+    let operation_id = planned["result"]["structuredContent"]["data"]["operation_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let shown = call(
+        &mut server,
+        2,
+        "kb_operation_show",
+        &json!({"operation_id": operation_id}),
+    );
+    let data = &shown["result"]["structuredContent"]["data"];
+    assert_eq!(shown["result"]["isError"], false);
+    assert_eq!(data["state"], "planned");
+    assert!(data["plan"].is_object());
+    assert_eq!(data["operation_summary"]["requires_confirmation"], true);
+    assert_eq!(data["operation_summary"]["operation_id"], operation_id);
+
+    let applied = call(
+        &mut server,
+        3,
+        "kb_apply_operation",
+        &json!({"operation_id": operation_id}),
+    );
+    assert_eq!(applied["result"]["isError"], false);
+
+    let shown = call(
+        &mut server,
+        4,
+        "kb_operation_show",
+        &json!({"operation_id": operation_id}),
+    );
+    let data = &shown["result"]["structuredContent"]["data"];
+    assert_eq!(shown["result"]["isError"], false);
+    assert_eq!(data["state"], "applied");
+    assert!(data["result"].is_object());
+    assert_eq!(data["operation_summary"]["operation_id"], operation_id);
+    assert_eq!(data["operation_summary"]["can_apply"], false);
+}
+
+#[test]
 fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default() {
     let temp = tempfile::tempdir().unwrap();
     let context = context(temp.path());
@@ -115,6 +180,18 @@ fn call(server: &mut McpServer, id: u64, name: &str, arguments: &Value) -> Value
             "params":{"name":name,"arguments":arguments}
         }))
         .unwrap()
+}
+
+fn knowledge_request() -> Value {
+    json!({
+        "schema_version": "v1.0",
+        "changes": [{
+            "path": "articles/mcp-contract.md",
+            "before_sha256": null,
+            "summary": "Add the MCP operation contract fixture.",
+            "content": "---\ntype: Article\ntitle: MCP contract\nstatus: stable\ngenerated:\n  by: process:mcp-contract-test\n  at: 2026-09-08T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com/mcp-contract\nkb:\n  managed: true\n---\n\n# MCP contract\n"
+        }]
+    })
 }
 
 fn context(base: &Path) -> AppContext {

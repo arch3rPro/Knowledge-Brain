@@ -37,6 +37,8 @@ Authorization: Bearer <token>
 
 成功与失败都使用和 CLI `--json` 相同的 `schema_version: v1.0` 信封。常见 HTTP 映射是：鉴权缺失 `401`、权限不足 `403`、Vault/operation 不存在 `404`、陈旧计划或恢复冲突 `409`、请求或领域校验失败 `400`、内部 I/O 失败 `500`。客户端仍应以稳定的 `error.code` 判断业务原因。
 
+`POST /review` 有变化时、`POST /plans` 以及 `GET /operations/{id}` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。HTTP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。`--allow-write` 和 Bearer token 只授予调用 apply 路由的能力，不代表用户已确认。外层 Agent 或 UI 必须展示摘要，在最终 `POST /operations/{id}/apply` 前取得一次明确确认，并在 `can_apply` 为 `false` 时停止提交。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+
 ## 网络边界
 
 当前实现是明文 HTTP，不提供 TLS，也不发送宽松 CORS 头。局域网监听是明确允许的可选项，但只适用于受信任网络，或放在用户管理的 TLS 反向代理之后。把 token 放进 URL、Vault 配置或版本库会泄露凭据。

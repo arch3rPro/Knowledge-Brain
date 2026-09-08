@@ -2,6 +2,8 @@
 
 所有带 `--json` 的命令在 stdout 输出一个 JSON 信封。成功数据位于 `data`，失败数据位于 `error`；业务失败使用非零退出码。JSON 模式不会把提示或诊断混入 stderr。每个信封都携带 `schema_version`。
 
+`--full-hashes` 是全局选项。人类可读输出默认把独立的 64 位 SHA-256 显示为前 12 位；`--full-hashes` 显示完整 SHA-256。路径、operation ID、Vault ID 以及 `--json` 输出始终保留完整身份值。
+
 ## Vault 创建与采用
 
 ```text
@@ -14,6 +16,8 @@ kb operation show <OPERATION_ID> [--json]
 `init` 只接受不存在或空目录，创建最小 Vault 并尝试登记。它不创建 Git 仓库。
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
+
+计划创建和 `operation show` 的 JSON 数据在既有根级 `state`、`plan` 或 `result` 字段之外增加 `operation_summary`；客户端可以继续读取原字段。计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示可提交状态，完成后的摘要以 `can_apply: false` 表示不可再次提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
 
 ## 备份与恢复
 

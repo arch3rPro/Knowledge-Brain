@@ -3,6 +3,39 @@ use std::path::Path;
 use assert_cmd::Command;
 
 #[test]
+fn operation_show_preserves_plan_and_result_roots_with_additive_summary() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("existing-vault");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("keep.md"), b"existing content\n").unwrap();
+
+    let planned = run(temp.path(), &["adopt", target.to_str().unwrap(), "--json"]);
+    let operation_id = planned["data"]["operation_id"].as_str().unwrap().to_owned();
+
+    let shown = run(temp.path(), &["operation", "show", &operation_id, "--json"]);
+    assert_eq!(shown["data"]["state"], "planned");
+    assert!(shown["data"]["plan"].is_object());
+    assert_eq!(
+        shown["data"]["operation_summary"]["requires_confirmation"],
+        true
+    );
+    assert_eq!(
+        shown["data"]["operation_summary"]["operation_id"],
+        operation_id
+    );
+
+    run(temp.path(), &["apply", &operation_id, "--json"]);
+    let applied = run(temp.path(), &["operation", "show", &operation_id, "--json"]);
+    assert_eq!(applied["data"]["state"], "applied");
+    assert!(applied["data"]["result"].is_object());
+    assert_eq!(
+        applied["data"]["operation_summary"]["operation_id"],
+        operation_id
+    );
+    assert_eq!(applied["data"]["operation_summary"]["can_apply"], false);
+}
+
+#[test]
 fn invalid_config_is_stdout_clean_and_machine_readable() {
     let temp = tempfile::tempdir().unwrap();
     let vault = temp.path().join("vault");
