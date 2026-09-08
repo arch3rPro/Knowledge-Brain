@@ -1,0 +1,98 @@
+name: Reusable native build
+
+on:
+  workflow_call:
+    inputs:
+      targets_json:
+        required: true
+        type: string
+      package:
+        required: true
+        type: boolean
+      attest:
+        required: true
+        type: boolean
+      expected_version:
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  quality:
+    name: Quality (Rust 1.85)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets
+      - run: bash scripts/verify-npx-skills.sh
+
+  native:
+    name: Native (${{ matrix.platform }})
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.targets_json) }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.85.0
+      - run: cargo test --workspace
+      - name: Build native verification binary
+        if: ${{ !inputs.package }}
+        run: cargo build --release -p kb-cli
+      - name: Build official release binary
+        if: ${{ inputs.package }}
+        env:
+          KB_RELEASE_TARGET: ${{ matrix.target }}
+        run: cargo build --release -p kb-cli
+      - name: Run release CLI journey
+        env:
+          KB_TEST_BINARY: ${{ github.workspace }}/${{ matrix.binary }}
+        run: cargo test -p kb-cli --test phase2_journey
+      - name: Stage and package Unix release
+        if: ${{ inputs.package && runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-stage dist
+          cp "${{ matrix.binary }}" release-stage/kb
+          cp LICENSE assets/release/INSTALL.md release-stage/
+          chmod 755 release-stage/kb
+          bash scripts/package-release.sh release-stage "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.tar.gz" "${{ inputs.expected_version }}" "${{ matrix.target }}"
+          bash scripts/verify-release-package.sh "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.tar.gz" "${{ matrix.target }}"
+      - name: Stage and package Windows release
+        if: ${{ inputs.package && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-stage, dist | Out-Null
+          Copy-Item '${{ matrix.binary }}' release-stage/kb.exe
+          Copy-Item LICENSE, assets/release/INSTALL.md release-stage/
+          $asset = "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.zip"
+          ./scripts/package-release.ps1 -Stage release-stage -Asset $asset -Version '${{ inputs.expected_version }}' -Target '${{ matrix.target }}'
+          ./scripts/verify-release-package.ps1 -Asset $asset -Target '${{ matrix.target }}'
+      - name: Upload release archive
+        if: ${{ inputs.package }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+      - name: Attest release archive
+        if: ${{ inputs.attest }}
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: dist/*

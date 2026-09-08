@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  echo "workflow contract failed: $*" >&2
+  exit 1
+}
+
+require_file() {
+  [[ -f $1 ]] || fail "missing $1"
+}
+
+require_text() {
+  grep -Fq -- "$2" "$1" || fail "$1 must contain: $2"
+}
+
+reject_text() {
+  if grep -Fq -- "$2" "$1"; then
+    fail "$1 must not contain: $2"
+  fi
+}
+
+[[ ! -e .github/workflows/ci.yml ]] || fail "push-triggered ci.yml must be removed"
+for workflow in native-build.yml verify.yml release.yml workflow-contract.yml; do
+  require_file ".github/workflows/$workflow"
+done
+
+reject_text .github/workflows/verify.yml "push:"
+reject_text .github/workflows/verify.yml "pull_request:"
+reject_text .github/workflows/workflow-contract.yml "push:"
+reject_text .github/workflows/workflow-contract.yml "pull_request:"
+require_text .github/workflows/verify.yml "workflow_dispatch:"
+require_text .github/workflows/workflow-contract.yml "workflow_dispatch:"
+require_text .github/workflows/release.yml "tags: ['v*']"
+require_text .github/workflows/native-build.yml "workflow_call:"
+require_text .github/workflows/native-build.yml "fail-fast: false"
+require_text .github/workflows/native-build.yml "fromJSON(inputs.targets_json)"
+require_text .github/workflows/release.yml "KB_UPDATE_SIGNING_KEY"
+require_text .github/workflows/release.yml "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+
+if grep -R -E 'uses: [^#[:space:]]+@(v[0-9]+|main|master|stable)([[:space:]]|$)' .github/workflows; then
+  fail "actions must use immutable commit SHAs"
+fi
+
+echo "workflow contracts passed"

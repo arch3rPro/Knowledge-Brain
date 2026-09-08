@@ -1,0 +1,49 @@
+name: Verify one native platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Native platform to verify
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - macos
+          - windows
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.matrix.outputs.targets }}
+    steps:
+      - id: matrix
+        shell: bash
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          linux='{"platform":"linux","os":"ubuntu-24.04","target":"x86_64-unknown-linux-gnu","binary":"target/release/kb"}'
+          macos='{"platform":"macos","os":"macos-14","target":"aarch64-apple-darwin","binary":"target/release/kb"}'
+          windows='{"platform":"windows","os":"windows-2022","target":"x86_64-pc-windows-msvc","binary":"target/release/kb.exe"}'
+          case "$PLATFORM" in
+            linux) targets="[$linux]" ;;
+            macos) targets="[$macos]" ;;
+            windows) targets="[$windows]" ;;
+            all) targets="[$linux,$macos,$windows]" ;;
+            *) exit 64 ;;
+          esac
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: select
+    uses: ./.github/workflows/native-build.yml
+    with:
+      targets_json: ${{ needs.select.outputs.targets }}
+      package: false
+      attest: false
