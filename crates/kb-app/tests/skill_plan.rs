@@ -334,7 +334,7 @@ fn intact_legacy_symlink_bundle_is_migratable() {
         target: vault.clone(),
     })
     .unwrap();
-    let canonical = temporary.path().join("legacy-canonical");
+    let canonical = temporary.path().join("config/skills/knowledge-brain");
     write_legacy_bundle(&canonical);
     let legacy = vault.join(".agents/skills/knowledge-brain");
     fs::create_dir_all(legacy.parent().unwrap()).unwrap();
@@ -378,7 +378,7 @@ fn intact_legacy_symlink_bundle_is_uninstallable() {
         target: vault.clone(),
     })
     .unwrap();
-    let canonical = temporary.path().join("legacy-canonical");
+    let canonical = temporary.path().join("config/skills/knowledge-brain");
     write_legacy_bundle(&canonical);
     let legacy = vault.join(".agents/skills/knowledge-brain");
     fs::create_dir_all(legacy.parent().unwrap()).unwrap();
@@ -407,7 +407,7 @@ fn intact_legacy_symlink_bundle_is_uninstallable() {
 
 #[cfg(unix)]
 #[test]
-fn legacy_symlink_to_an_unexact_target_is_modified_and_refused() {
+fn legacy_symlink_to_external_exact_bytes_is_external_and_never_planned_for_deletion() {
     let temporary = tempfile::tempdir().unwrap();
     let vault = temporary.path().join("vault");
     init_vault(&InitRequest {
@@ -416,7 +416,6 @@ fn legacy_symlink_to_an_unexact_target_is_modified_and_refused() {
     .unwrap();
     let canonical = temporary.path().join("legacy-canonical");
     write_legacy_bundle(&canonical);
-    fs::create_dir(canonical.join("unexpected-empty-directory")).unwrap();
     let legacy = vault.join(".agents/skills/knowledge-brain");
     fs::create_dir_all(legacy.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&canonical, &legacy).unwrap();
@@ -424,19 +423,114 @@ fn legacy_symlink_to_an_unexact_target_is_modified_and_refused() {
 
     assert_eq!(
         skills_status(&context, &vault, SkillHost::Codex)["state"],
-        "modified"
+        "external"
     );
     let error = kb_app::run(
-        AppRequest::Skills(SkillRequest::Install {
+        AppRequest::Skills(SkillRequest::Uninstall {
             vault: Some(vault.display().to_string()),
             host: Some(SkillHost::Codex),
             scope: SkillScope::Vault,
-            mode: SkillInstallMode::Copy,
         }),
         &context,
     )
     .unwrap_err();
     assert_eq!(error.code, ErrorCode::PlanStale);
+    assert_eq!(
+        fs::read(canonical.join("SKILL.md")).unwrap(),
+        legacy_skill_assets()[0].bytes
+    );
+    assert!(
+        fs::symlink_metadata(&legacy)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn legacy_uninstall_preserves_an_unrelated_bridge_and_removes_only_the_frozen_bundle() {
+    let temporary = tempfile::tempdir().unwrap();
+    let vault = temporary.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let legacy = vault.join(".agents/skills/knowledge-brain");
+    write_legacy_bundle(&legacy);
+    let bridge = vault.join("AGENTS.md");
+    let original = "# Independent bridge\n";
+    fs::write(&bridge, original).unwrap();
+    let context = context(temporary.path());
+
+    let plan = kb_app::run(
+        AppRequest::Skills(SkillRequest::Uninstall {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+        }),
+        &context,
+    )
+    .unwrap();
+    assert!(
+        !plan["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|change| change["path"].as_str() == Some(bridge.to_string_lossy().as_ref()))
+    );
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&plan),
+        },
+        &context,
+    )
+    .unwrap();
+
+    assert!(!legacy.exists());
+    assert_eq!(fs::read_to_string(&bridge).unwrap(), original);
+}
+
+#[test]
+fn legacy_uninstall_removes_only_a_marker_bridge() {
+    let temporary = tempfile::tempdir().unwrap();
+    let vault = temporary.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let legacy = vault.join(".agents/skills/knowledge-brain");
+    write_legacy_bundle(&legacy);
+    let bridge = vault.join("AGENTS.md");
+    let original = "# Existing rules\n";
+    fs::write(&bridge, format!("{original}{BASELINE_BRIDGE_BLOCK}")).unwrap();
+    let context = context(temporary.path());
+
+    let plan = kb_app::run(
+        AppRequest::Skills(SkillRequest::Uninstall {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+        }),
+        &context,
+    )
+    .unwrap();
+    assert!(
+        plan["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|change| change["path"].as_str() == Some(bridge.to_string_lossy().as_ref()))
+    );
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&plan),
+        },
+        &context,
+    )
+    .unwrap();
+
+    assert!(!legacy.exists());
+    assert_eq!(fs::read_to_string(&bridge).unwrap(), original);
 }
 
 #[cfg(unix)]
