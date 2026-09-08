@@ -3,7 +3,7 @@ use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
-    InitRequest, OperationRequest, SkillRequest, VaultRequest,
+    InitRequest, OperationRequest, SaveMode, SkillRequest, VaultRequest,
 };
 use kb_core::{
     KnowledgePlanRequest, OperationId, SearchMatchMode, SkillHost, SkillInstallMode, SkillScope,
@@ -115,6 +115,11 @@ enum Commands {
     Plan {
         #[command(subcommand)]
         command: PlanCommands,
+    },
+    /// Prepare or save structured Wiki knowledge.
+    Knowledge {
+        #[command(subcommand)]
+        command: KnowledgeCommands,
     },
     /// Maintain derived caches.
     Cache {
@@ -239,6 +244,33 @@ enum PlanCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum KnowledgeCommands {
+    /// Prepare a knowledge save, confirm a prepared save, or save after prior authorization.
+    Save {
+        request: Option<KnowledgeRequestArg>,
+        #[command(flatten)]
+        execution: SaveExecution,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+}
+
+#[derive(Debug, Clone, Args)]
+#[command(group(
+    ArgGroup::new("save_execution")
+        .args(["yes", "confirm"])
+        .multiple(false)
+))]
+struct SaveExecution {
+    /// Save immediately when authorization already exists.
+    #[arg(long)]
+    yes: bool,
+    /// Confirm a prepared save using its machine token.
+    #[arg(long)]
+    confirm: Option<OperationId>,
+}
+
 #[derive(Debug, Clone)]
 enum KnowledgeRequestArg {
     Parsed(KnowledgePlanRequest),
@@ -279,6 +311,13 @@ enum CacheCommands {
 }
 #[derive(Subcommand)]
 enum SourceCommands {
+    /// Prepare an admitted source save, confirm it, or save after prior authorization.
+    Save {
+        #[command(flatten)]
+        execution: SaveExecution,
+        #[command(flatten)]
+        context: VaultContext,
+    },
     Verify {
         #[command(flatten)]
         context: VaultContext,
@@ -504,6 +543,14 @@ impl Cli {
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
             } => plan_command(request, context),
+            Commands::Knowledge {
+                command:
+                    KnowledgeCommands::Save {
+                        request,
+                        execution,
+                        context,
+                    },
+            } => knowledge_save_command(request, execution, context),
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand::App {
@@ -514,16 +561,7 @@ impl Cli {
                 fail_on_findings: false,
                 full_hashes: false,
             },
-            Commands::Source {
-                command: SourceCommands::Verify { context },
-            } => ParsedCommand::App {
-                request: Ok(AppRequest::SourceVerify {
-                    vault: context.vault,
-                }),
-                json: context.json,
-                fail_on_findings: false,
-                full_hashes: false,
-            },
+            Commands::Source { command } => source_command(command),
             Commands::Skills { command } => skill_command(command),
             Commands::Init { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Init(InitRequest { target })),
@@ -718,6 +756,79 @@ fn plan_command(request: KnowledgeRequestArg, context: VaultContext) -> ParsedCo
         json: context.json,
         fail_on_findings: false,
         full_hashes: false,
+    }
+}
+
+fn knowledge_save_command(
+    request: Option<KnowledgeRequestArg>,
+    execution: SaveExecution,
+    context: VaultContext,
+) -> ParsedCommand {
+    let mode = save_mode(&execution);
+    let request = match (request, &mode) {
+        (
+            Some(KnowledgeRequestArg::Parsed(request)),
+            SaveMode::Prepare | SaveMode::ApplyImmediately,
+        ) => Ok(Some(request)),
+        (
+            Some(KnowledgeRequestArg::Invalid(error)),
+            SaveMode::Prepare | SaveMode::ApplyImmediately,
+        ) => Err(error),
+        (None, SaveMode::Prepare | SaveMode::ApplyImmediately) => {
+            Err(kb_core::KbError::invalid_config(
+                "knowledge save request",
+                "a request is required unless confirming a prepared save",
+            ))
+        }
+        (None, SaveMode::Confirm(_)) => Ok(None),
+        (Some(_), SaveMode::Confirm(_)) => Err(kb_core::KbError::invalid_config(
+            "knowledge save request",
+            "a request cannot be combined with --confirm",
+        )),
+    };
+    ParsedCommand::App {
+        request: request.map(|request| AppRequest::KnowledgeSave {
+            vault: context.vault,
+            request,
+            mode,
+        }),
+        json: context.json,
+        fail_on_findings: false,
+        full_hashes: false,
+    }
+}
+
+fn source_command(command: SourceCommands) -> ParsedCommand {
+    let (request, json) = match command {
+        SourceCommands::Save { execution, context } => (
+            Ok(AppRequest::SourceSave {
+                vault: context.vault,
+                mode: save_mode(&execution),
+            }),
+            context.json,
+        ),
+        SourceCommands::Verify { context } => (
+            Ok(AppRequest::SourceVerify {
+                vault: context.vault,
+            }),
+            context.json,
+        ),
+    };
+    ParsedCommand::App {
+        request,
+        json,
+        fail_on_findings: false,
+        full_hashes: false,
+    }
+}
+
+fn save_mode(execution: &SaveExecution) -> SaveMode {
+    if let Some(token) = execution.confirm {
+        SaveMode::Confirm(token)
+    } else if execution.yes {
+        SaveMode::ApplyImmediately
+    } else {
+        SaveMode::Prepare
     }
 }
 
