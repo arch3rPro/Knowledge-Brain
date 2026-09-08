@@ -136,7 +136,7 @@ fn doctor_checks_render_as_status_id_and_message() {
 
     assert!(
         text.lines()
-            .any(|line| line.starts_with("warn standard_directories: ")),
+            .any(|line| line.starts_with("pass machine_runtime_directories: ")),
         "{text}"
     );
     assert!(
