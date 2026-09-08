@@ -101,7 +101,7 @@
 
 ### Stage 4C — Portable Agent Skill 与 MCP stdio
 
-**Status:** implemented（定向本地测试）。内置 Agent Skill 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改会阻止覆盖或删除。
+**Status:** implemented（定向本地与隔离分发测试）。八项内置 `kb-*` Agent Skills 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改、legacy 或外部 `npx` 安装均不会被静默覆盖或删除。
 
 `kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
 

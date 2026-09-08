@@ -123,7 +123,7 @@ kb skills status [--host auto|codex|claude-code|gemini-cli|opencode] [--scope va
 kb skills uninstall [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
 ```
 
-安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。宿主路径、检测歧义、复制与链接模式见 [Portable Agent Skill 参考](agent-skill.md)。
+安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理八项顶层 `kb-*` Skill；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。宿主路径、检测歧义、复制与链接模式，以及 `npx skills add` 外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
 
 ## MCP stdio
 

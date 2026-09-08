@@ -1,6 +1,6 @@
 # MCP stdio 参考
 
-`kb mcp` 把一个固定 Vault 暴露为本地 MCP stdio 服务，供支持 MCP 的 Agent、编辑器、WebUI 或 GUI 调用。MCP 只是 `kb-app` 的入口适配器，不另行实现 Vault 规则。
+`kb mcp` 把一个固定 Vault 暴露为本地 MCP stdio 服务，供支持 MCP 的 Agent、编辑器、WebUI 或 GUI 调用。MCP 只是 `kb-app` 的入口适配器，不另行实现 Vault 规则。安装 `kb-*` Skills 或使用 `npx skills add` 不会改变 MCP 工具集；Skill 只是指导 Agent 调用这个固定契约。
 
 ## 启动与客户端配置
 

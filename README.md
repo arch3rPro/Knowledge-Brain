@@ -136,6 +136,10 @@ kb apply <operation-id> --json
 
 完整语法见[命令参考](docs/reference/commands.md)，配置层级和 `admission.yml` 格式见[配置参考](docs/reference/configuration.md)。
 
+## Agent Skills
+
+项目发布八个可单独安装的 `kb-*` Skills。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --all -a codex -y` 或 `npx skills add . --skill kb-query -a codex -y`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
+
 ## 架构
 
 ```text

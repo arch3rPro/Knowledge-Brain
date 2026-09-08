@@ -1,6 +1,8 @@
-# Portable Agent Skill
+# Portable Agent Skills
 
-Knowledge-Brain 内置一份可移植的 `knowledge-brain` Skill。它教 Agent 使用统一的 MCP 或 CLI 契约查询知识、审阅来源、创建知识计划，并明确区分“生成计划”和“执行计划”。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
+Knowledge-Brain 发布八个可独立选择的可移植 `kb-*` Skills：`kb-vault`、`kb-config`、`kb-ingest`、`kb-query`、`kb-save`、`kb-ops`、`kb-backup` 与 `kb-connect`。它们使用统一的 MCP 或 CLI 契约，并明确区分“生成计划”和“执行计划”。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
+
+有两种安装方式：`kb skills` 创建可审阅、可执行的受管理 suite；`npx skills add` 从本项目的顶层 `skills/` 目录安装外部副本。两者互不接管文件。
 
 ## 命令
 
@@ -21,14 +23,23 @@ Vault 范围把 Skill 放入 Vault 内的宿主目录：
 
 | 宿主 | Skill 目录 | 桥接文件 |
 | --- | --- | --- |
-| Codex | `.agents/skills/knowledge-brain/` | `AGENTS.md` |
-| Claude Code | `.claude/skills/knowledge-brain/` | `CLAUDE.md` |
-| Gemini CLI | `.gemini/skills/knowledge-brain/` | `GEMINI.md` |
-| OpenCode | `.opencode/skills/knowledge-brain/` | `AGENTS.md` |
+| Codex | `.agents/skills/kb-*/` | `AGENTS.md` |
+| Claude Code | `.claude/skills/kb-*/` | `CLAUDE.md` |
+| Gemini CLI | `.gemini/skills/kb-*/` | `GEMINI.md` |
+| OpenCode | `.opencode/skills/kb-*/` | `AGENTS.md` |
 
 User 范围使用操作系统的用户目录或配置目录：Codex 为 `.codex/`，Claude Code 为 `.claude/`，Gemini CLI 为 `.gemini/`，OpenCode 为系统配置目录下的 `opencode/`。Knowledge-Brain 通过系统目录 API 解析这些位置，不把 macOS、Linux 或 Windows 的绝对路径写入 Vault。
 
-`copy` 复制内置 Skill。`symlink` 在 Knowledge-Brain 的用户配置目录保存规范副本，再让宿主目录链接到该副本；显式选择该模式前应确认宿主和同步工具支持符号链接。
+`copy` 复制八项内置 Skill。`symlink` 在 Knowledge-Brain 的用户配置目录保存规范副本，再让宿主目录分别链接到八项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移；人工修改的旧版或未受管 `kb-*` 文件不会被覆盖或删除。
+
+## 外部安装
+
+```bash
+npx skills add . --all -a codex -y
+npx skills add . --skill kb-query -a codex -y
+```
+
+`npx` 安装的文件在 `kb skills status` 中显示为 `external`。内置安装器拒绝覆盖或卸载它们；请使用最初的外部安装工具管理这些文件。`kb init` 只创建 Vault，不会安装任何宿主 Skill。
 
 ## 审阅与执行
 
