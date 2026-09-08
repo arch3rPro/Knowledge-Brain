@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, future::pending, net::SocketAddr, path::Path};
+use std::{collections::BTreeMap, fs, future::pending, net::SocketAddr, path::Path};
 
 use kb_app::{AppContext, AppRequest, InitRequest};
 use kb_server::{ServerPolicy, ServerState, serve};
@@ -247,6 +247,57 @@ async fn enabled_apply_uses_a_reviewed_plan_for_the_fixed_vault() {
         operation_id
     );
     assert_eq!(response["data"]["operation_summary"]["can_apply"], false);
+}
+
+#[tokio::test]
+async fn save_routes_prepare_read_only_and_confirm_only_when_writes_are_enabled() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    initialize(&context, &vault);
+    fs::create_dir(vault.join("Notes")).unwrap();
+    fs::write(vault.join("Notes/one.md"), "# One\n\nSource evidence.\n").unwrap();
+    fs::write(
+        vault.join("admission.yml"),
+        "schema_version: v1.0\ndirectories:\n  - id: notes\n    path: Notes\n    enabled: true\n",
+    )
+    .unwrap();
+    let read_only = start(context.clone(), &vault, Some("secret"), false).await;
+
+    let (status, prepared) =
+        request(&read_only, "POST", "/source/save", Some("secret"), "{}").await;
+    assert_eq!(status, 200, "{prepared}");
+    assert_eq!(prepared["data"]["phase"], "awaiting_confirmation");
+    let token = prepared["data"]["confirmation_token"].as_str().unwrap();
+
+    let body = serde_json::to_string(&json!({"confirmation_token": token})).unwrap();
+    let (status, denied) = request(&read_only, "POST", "/source/save", Some("secret"), &body).await;
+    assert_eq!(status, 403, "{denied}");
+    assert_eq!(denied["error"]["code"], "auth_denied");
+
+    let writable = start(context.clone(), &vault, Some("secret"), true).await;
+    let (status, applied) = request(&writable, "POST", "/source/save", Some("secret"), &body).await;
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["data"]["phase"], "applied");
+    let verified = kb_app::run(
+        AppRequest::SourceVerify {
+            vault: Some(vault.display().to_string()),
+        },
+        &context,
+    )
+    .unwrap();
+    assert_eq!(verified["checks"][0]["status"], "pass");
+
+    let direct_vault = temporary.path().join("direct");
+    initialize(&context, &direct_vault);
+    let direct = start(context, &direct_vault, Some("secret"), true).await;
+    let body =
+        serde_json::to_string(&json!({"request": knowledge_request(), "apply": true})).unwrap();
+    let (status, response) =
+        request(&direct, "POST", "/knowledge/save", Some("secret"), &body).await;
+    assert_eq!(status, 200, "{response}");
+    assert_eq!(response["data"]["phase"], "applied");
+    assert!(direct_vault.join("Wiki/articles/http.md").is_file());
 }
 
 #[tokio::test]
