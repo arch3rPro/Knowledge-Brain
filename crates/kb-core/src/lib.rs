@@ -19,7 +19,7 @@ pub use extraction::{
 };
 pub use search::{
     Catalog, CatalogEntry, SearchBackend, SearchExplanation, SearchField, SearchFieldContribution,
-    SearchGroup, SearchHit, SearchRequest, SearchResponse, SearchScope,
+    SearchGroup, SearchHit, SearchMatchMode, SearchRequest, SearchResponse, SearchScope,
 };
 pub use skill::{
     SkillAction, SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillLinkChange,

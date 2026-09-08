@@ -1,4 +1,21 @@
-use kb_core::{SearchRequest, SearchScope};
+use kb_core::{SearchMatchMode, SearchRequest, SearchScope};
+
+#[test]
+fn requests_default_to_relevant_match_mode_and_serialize_exact() {
+    assert_eq!(
+        serde_json::from_str::<SearchRequest>(
+            r#"{"query":"needle","scope":"wiki","limit":10,"strict_backend":false}"#,
+        )
+        .unwrap()
+        .match_mode,
+        SearchMatchMode::Relevant,
+    );
+    assert_eq!(
+        serde_json::to_value(SearchMatchMode::Exact).unwrap(),
+        serde_json::json!("exact"),
+    );
+}
+
 #[test]
 fn requests_reject_blank_queries_and_invalid_limits() {
     for (q, n) in [("", 10), ("   ", 10), ("valid", 0), ("valid", 101)] {
@@ -8,6 +25,7 @@ fn requests_reject_blank_queries_and_invalid_limits() {
                 scope: SearchScope::Wiki,
                 limit: n,
                 strict_backend: false,
+                match_mode: SearchMatchMode::Relevant,
             }
             .validate()
             .is_err()
@@ -19,6 +37,7 @@ fn requests_reject_blank_queries_and_invalid_limits() {
             scope: SearchScope::All,
             limit: 10,
             strict_backend: false,
+            match_mode: SearchMatchMode::Relevant,
         }
         .validate()
         .is_ok()

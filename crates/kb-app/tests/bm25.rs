@@ -2,7 +2,7 @@ use kb_app::{
     ConfigOverrides, InitRequest, UserPaths, init_vault, load_effective_config, query,
     rebuild_catalog,
 };
-use kb_core::{ErrorCode, SearchBackend, SearchMode, SearchRequest, SearchScope};
+use kb_core::{ErrorCode, SearchBackend, SearchMatchMode, SearchMode, SearchRequest, SearchScope};
 use std::{fs, path::Path};
 
 fn setup() -> (
@@ -32,6 +32,21 @@ fn request(query: &str, strict_backend: bool) -> SearchRequest {
         scope: SearchScope::Wiki,
         limit: 10,
         strict_backend,
+        match_mode: SearchMatchMode::Relevant,
+    }
+}
+
+fn exact_request(query: &str) -> SearchRequest {
+    exact_request_with_strict_backend(query, false)
+}
+
+fn exact_request_with_strict_backend(query: &str, strict_backend: bool) -> SearchRequest {
+    SearchRequest {
+        query: query.into(),
+        scope: SearchScope::Wiki,
+        limit: 10,
+        strict_backend,
+        match_mode: SearchMatchMode::Exact,
     }
 }
 
@@ -156,6 +171,63 @@ fn stale_or_corrupt_index_falls_back_unless_strict() {
             .code,
         ErrorCode::IndexStale
     );
+}
+
+#[test]
+fn exact_match_is_case_sensitive_literal_and_ignores_a_stale_bm25_cache() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/articles/exact.md"),
+        article("Exact", "kb-incremental-rebuild-probe"),
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/partial.md"),
+        article("Partial", "probe"),
+    )
+    .unwrap();
+    rebuild_catalog(&vault, &config).unwrap();
+    fs::write(vault.join(".kb/cache/bm25.json"), "{broken").unwrap();
+
+    let result = query(
+        &vault,
+        &exact_request("kb-incremental-rebuild-probe"),
+        &config,
+    )
+    .unwrap();
+    assert_eq!(result.match_mode, SearchMatchMode::Exact);
+    assert!(result.warnings.is_empty());
+    assert_eq!(result.groups[0].results.len(), 1);
+    assert_eq!(
+        result.groups[0].results[0].path.as_str(),
+        "Wiki/articles/exact.md"
+    );
+    assert_eq!(
+        result.groups[0].results[0].backend,
+        Some(SearchBackend::Direct)
+    );
+    assert_eq!(result.groups[0].results[0].score_micros, None);
+    assert_eq!(result.groups[0].results[0].explanation, None);
+
+    assert!(
+        query(
+            &vault,
+            &exact_request("KB-INCREMENTAL-REBUILD-PROBE"),
+            &config,
+        )
+        .unwrap()
+        .groups[0]
+            .results
+            .is_empty()
+    );
+
+    let strict = query(
+        &vault,
+        &exact_request_with_strict_backend("kb-incremental-rebuild-probe", true),
+        &config,
+    )
+    .unwrap();
+    assert!(strict.warnings.is_empty());
 }
 
 fn index(vault: &Path) -> serde_json::Value {

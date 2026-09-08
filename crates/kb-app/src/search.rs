@@ -6,8 +6,8 @@ use crate::{
 };
 use kb_core::{
     CURRENT_SCHEMA_VERSION, Catalog, CatalogEntry, EffectiveConfig, KbError, MediaType,
-    PortableRelativePath, SearchGroup, SearchHit, SearchMode, SearchRequest, SearchResponse,
-    SearchScope,
+    PortableRelativePath, SearchGroup, SearchHit, SearchMatchMode, SearchMode, SearchRequest,
+    SearchResponse, SearchScope,
 };
 use std::{cmp::Reverse, collections::BTreeSet, fs, path::Path};
 pub(crate) struct Document {
@@ -90,8 +90,32 @@ pub fn query(
     } else {
         vec![r.scope]
     };
+    match r.match_mode {
+        SearchMatchMode::Exact => {
+            let groups = scopes
+                .into_iter()
+                .map(|scope| {
+                    search_scope(
+                        root,
+                        scope,
+                        c,
+                        r.query.trim(),
+                        r.limit,
+                        SearchMatchMode::Exact,
+                    )
+                })
+                .collect::<Result<_, _>>()?;
+            return Ok(SearchResponse {
+                schema_version: CURRENT_SCHEMA_VERSION,
+                query: r.query.clone(),
+                match_mode: r.match_mode,
+                groups,
+                warnings: Vec::new(),
+            });
+        }
+        SearchMatchMode::Relevant => {}
+    }
     let phrase = r.query.trim().to_lowercase();
-    let terms = phrase.split_whitespace().collect::<BTreeSet<_>>();
     let (groups, warnings) = if c.search.mode.value == SearchMode::Bm25 {
         match scopes
             .iter()
@@ -103,7 +127,9 @@ pub fn query(
             Err(error) if error.code == kb_core::ErrorCode::IndexStale && !r.strict_backend => (
                 scopes
                     .into_iter()
-                    .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
+                    .map(|scope| {
+                        search_scope(root, scope, c, &phrase, r.limit, SearchMatchMode::Relevant)
+                    })
                     .collect::<Result<_, _>>()?,
                 vec![format!("{} Results use direct search.", error.message)],
             ),
@@ -113,7 +139,9 @@ pub fn query(
         (
             scopes
                 .into_iter()
-                .map(|scope| search_scope(root, scope, c, &phrase, &terms, r.limit))
+                .map(|scope| {
+                    search_scope(root, scope, c, &phrase, r.limit, SearchMatchMode::Relevant)
+                })
                 .collect::<Result<_, _>>()?,
             Vec::new(),
         )
@@ -121,6 +149,7 @@ pub fn query(
     Ok(SearchResponse {
         schema_version: CURRENT_SCHEMA_VERSION,
         query: r.query.clone(),
+        match_mode: r.match_mode,
         groups,
         warnings,
     })
@@ -131,9 +160,10 @@ fn search_scope(
     scope: SearchScope,
     config: &EffectiveConfig,
     phrase: &str,
-    terms: &BTreeSet<&str>,
     limit: usize,
+    match_mode: SearchMatchMode,
 ) -> Result<SearchGroup, KbError> {
+    let terms = phrase.split_whitespace().collect::<BTreeSet<_>>();
     let mut hits = Vec::new();
     for document in documents(root, scope, config)? {
         let extracted = extract_bytes(document.media, &document.bytes);
@@ -153,9 +183,22 @@ fn search_scope(
         }
         let before_hits = hits.len();
         for (block, content_path) in blocks {
-            let folded = block.text.to_lowercase();
-            let count = folded.matches(phrase).count();
-            let distinct = terms.iter().filter(|term| folded.contains(**term)).count();
+            let (count, distinct, title_match) = match match_mode {
+                SearchMatchMode::Relevant => {
+                    let folded = block.text.to_lowercase();
+                    (
+                        folded.matches(phrase).count(),
+                        terms.iter().filter(|term| folded.contains(**term)).count(),
+                        block
+                            .heading
+                            .as_ref()
+                            .unwrap_or(&document_title)
+                            .to_lowercase()
+                            .contains(phrase),
+                    )
+                }
+                SearchMatchMode::Exact => (block.text.matches(phrase).count(), 0, false),
+            };
             if count == 0 && distinct == 0 {
                 continue;
             }
@@ -163,7 +206,6 @@ fn search_scope(
                 .heading
                 .clone()
                 .unwrap_or_else(|| document_title.clone());
-            let title_match = title.to_lowercase().contains(phrase);
             let hit = SearchHit {
                 path: document.path.clone(),
                 content_path,
@@ -172,7 +214,7 @@ fn search_scope(
                 heading: block.heading,
                 line_start: block.line_start,
                 location: block.location,
-                snippet: snippet(&block.text, phrase),
+                snippet: snippet(&block.text, phrase, match_mode),
                 match_count: count as u64,
                 backend: Some(kb_core::SearchBackend::Direct),
                 score_micros: None,
@@ -180,7 +222,10 @@ fn search_scope(
             };
             hits.push((Reverse(count), Reverse(distinct), Reverse(title_match), hit));
         }
-        if hits.len() == before_hits && document_title.to_lowercase().contains(phrase) {
+        if match_mode == SearchMatchMode::Relevant
+            && hits.len() == before_hits
+            && document_title.to_lowercase().contains(phrase)
+        {
             hits.push((
                 Reverse(1),
                 Reverse(terms.len()),
@@ -220,10 +265,13 @@ fn search_scope(
             .collect(),
     })
 }
-fn snippet(text: &str, phrase: &str) -> String {
+fn snippet(text: &str, phrase: &str, match_mode: SearchMatchMode) -> String {
     let line = text
         .lines()
-        .find(|l| l.to_lowercase().contains(phrase))
+        .find(|line| match match_mode {
+            SearchMatchMode::Relevant => line.to_lowercase().contains(phrase),
+            SearchMatchMode::Exact => line.contains(phrase),
+        })
         .unwrap_or(text);
     line.chars().take(240).collect()
 }
