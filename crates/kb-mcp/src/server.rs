@@ -1,6 +1,7 @@
-use kb_app::{AppContext, AppRequest, OperationRequest};
+use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode};
 use kb_core::{
-    KbError, KnowledgePlanRequest, OperationId, SearchMatchMode, SearchRequest, SearchScope,
+    ErrorCode, KbError, KnowledgePlanRequest, OperationId, SearchMatchMode, SearchRequest,
+    SearchScope,
 };
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Deserialize;
@@ -105,6 +106,19 @@ impl McpServer {
                 false,
             ),
             tool(
+                "kb_source_save",
+                "Prepare an admitted source save, or confirm an explicitly approved prepared save.",
+                &json!({
+                    "type":"object",
+                    "properties":{
+                        "apply":{"type":"boolean","default":false},
+                        "confirmation_token":{"type":"string"}
+                    },
+                    "additionalProperties":false
+                }),
+                false,
+            ),
+            tool(
                 "kb_plan_knowledge",
                 "Validate a structured research or article request and create a reviewable plan.",
                 &json!({
@@ -139,6 +153,41 @@ impl McpServer {
                 false,
             ),
             tool(
+                "kb_knowledge_save",
+                "Prepare a knowledge save, or confirm an explicitly approved prepared save.",
+                &json!({
+                    "type":"object",
+                    "properties":{
+                        "request":{
+                            "type":"object",
+                            "properties":{
+                                "schema_version":{"type":"string","const":"v1.0"},
+                                "changes":{
+                                    "type":"array","minItems":1,
+                                    "items":{
+                                        "type":"object",
+                                        "properties":{
+                                            "path":{"type":"string"},
+                                            "before_sha256":{"type":["string","null"]},
+                                            "summary":{"type":"string"},
+                                            "content":{"type":"string"}
+                                        },
+                                        "required":["path","before_sha256","summary","content"],
+                                        "additionalProperties":false
+                                    }
+                                }
+                            },
+                            "required":["schema_version","changes"],
+                            "additionalProperties":false
+                        },
+                        "apply":{"type":"boolean","default":false},
+                        "confirmation_token":{"type":"string"}
+                    },
+                    "additionalProperties":false
+                }),
+                false,
+            ),
+            tool(
                 "kb_operation_show",
                 "Inspect one plan or completion receipt owned by the fixed Vault.",
                 &operation_schema(),
@@ -165,7 +214,10 @@ impl McpServer {
         }
         let request = match self.app_request(&call.name, call.arguments) {
             Ok(request) => request,
-            Err(message) => return protocol_error(id, -32602, &message),
+            Err(ToolRequestError::InvalidArguments(message)) => {
+                return protocol_error(id, -32602, &message);
+            }
+            Err(ToolRequestError::Application(error)) => return success(id, &tool_error(error)),
         };
         let result = match kb_app::run(request, &self.context) {
             Ok(data) => {
@@ -179,8 +231,8 @@ impl McpServer {
         success(id, &result)
     }
 
-    fn app_request(&self, name: &str, arguments: Value) -> Result<AppRequest, String> {
-        match name {
+    fn app_request(&self, name: &str, arguments: Value) -> Result<AppRequest, ToolRequestError> {
+        let request = match name {
             "kb_capabilities" => empty(&arguments).map(|()| AppRequest::Capabilities),
             "kb_status" => empty(&arguments).map(|()| AppRequest::Status {
                 vault: Some(self.vault_selector.clone()),
@@ -201,12 +253,32 @@ impl McpServer {
             "kb_review_sources" => empty(&arguments).map(|()| AppRequest::Review {
                 vault: Some(self.vault_selector.clone()),
             }),
+            "kb_source_save" => decode::<SourceSaveArguments>(arguments).and_then(|args| {
+                parse_save_mode(args.apply, args.confirmation_token).map(|mode| {
+                    AppRequest::SourceSave {
+                        vault: Some(self.vault_selector.clone()),
+                        mode,
+                    }
+                })
+            }),
             "kb_plan_knowledge" => {
                 decode::<PlanArguments>(arguments).map(|args| AppRequest::PlanCreate {
                     vault: Some(self.vault_selector.clone()),
                     request: args.request,
                 })
             }
+            "kb_knowledge_save" => decode::<KnowledgeSaveArguments>(arguments).and_then(|args| {
+                parse_save_mode(args.apply, args.confirmation_token).and_then(|mode| {
+                    if args.request.is_none() && !matches!(mode, SaveMode::Confirm(_)) {
+                        return Err("knowledge save requires request unless confirming".to_owned());
+                    }
+                    Ok(AppRequest::KnowledgeSave {
+                        vault: Some(self.vault_selector.clone()),
+                        request: args.request,
+                        mode,
+                    })
+                })
+            }),
             "kb_operation_show" => decode::<OperationArguments>(arguments).and_then(|args| {
                 parse_operation_id(&args.operation_id).map(|operation_id| {
                     AppRequest::Operation(OperationRequest::ShowForVault {
@@ -226,7 +298,35 @@ impl McpServer {
                 }),
             _ => Err(format!("Unknown MCP tool: {name}")),
         }
+        .map_err(ToolRequestError::InvalidArguments)?;
+        if requires_write_authorization(&request) && !self.allow_write {
+            return Err(ToolRequestError::Application(KbError::new(
+                ErrorCode::AuthDenied,
+                "MCP write access is disabled; restart with --allow-write.",
+                false,
+                "Request a prepared preview, or restart the MCP server with --allow-write after obtaining user confirmation.",
+            )));
+        }
+        Ok(request)
     }
+}
+
+enum ToolRequestError {
+    InvalidArguments(String),
+    Application(KbError),
+}
+
+fn requires_write_authorization(request: &AppRequest) -> bool {
+    matches!(
+        request,
+        AppRequest::SourceSave {
+            mode: SaveMode::Confirm(_) | SaveMode::ApplyImmediately,
+            ..
+        } | AppRequest::KnowledgeSave {
+            mode: SaveMode::Confirm(_) | SaveMode::ApplyImmediately,
+            ..
+        }
+    )
 }
 
 #[derive(Deserialize)]
@@ -274,6 +374,32 @@ impl From<WireScope> for SearchScope {
 #[serde(deny_unknown_fields)]
 struct PlanArguments {
     request: KnowledgePlanRequest,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceSaveArguments {
+    #[serde(default)]
+    apply: bool,
+    confirmation_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KnowledgeSaveArguments {
+    request: Option<KnowledgePlanRequest>,
+    #[serde(default)]
+    apply: bool,
+    confirmation_token: Option<String>,
+}
+
+fn parse_save_mode(apply: bool, confirmation_token: Option<String>) -> Result<SaveMode, String> {
+    match (apply, confirmation_token) {
+        (true, Some(_)) => Err("apply and confirmation_token cannot be combined".to_owned()),
+        (true, None) => Ok(SaveMode::ApplyImmediately),
+        (false, Some(token)) => parse_operation_id(&token).map(SaveMode::Confirm),
+        (false, None) => Ok(SaveMode::Prepare),
+    }
 }
 
 #[derive(Deserialize)]
