@@ -54,7 +54,7 @@ mod vault;
 pub use adopt::{apply_operation, create_adoption_plan};
 pub use app::{
     AdmissionRequest, AppContext, AppRequest, AppResponse, BackupRequest, ConfigRequest,
-    OperationRequest, SkillRequest, VaultRequest, run,
+    OperationRequest, SaveMode, SkillRequest, VaultRequest, run,
 };
 pub use backup::{BackupCreateRequest, create_backup, restore_backup, verify_backup};
 pub use capabilities::{Capabilities, capabilities};

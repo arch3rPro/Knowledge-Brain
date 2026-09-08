@@ -60,6 +60,10 @@ pub enum AppRequest {
     Review {
         vault: Option<String>,
     },
+    SourceSave {
+        vault: Option<String>,
+        mode: SaveMode,
+    },
     Query {
         vault: Option<String>,
         request: kb_core::SearchRequest,
@@ -70,6 +74,11 @@ pub enum AppRequest {
     PlanCreate {
         vault: Option<String>,
         request: kb_core::KnowledgePlanRequest,
+    },
+    KnowledgeSave {
+        vault: Option<String>,
+        request: Option<kb_core::KnowledgePlanRequest>,
+        mode: SaveMode,
     },
     CacheRebuild {
         vault: Option<String>,
@@ -103,6 +112,13 @@ pub enum AppRequest {
     },
     Version,
     Capabilities,
+}
+
+#[derive(Debug, Clone)]
+pub enum SaveMode {
+    Prepare,
+    Confirm(OperationId),
+    ApplyImmediately,
 }
 
 #[derive(Debug, Clone)]
@@ -217,25 +233,8 @@ pub enum VaultRequest {
 pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbError> {
     match request {
         AppRequest::Backup(request) => run_backup(request, context),
-        AppRequest::Review { vault } => {
-            let selected = select_vault(context, vault)?;
-            ensure_mutation_allowed(&selected.root)?;
-            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "review", None)?;
-            crate::source_apply::ensure_no_pending(&selected.root)?;
-            let config = crate::load_effective_config(
-                &selected.root,
-                context.user_paths()?,
-                &context.overrides(),
-            )?;
-            let report = crate::review_sources(&selected.root, context.user_paths()?, &config)?;
-            let response = to_value(&report)?;
-            if let Some(operation_id) = report.operation_id {
-                let state = inspect_operation(context.user_paths()?, operation_id)?;
-                crate::attach_operation_summary(response, summary_for_state(&state))
-            } else {
-                Ok(response)
-            }
-        }
+        AppRequest::Review { vault } => run_review(context, vault),
+        AppRequest::SourceSave { vault, mode } => run_source_save(context, vault, mode),
         AppRequest::Query { vault, request } => {
             request.validate()?;
             let selected = select_vault(context, vault)?;
@@ -250,6 +249,11 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
         }
         AppRequest::Lint { vault } => run_lint(context, vault),
         AppRequest::PlanCreate { vault, request } => run_plan_create(context, vault, request),
+        AppRequest::KnowledgeSave {
+            vault,
+            request,
+            mode,
+        } => run_knowledge_save(context, vault, request, mode),
         AppRequest::CacheRebuild { vault } => {
             let selected = select_vault(context, vault)?;
             ensure_mutation_allowed(&selected.root)?;
@@ -373,6 +377,195 @@ fn run_lint(context: &AppContext, vault: Option<String>) -> Result<Value, KbErro
     )?)
 }
 
+fn run_review(context: &AppContext, vault: Option<String>) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    ensure_mutation_allowed(&selected.root)?;
+    let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "review", None)?;
+    crate::source_apply::ensure_no_pending(&selected.root)?;
+    let config =
+        crate::load_effective_config(&selected.root, context.user_paths()?, &context.overrides())?;
+    let report = crate::review_sources(&selected.root, context.user_paths()?, &config)?;
+    let response = to_value(&report)?;
+    if let Some(operation_id) = report.operation_id {
+        let state = inspect_operation(context.user_paths()?, operation_id)?;
+        crate::attach_operation_summary(response, summary_for_state(&state))
+    } else {
+        Ok(response)
+    }
+}
+
+fn run_source_save(
+    context: &AppContext,
+    vault: Option<String>,
+    mode: SaveMode,
+) -> Result<Value, KbError> {
+    match mode {
+        SaveMode::Confirm(token) => confirm_save(context, vault, token, SaveKind::Source),
+        mode @ (SaveMode::Prepare | SaveMode::ApplyImmediately) => {
+            let preview = run_review(context, vault.clone())?;
+            let operation_id = operation_id_from_preview(&preview)?;
+            respond_to_prepared_save(
+                context,
+                vault,
+                operation_id,
+                preview,
+                mode,
+                SaveKind::Source,
+            )
+        }
+    }
+}
+
+fn run_knowledge_save(
+    context: &AppContext,
+    vault: Option<String>,
+    request: Option<kb_core::KnowledgePlanRequest>,
+    mode: SaveMode,
+) -> Result<Value, KbError> {
+    match mode {
+        SaveMode::Confirm(token) => confirm_save(context, vault, token, SaveKind::Knowledge),
+        mode @ (SaveMode::Prepare | SaveMode::ApplyImmediately) => {
+            let request = request.ok_or_else(|| {
+                KbError::invalid_config(
+                    "knowledge save request",
+                    "a request is required unless confirming a prepared save",
+                )
+            })?;
+            let preview = run_plan_create(context, vault.clone(), request)?;
+            let operation_id = operation_id_from_preview(&preview)?;
+            respond_to_prepared_save(
+                context,
+                vault,
+                operation_id,
+                preview,
+                mode,
+                SaveKind::Knowledge,
+            )
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SaveKind {
+    Source,
+    Knowledge,
+}
+
+fn respond_to_prepared_save(
+    context: &AppContext,
+    vault: Option<String>,
+    operation_id: Option<OperationId>,
+    preview: Value,
+    mode: SaveMode,
+    kind: SaveKind,
+) -> Result<Value, KbError> {
+    let Some(operation_id) = operation_id else {
+        return Ok(json!({
+            "phase": "unchanged",
+            "change_summary": Value::Null,
+            "confirmation_token": Value::Null,
+            "preview": preview,
+            "result": Value::Null,
+        }));
+    };
+    match mode {
+        SaveMode::Prepare => Ok(json!({
+            "phase": "awaiting_confirmation",
+            "change_summary": change_summary(&preview)?,
+            "confirmation_token": operation_id,
+            "preview": preview,
+            "result": Value::Null,
+        })),
+        SaveMode::ApplyImmediately => confirm_save(context, vault, operation_id, kind),
+        SaveMode::Confirm(_) => unreachable!("confirmation does not create a new preview"),
+    }
+}
+
+fn confirm_save(
+    context: &AppContext,
+    vault: Option<String>,
+    token: OperationId,
+    expected_kind: SaveKind,
+) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    let state = inspect_operation(context.user_paths()?, token)?;
+    if !matches_save_kind(&state, expected_kind) {
+        return Err(KbError::invalid_config(
+            "confirmation token",
+            "token does not belong to the requested save kind",
+        ));
+    }
+    let result = run_apply_for_resolved_vault(context, &selected, token)
+        .map_err(|error| add_confirmation_token(error, token))?;
+    let state = inspect_operation(context.user_paths()?, token)?;
+    Ok(json!({
+        "phase": "applied",
+        "change_summary": change_summary_from_state(&state)?,
+        "confirmation_token": Value::Null,
+        "preview": Value::Null,
+        "result": result,
+    }))
+}
+
+fn operation_id_from_preview(preview: &Value) -> Result<Option<OperationId>, KbError> {
+    match preview.get("operation_id") {
+        Some(Value::String(value)) => value.parse().map(Some).map_err(|error| {
+            KbError::invalid_config(
+                "prepared operation",
+                format!("invalid operation ID: {error}"),
+            )
+        }),
+        Some(Value::Null) | None => Ok(None),
+        _ => Err(KbError::invalid_config(
+            "prepared operation",
+            "operation ID must be a string or null",
+        )),
+    }
+}
+
+fn change_summary(preview: &Value) -> Result<Value, KbError> {
+    let summary = preview
+        .get("operation_summary")
+        .and_then(Value::as_object)
+        .ok_or_else(|| KbError::invalid_config("prepared save", "operation summary is missing"))?;
+    Ok(json!({
+        "operation_kind": summary.get("operation_kind").cloned().unwrap_or(Value::Null),
+        "change_count": summary.get("change_count").cloned().unwrap_or(Value::Null),
+        "affected_paths": summary.get("affected_paths").cloned().unwrap_or(Value::Null),
+        "summary": summary.get("summary").cloned().unwrap_or(Value::Null),
+    }))
+}
+
+fn change_summary_from_state(state: &OperationState) -> Result<Value, KbError> {
+    change_summary(&json!({ "operation_summary": summary_for_state(state) }))
+}
+
+fn matches_save_kind(state: &OperationState, expected: SaveKind) -> bool {
+    matches!(
+        (state, expected),
+        (
+            OperationState::PlannedSource(_) | OperationState::AppliedSource(_),
+            SaveKind::Source
+        ) | (
+            OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_),
+            SaveKind::Knowledge
+        )
+    )
+}
+
+fn add_confirmation_token(mut error: KbError, token: OperationId) -> KbError {
+    let details = match error.details.take() {
+        Some(Value::Object(mut details)) => {
+            details.insert("confirmation_token".to_owned(), json!(token));
+            Value::Object(details)
+        }
+        Some(cause) => json!({ "confirmation_token": token, "cause": cause }),
+        None => json!({ "confirmation_token": token }),
+    };
+    error.details = Some(details);
+    error
+}
+
 fn run_plan_create(
     context: &AppContext,
     vault: Option<String>,
@@ -481,6 +674,14 @@ fn ensure_operation_vault(
     operation_id: OperationId,
 ) -> Result<(), KbError> {
     let selected = select_vault(context, Some(vault.to_owned()))?;
+    ensure_operation_for_resolved_vault(context, &selected, operation_id)
+}
+
+fn ensure_operation_for_resolved_vault(
+    context: &AppContext,
+    selected: &crate::ResolvedVault,
+    operation_id: OperationId,
+) -> Result<(), KbError> {
     let operation_vault_id = match inspect_operation(context.user_paths()?, operation_id)? {
         OperationState::Planned(value) => value.vault_id,
         OperationState::Applied(value) => value.vault_id,
@@ -840,6 +1041,15 @@ fn run_apply_for_vault(
     vault: &str,
     operation_id: OperationId,
 ) -> Result<Value, KbError> {
-    ensure_operation_vault(context, vault, operation_id)?;
+    let selected = select_vault(context, Some(vault.to_owned()))?;
+    run_apply_for_resolved_vault(context, &selected, operation_id)
+}
+
+fn run_apply_for_resolved_vault(
+    context: &AppContext,
+    selected: &crate::ResolvedVault,
+    operation_id: OperationId,
+) -> Result<Value, KbError> {
+    ensure_operation_for_resolved_vault(context, selected, operation_id)?;
     run_apply(context, operation_id)
 }
