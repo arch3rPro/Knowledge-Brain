@@ -2,6 +2,8 @@
 
 Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以普通目录、Markdown、YAML 和 JSON 保存知识，让不同编辑器、Agent 和应用共享同一套可读取、可迁移的 Vault。
 
+本项目使用 [MIT License](LICENSE)。贡献方式与本地验证要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
 [Features](#features) · [快速开始](#快速开始) · [命令参考](docs/reference/commands.md) · [Roadmap](ROADMAP.md) · [设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
 ## Features

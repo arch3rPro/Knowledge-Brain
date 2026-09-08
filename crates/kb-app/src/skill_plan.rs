@@ -335,10 +335,11 @@ fn save_installation(
 fn remove_installation(user_paths: &UserPaths, plan: &SkillPlan) -> Result<(), KbError> {
     let path = installation_path(user_paths, plan.vault_id, plan.host, plan.scope);
     fs::remove_file(&path).map_err(|error| io("remove Skill ownership", &path, &error))?;
-    for parent in [path.parent(), path.parent().and_then(Path::parent)] {
-        if let Some(parent) = parent {
-            let _ = fs::remove_dir(parent);
-        }
+    for parent in [path.parent(), path.parent().and_then(Path::parent)]
+        .into_iter()
+        .flatten()
+    {
+        let _ = fs::remove_dir(parent);
     }
     Ok(())
 }
@@ -396,13 +397,11 @@ fn legacy_bundle(root: &Path, canonical: &Path) -> Result<Option<LegacyBundle>, 
         if target_path != canonical {
             return Ok(None);
         }
-        let target = match fs::canonicalize(root) {
-            Ok(target) => target,
-            Err(_) => return Ok(None),
+        let Ok(target) = fs::canonicalize(root) else {
+            return Ok(None);
         };
-        let canonical_target = match fs::canonicalize(canonical) {
-            Ok(target) => target,
-            Err(_) => return Ok(None),
+        let Ok(canonical_target) = fs::canonicalize(canonical) else {
+            return Ok(None);
         };
         if target != canonical_target {
             return Ok(None);

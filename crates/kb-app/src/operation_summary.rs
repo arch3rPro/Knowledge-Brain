@@ -189,7 +189,7 @@ pub(crate) fn summary_for_state_with_event(
         OperationEventKind::Applied => ("applied", "applied", false, false),
         OperationEventKind::Failed => ("failed", "failed", false, false),
     };
-    summary.operation_state = operation_state.to_owned();
+    operation_state.clone_into(&mut summary.operation_state);
     summary.summary = format!(
         "{}: {} {state_phrase} change(s).",
         state_action_label(state),

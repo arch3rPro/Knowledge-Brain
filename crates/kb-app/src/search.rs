@@ -155,6 +155,7 @@ pub fn query(
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn search_scope(
     root: &Path,
     scope: SearchScope,

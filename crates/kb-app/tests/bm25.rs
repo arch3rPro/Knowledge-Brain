@@ -268,6 +268,7 @@ fn exact_match_is_case_sensitive_literal_and_ignores_a_stale_bm25_cache() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn exact_all_limits_each_group_preserves_source_metadata_and_does_not_rewrite_bm25() {
     let temporary = tempfile::tempdir().unwrap();
     let vault = temporary.path().join("vault");
