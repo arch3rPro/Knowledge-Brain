@@ -88,6 +88,10 @@ fn render_operation_summary(summary: &serde_json::Map<String, Value>, full_hashe
 
 fn render_query_groups(value: &Value, groups: &[Value], full_hashes: bool) -> String {
     let mut output = String::new();
+    let mut has_results = false;
+    if let Some(match_mode) = value.get("match_mode") {
+        push_scalar_line(&mut output, 0, Some("match_mode"), match_mode, full_hashes);
+    }
     for group in groups {
         let Some(group) = group.as_object() else {
             render_value(&mut output, group, 0, full_hashes, false);
@@ -108,6 +112,7 @@ fn render_query_groups(value: &Value, groups: &[Value], full_hashes: bool) -> St
             continue;
         };
         for result in results {
+            has_results = true;
             let Some(result) = result.as_object() else {
                 render_value(&mut output, result, 0, full_hashes, false);
                 continue;
@@ -126,7 +131,7 @@ fn render_query_groups(value: &Value, groups: &[Value], full_hashes: bool) -> St
             }
         }
     }
-    if output.is_empty() {
+    if !has_results {
         output.push_str("No results.\n");
     }
     if let Some(warnings) = value.get("warnings").and_then(Value::as_array) {

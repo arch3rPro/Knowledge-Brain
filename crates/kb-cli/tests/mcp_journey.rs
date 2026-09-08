@@ -7,6 +7,79 @@ use std::{
 };
 
 #[test]
+fn real_mcp_process_exposes_query_match_mode_contract_over_stdio() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run_cli(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+
+    let mut child = mcp_process(temp.path(), &vault, false);
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    let initialized = receive(&mut stdout);
+    assert_eq!(initialized["result"]["protocolVersion"], "2025-06-18");
+
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+    );
+    let listed = receive(&mut stdout);
+    let query_tool = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "kb_query")
+        .unwrap();
+    assert_eq!(
+        query_tool["inputSchema"]["properties"]["match_mode"],
+        json!({"type":"string","enum":["relevant","exact"],"default":"relevant"})
+    );
+
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"needle"}}}),
+    );
+    let omitted = receive(&mut stdout);
+    assert_eq!(omitted["result"]["isError"], false, "{omitted}");
+    assert_eq!(
+        omitted["result"]["structuredContent"]["data"]["match_mode"],
+        "relevant"
+    );
+
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"needle","match_mode":"exact"}}}),
+    );
+    let exact = receive(&mut stdout);
+    assert_eq!(exact["result"]["isError"], false, "{exact}");
+    assert_eq!(
+        exact["result"]["structuredContent"]["data"]["match_mode"],
+        "exact"
+    );
+
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"needle","match_mode":"invalid"}}}),
+    );
+    let invalid = receive(&mut stdout);
+    assert_eq!(invalid["error"]["code"], -32602, "{invalid}");
+
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    assert_eq!(stderr, "");
+}
+
+#[test]
 fn write_enabled_mcp_applies_an_approved_plan_and_the_result_survives_restart() {
     let temp = tempfile::tempdir().unwrap();
     let vault = temp.path().join("vault");
