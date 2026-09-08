@@ -17,8 +17,9 @@ fn doctor_reports_independent_checks_without_editing_vault_data() {
     assert!(report["data"].get("score").is_none());
     let checks = report["data"]["checks"].as_array().unwrap();
     for id in [
-        "standard_directories",
+        "machine_runtime_directories",
         "vault_readability",
+        "vault_structure",
         "vault_writability",
         "path_portability",
         "configuration",
@@ -32,8 +33,54 @@ fn doctor_reports_independent_checks_without_editing_vault_data() {
         check["status"].as_str(),
         Some("pass" | "warn" | "fail" | "not_checked")
     )));
+    let runtime = checks
+        .iter()
+        .find(|check| check["id"] == "machine_runtime_directories")
+        .unwrap();
+    assert_eq!(runtime["status"], "pass");
+    assert!(
+        runtime["message"]
+            .as_str()
+            .unwrap()
+            .contains("created on demand")
+    );
     assert_eq!(snapshot_data(&vault), before);
     assert!(!vault.join(".kb/runtime/vault.lock").exists());
+}
+
+#[test]
+fn doctor_human_output_names_vault_and_machine_runtime_checks() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .env("KB_CONFIG_DIR", temp.path().join("user-config"))
+        .env("KB_STATE_DIR", temp.path().join("user-state"))
+        .env("KB_CACHE_DIR", temp.path().join("user-cache"))
+        .args(["doctor", "--vault", vault.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("pass machine_runtime_directories: ")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("pass vault_structure: ")),
+        "{text}"
+    );
+    assert!(!text.contains("standard_directories"), "{text}");
 }
 
 #[test]

@@ -102,7 +102,7 @@ kb capabilities [--json]
 
 旧且不受支持的 schema 上，修改命令返回 `migration_unavailable`，并且不修改 Vault 配置。产品目前没有历史迁移路径，也不提供 `kb migrate` 命令；迁移路径的决策见 [ADR-0016](../decisions/accepted/architecture/0016-explicit-schema-migration-paths.md)。
 
-`doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
+`doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。`vault_structure` 检查选中 Vault 的必需文件和目录，并逐项报告缺失或类型无效的 Vault 路径；它不检查机器本地目录。`machine_runtime_directories` 检查本机的配置、状态和缓存目录：它们不是 Vault 内容，缺失时会按需创建，因此普通缺失仍为 `pass`；只有既有路径无法检查、不是目录或权限不可用时才报告发现。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
 
 `version` 报告程序与 schema 版本。`capabilities` 明确报告功能是否实现；客户端不能从程序版本号推断能力。
 
