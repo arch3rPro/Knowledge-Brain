@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fs, io::ErrorKind, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::{ErrorKind, Write},
+    path::Path,
+};
 
 use kb_core::{CURRENT_SCHEMA_VERSION, KbError, PortableRelativePath, SchemaCompatibility};
 use serde::Serialize;
@@ -32,8 +37,8 @@ pub enum CheckStatus {
 
 /// Run independent, non-scored diagnostic checks.
 ///
-/// This does not modify Vault data. The lock check may create and remove its
-/// own empty file in `.kb/runtime`.
+/// This does not modify Vault data. When `.kb/runtime` already exists and is
+/// valid, the lock check may create and remove its own empty lock file there.
 ///
 /// # Errors
 ///
@@ -92,7 +97,7 @@ pub fn doctor(
             message: error.to_string(),
         },
     });
-    checks.push(check_result("lock_acquisition", probe_exclusive_lock(root)));
+    checks.push(lock_acquisition(root));
     let pending = pending_operations(user_paths, root);
     checks.push(DoctorCheck {
         id: "recovery_records",
@@ -130,14 +135,15 @@ fn machine_runtime_directories(user_paths: &UserPaths) -> DoctorCheck {
                 "{purpose} path is not a directory: {}",
                 path.display()
             )),
-            Ok(metadata) if metadata.permissions().readonly() => warnings.push(format!(
-                "{purpose} directory is marked read-only: {}",
-                path.display()
-            )),
             Ok(_) => {
                 if let Err(error) = fs::read_dir(path) {
                     failures.push(format!(
                         "cannot inspect {purpose} directory {}: {error}",
+                        path.display()
+                    ));
+                } else if let Err(error) = probe_directory_write(path) {
+                    warnings.push(format!(
+                        "cannot write to {purpose} directory {}: {error}",
                         path.display()
                     ));
                 }
@@ -174,6 +180,46 @@ fn machine_runtime_directories(user_paths: &UserPaths) -> DoctorCheck {
             .chain(warnings)
             .collect::<Vec<_>>()
             .join(" "),
+    }
+}
+
+fn probe_directory_write(path: &Path) -> std::io::Result<()> {
+    let mut probe = tempfile::Builder::new()
+        .prefix(".kb-doctor-write-probe-")
+        .tempfile_in(path)?;
+    probe.write_all(b"kb doctor write probe")
+}
+
+fn lock_acquisition(root: &Path) -> DoctorCheck {
+    let runtime = root.join(".kb/runtime");
+    match fs::symlink_metadata(&runtime) {
+        Ok(metadata) if metadata.is_dir() => {
+            check_result("lock_acquisition", probe_exclusive_lock(root))
+        }
+        Ok(_) => DoctorCheck {
+            id: "lock_acquisition",
+            status: CheckStatus::NotChecked,
+            message: format!(
+                "Lock probe skipped because Vault runtime path is not a directory: {}.",
+                runtime.display()
+            ),
+        },
+        Err(error) if error.kind() == ErrorKind::NotFound => DoctorCheck {
+            id: "lock_acquisition",
+            status: CheckStatus::NotChecked,
+            message: format!(
+                "Lock probe skipped because Vault runtime directory is missing: {}.",
+                runtime.display()
+            ),
+        },
+        Err(error) => DoctorCheck {
+            id: "lock_acquisition",
+            status: CheckStatus::Fail,
+            message: format!(
+                "Cannot inspect Vault runtime directory {}: {error}",
+                runtime.display()
+            ),
+        },
     }
 }
 
