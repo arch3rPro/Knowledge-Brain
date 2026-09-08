@@ -60,4 +60,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           KB_UPDATE_SIGNING_KEY: ${{ secrets.KB_UPDATE_SIGNING_KEY }}
+          KB_UPDATE_SIGNING_PASSWORD: ${{ secrets.KB_UPDATE_SIGNING_PASSWORD }}
         run: bash scripts/publish-release.sh "${GITHUB_REF_NAME}" dist

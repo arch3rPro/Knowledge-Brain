@@ -6,10 +6,10 @@
 
 1. 在受控的本机环境生成 Minisign 密钥对。私钥应使用强口令保护；不要在仓库目录或 shell 历史中保存私钥内容。
 2. 将两行公钥文件保存为 `assets/release/kb-update.minisign.pub` 并提交。仓库中只能包含 public key。
-3. 通过 GitHub 仓库的 Actions secret 设置 `KB_UPDATE_SIGNING_KEY`。也可以从不回显内容的标准输入运行 `gh secret set KB_UPDATE_SIGNING_KEY`。
+3. 通过 GitHub 仓库的 Actions secrets 设置私钥内容 `KB_UPDATE_SIGNING_KEY` 和私钥口令 `KB_UPDATE_SIGNING_PASSWORD`。也可以分别从不回显内容的标准输入运行 `gh secret set`。
 4. 比较仓库公钥的 Minisign key ID 与本机私钥对应的公钥，确认后删除所有临时副本。
 
-发布任务把 secret 写入权限为 `0600` 的临时文件，生成 `SHA256SUMS.minisig` 后删除该文件。日志不得输出 secret、私钥路径内容或解密口令。
+发布任务把私钥 secret 写入权限为 `0600` 的临时文件，通过标准输入提供口令，生成 `SHA256SUMS.minisig` 后删除该文件。日志不得输出 secret、私钥路径内容或解密口令。
 
 ## 发布前验证
 
@@ -43,4 +43,4 @@
 
 ## 密钥轮换
 
-计划内轮换先发布一个由旧私钥签名、但程序内嵌新公钥的过渡版本；确认过渡版本可更新后，再替换 `KB_UPDATE_SIGNING_KEY` 并发布下一个版本。旧私钥疑似泄露时停止自动发布，撤销仓库 secret，并要求用户依据独立渠道核对新公钥后手工安装。
+计划内轮换先发布一个由旧私钥签名、但程序内嵌新公钥的过渡版本；确认过渡版本可更新后，再替换两个签名 secrets 并发布下一个版本。旧私钥疑似泄露时停止自动发布，撤销仓库 secrets，并要求用户依据独立渠道核对新公钥后手工安装。

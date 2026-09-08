@@ -164,6 +164,6 @@ macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 �
 
 **Status:** in progress。普通 push 和 pull request 不触发 GitHub Actions；手动工作流按 Linux、macOS、Windows 或全部平台运行，annotated `vX.Y.Z` tag 启动正式发布。发布包、Minisign 清单签名、GitHub build provenance、稳定版本解析、安全解包、暂存程序身份核对、可恢复自替换和 Cargo/源码安装拒绝均已实现并通过本地定向测试。
 
-完成状态还需要：提交真实 Minisign public key、设置 `KB_UPDATE_SIGNING_KEY`、完成三个平台的新手动工作流验证，并发布第一个真实 Release。macOS notarization 和 Windows Authenticode 因没有对应证书而保持 future。
+完成状态还需要：提交真实 Minisign public key、设置签名私钥与口令 secrets、完成三个平台的新手动工作流验证，并发布第一个真实 Release。macOS notarization 和 Windows Authenticode 因没有对应证书而保持 future。
 
 用户行为见 [CLI 更新参考](docs/reference/cli-updates.md)，维护流程见[发布 CLI 版本](docs/guides/release-a-cli-version.md)。
