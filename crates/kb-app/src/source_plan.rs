@@ -42,6 +42,8 @@ pub struct SourceCaptureResult {
     pub operation_id: OperationId,
     pub vault_id: Uuid,
     pub target: PathBuf,
+    #[serde(default)]
+    pub source_paths: Vec<PortableRelativePath>,
     pub captured: Vec<String>,
     pub marked_missing: Vec<String>,
     pub warnings: Vec<String>,

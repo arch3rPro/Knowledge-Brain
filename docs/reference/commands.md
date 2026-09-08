@@ -17,7 +17,7 @@ kb operation show <OPERATION_ID> [--json]
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
 
-计划创建和 `operation show` 的 JSON 数据在既有根级 `state`、`plan` 或 `result` 字段之外增加 `operation_summary`；客户端可以继续读取原字段。计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示可提交状态，完成后的摘要以 `can_apply: false` 表示不可再次提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；`operation show` 响应保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。`state` 选择持久化的 `plan` 或 `result` 载荷，`operation_summary.operation_state` 反映最新的已验证事件；因此失败后仍保留计划的操作会返回 `state: "planned"` 和 `plan`，同时摘要状态为 `failed`。客户端可以继续读取原字段。可提交的计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示；完成或失败的摘要以 `requires_confirmation: false` 和 `can_apply: false` 表示不可提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
 
 ## 备份与恢复
 

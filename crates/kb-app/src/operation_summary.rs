@@ -1,8 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 
 use kb_core::{
-    AdoptionPlan, KbError, KnowledgePlan, KnowledgePlanResult, OperationId, SkillAction,
-    SkillApplyResult, SkillHost, SkillPlan, SkillScope,
+    AdoptionPlan, KbError, KnowledgePlan, KnowledgePlanResult, OperationEventKind, OperationId,
+    SkillAction, SkillApplyResult, SkillHost, SkillPlan, SkillScope,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -67,20 +67,23 @@ pub fn summary_for_source_plan(plan: &SourceCapturePlan) -> OperationSummary {
 
 #[must_use]
 pub fn summary_for_source_result(result: &SourceCaptureResult) -> OperationSummary {
+    let change_count = result.captured.len() + result.marked_missing.len();
     let affected_paths = result
-        .captured
+        .source_paths
         .iter()
-        .chain(&result.marked_missing)
-        .cloned()
+        .map(|path| path.as_str().to_owned())
         .collect();
-    applied_summary(
+    let mut summary = applied_summary(
         result.operation_id,
         "capture_sources",
         result.vault_id,
         &result.target,
         affected_paths,
         "Capture sources",
-    )
+    );
+    summary.change_count = change_count;
+    summary.summary = format!("Capture sources: {change_count} applied change(s).");
+    summary
 }
 
 #[must_use]
@@ -164,6 +167,30 @@ pub fn summary_for_state(state: &OperationState) -> OperationSummary {
     }
 }
 
+pub(crate) fn summary_for_state_with_event(
+    state: &OperationState,
+    latest_event: OperationEventKind,
+) -> OperationSummary {
+    let mut summary = summary_for_state(state);
+    let (operation_state, state_phrase, requires_confirmation, can_apply) = match latest_event {
+        OperationEventKind::Planned => ("planned", "planned", true, true),
+        OperationEventKind::Applying => ("applying", "being applied", false, true),
+        OperationEventKind::Progress => ("progress", "in progress", false, true),
+        OperationEventKind::Recovering => ("recovering", "recovering", false, true),
+        OperationEventKind::Applied => ("applied", "applied", false, false),
+        OperationEventKind::Failed => ("failed", "failed", false, false),
+    };
+    summary.operation_state = operation_state.to_owned();
+    summary.summary = format!(
+        "{}: {} {state_phrase} change(s).",
+        state_action_label(state),
+        summary.change_count
+    );
+    summary.requires_confirmation = requires_confirmation;
+    summary.can_apply = can_apply;
+    summary
+}
+
 /// Append a typed operation summary without changing any existing response field.
 ///
 /// # Errors
@@ -234,6 +261,18 @@ fn skill_action_label(action: SkillAction) -> &'static str {
     match action {
         SkillAction::Install => "Install Skills",
         SkillAction::Uninstall => "Uninstall Skills",
+    }
+}
+
+fn state_action_label(state: &OperationState) -> &'static str {
+    match state {
+        OperationState::Planned(_) | OperationState::Applied(_) => "Adopt Vault",
+        OperationState::PlannedSource(_) | OperationState::AppliedSource(_) => "Capture sources",
+        OperationState::PlannedKnowledge(_) | OperationState::AppliedKnowledge(_) => {
+            "Save knowledge"
+        }
+        OperationState::PlannedSkill(plan) => skill_action_label(plan.action),
+        OperationState::AppliedSkill(result) => skill_action_label(result.action),
     }
 }
 

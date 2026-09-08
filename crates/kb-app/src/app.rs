@@ -425,7 +425,14 @@ fn run_operation(request: OperationRequest, context: &AppContext) -> Result<Valu
     match request {
         OperationRequest::Show { operation_id } => {
             let state = inspect_operation(context.user_paths()?, operation_id)?;
-            let summary = summary_for_state(&state);
+            let events = crate::operation_events(context.user_paths()?, operation_id)?;
+            let latest_event = events
+                .events
+                .last()
+                .expect("validated operation event reports are nonempty")
+                .kind;
+            let summary =
+                crate::operation_summary::summary_for_state_with_event(&state, latest_event);
             let response = match state {
                 OperationState::Planned(plan) => Ok(json!({ "state": "planned", "plan": plan })),
                 OperationState::Applied(result) => {

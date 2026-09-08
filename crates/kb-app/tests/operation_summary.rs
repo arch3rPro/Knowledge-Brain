@@ -11,7 +11,7 @@ use kb_app::{
     summary_for_source_result, summary_for_state,
 };
 use kb_core::{
-    CURRENT_SCHEMA_VERSION, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest,
+    CURRENT_SCHEMA_VERSION, ErrorCode, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest,
     KnowledgePlanResult, OperationId, OperationKind, PortableRelativePath, SkillAction,
     SkillApplyResult, SkillFileChange, SkillHost, SkillInstallMode, SkillPlan, SkillScope,
 };
@@ -53,7 +53,7 @@ fn applied_summary_keeps_the_full_id_but_cannot_be_applied_again() {
 }
 
 #[test]
-fn applied_source_summary_keeps_truthful_encoded_identity_when_receipt_lacks_admission_path() {
+fn legacy_applied_source_summary_does_not_invent_paths_from_resource_identifiers() {
     let operation_id = OperationId::new();
     let vault_id = Uuid::new_v4();
     let digest = "a".repeat(64);
@@ -102,12 +102,8 @@ fn applied_source_summary_keeps_truthful_encoded_identity_when_receipt_lacks_adm
         planned.affected_paths,
         vec!["Research Library/folder name/file#.md"]
     );
-    assert_eq!(
-        applied.affected_paths,
-        vec![format!(
-            "kb-source://archive-id/folder%20name/file%23.md?sha256={digest}"
-        )]
-    );
+    assert!(applied.affected_paths.is_empty());
+    assert_eq!(applied.change_count, 1);
 }
 
 #[test]
@@ -261,6 +257,203 @@ fn every_planning_route_adds_one_root_level_operation_summary() {
     assert_planned_summary(&skill, "manage_skill");
     assert!(
         skill["operation_summary"]["affected_paths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|path| !path.as_str().unwrap().starts_with('/'))
+    );
+}
+
+#[test]
+fn failed_operation_show_uses_the_terminal_event_without_hiding_the_plan() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let target = temporary.path().join("stale-adoption");
+    fs::create_dir(&target).unwrap();
+    fs::write(target.join("note.md"), "Before\n").unwrap();
+    let plan = kb_app::run(
+        AppRequest::Adopt {
+            target: target.clone(),
+        },
+        &context,
+    )
+    .unwrap();
+    let operation_id = plan["operation_id"].as_str().unwrap().parse().unwrap();
+    fs::write(target.join("note.md"), "After\n").unwrap();
+
+    let error = kb_app::run(AppRequest::Apply { operation_id }, &context).unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+    let shown = kb_app::run(
+        AppRequest::Operation(OperationRequest::Show { operation_id }),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(shown["state"], "planned");
+    assert!(shown["plan"].is_object());
+    assert_eq!(
+        shown["operation_summary"]["operation_id"],
+        operation_id.to_string()
+    );
+    assert_eq!(shown["operation_summary"]["operation_state"], "failed");
+    assert_eq!(shown["operation_summary"]["requires_confirmation"], false);
+    assert_eq!(shown["operation_summary"]["can_apply"], false);
+}
+
+#[test]
+fn legacy_operation_show_without_events_remains_planned_and_applicable() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let target = temporary.path().join("legacy-adoption");
+    fs::create_dir(&target).unwrap();
+    let plan = kb_app::run(AppRequest::Adopt { target }, &context).unwrap();
+    let operation_id: OperationId = plan["operation_id"].as_str().unwrap().parse().unwrap();
+    let events = temporary
+        .path()
+        .join("state/operations")
+        .join(operation_id.to_string())
+        .join("events.json");
+    fs::remove_file(&events).unwrap();
+
+    let shown = kb_app::run(
+        AppRequest::Operation(OperationRequest::Show { operation_id }),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(shown["state"], "planned");
+    assert_eq!(shown["operation_summary"]["operation_state"], "planned");
+    assert_eq!(shown["operation_summary"]["requires_confirmation"], true);
+    assert_eq!(shown["operation_summary"]["can_apply"], true);
+    assert!(!events.exists());
+}
+
+#[test]
+fn real_source_apply_and_show_preserve_source_relative_affected_paths() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    fs::create_dir_all(vault.join("Research Library/folder name")).unwrap();
+    fs::write(
+        vault.join("Research Library/folder name/file#.md"),
+        "# Evidence\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("admission.yml"),
+        "schema_version: v1.0\ndirectories:\n  - id: archive-id\n    path: Research Library\n    enabled: true\n",
+    )
+    .unwrap();
+
+    let plan = kb_app::run(
+        AppRequest::Review {
+            vault: Some(vault.display().to_string()),
+        },
+        &context,
+    )
+    .unwrap();
+    let operation_id: OperationId = plan["operation_id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(
+        plan["operation_summary"]["affected_paths"],
+        json!(["Research Library/folder name/file#.md"])
+    );
+
+    kb_app::run(AppRequest::Apply { operation_id }, &context).unwrap();
+    let shown = kb_app::run(
+        AppRequest::Operation(OperationRequest::Show { operation_id }),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(shown["state"], "applied");
+    assert_eq!(shown["result"]["operation_id"], operation_id.to_string());
+    assert_eq!(
+        shown["result"]["source_paths"],
+        json!(["Research Library/folder name/file#.md"])
+    );
+    assert_eq!(
+        shown["operation_summary"]["affected_paths"],
+        json!(["Research Library/folder name/file#.md"])
+    );
+    assert_eq!(
+        shown["operation_summary"]["operation_id"],
+        operation_id.to_string()
+    );
+}
+
+#[test]
+fn skill_uninstall_apply_and_show_keep_additive_roots_and_full_identity() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    let install = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    let install_id = install["operation_id"].as_str().unwrap().parse().unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: install_id,
+        },
+        &context,
+    )
+    .unwrap();
+
+    let uninstall = kb_app::run(
+        AppRequest::Skills(SkillRequest::Uninstall {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+        }),
+        &context,
+    )
+    .unwrap();
+    let operation_id: OperationId = uninstall["operation_id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(operation_id.to_string().len(), 36);
+    assert_eq!(uninstall["action"], "uninstall");
+    assert_eq!(
+        uninstall["operation_summary"]["operation_id"],
+        operation_id.to_string()
+    );
+
+    kb_app::run(AppRequest::Apply { operation_id }, &context).unwrap();
+    let shown = kb_app::run(
+        AppRequest::Operation(OperationRequest::Show { operation_id }),
+        &context,
+    )
+    .unwrap();
+
+    assert_eq!(shown["state"], "applied");
+    assert_eq!(shown["result"]["action"], "uninstall");
+    assert_eq!(shown["result"]["operation_id"], operation_id.to_string());
+    assert_eq!(
+        shown["operation_summary"]["operation_id"],
+        operation_id.to_string()
+    );
+    assert_eq!(shown["operation_summary"]["operation_state"], "applied");
+    assert_eq!(shown["operation_summary"]["can_apply"], false);
+    assert!(
+        shown["operation_summary"]["affected_paths"]
             .as_array()
             .unwrap()
             .iter()

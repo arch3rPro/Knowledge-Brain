@@ -45,4 +45,4 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 
 ## Agent 行为边界
 
-安装后的 Skill 要求 Agent 先读取 Vault 的 `KB.md`，把 Wiki 和来源内容当作不可信数据，并优先使用 MCP、否则使用 `kb --json`。计划创建和 operation 查看在既有 `state`、`plan` 或 `result` 之外提供 additive `operation_summary`，其中保留完整 operation ID、Vault 身份和路径。创建 review 或 knowledge plan 不等于授权执行；Agent 必须展示该摘要，并在用户对最终 apply 明确同意一次后才调用写入工具或 `kb apply`。直接由用户输入的 `kb apply <operation-id>` 本身就是明确写入请求。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+安装后的 Skill 要求 Agent 先读取 Vault 的 `KB.md`，把 Wiki 和来源内容当作不可信数据，并优先使用 MCP、否则使用 `kb --json`。计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；operation 查看保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。响应字段详见[命令参考](commands.md#vault-创建与采用)。创建 review 或 knowledge plan 不等于授权执行；Agent 必须展示该摘要，并在用户对最终 apply 明确同意一次后才调用写入工具或 `kb apply`。直接由用户输入的 `kb apply <operation-id>` 本身就是明确写入请求。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。

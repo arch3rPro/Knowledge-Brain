@@ -143,6 +143,11 @@ fn apply_inner(
         operation_id: id,
         vault_id: plan.vault_id,
         target: root.clone(),
+        source_paths: plan
+            .inputs
+            .iter()
+            .map(|input| input.relative_path.clone())
+            .collect(),
         captured: plan
             .inputs
             .iter()
