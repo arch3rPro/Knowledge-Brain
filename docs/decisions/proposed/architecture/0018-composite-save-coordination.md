@@ -1,45 +1,49 @@
-# ADR-0018: Coordinate source and knowledge saves without replacing operations
+# ADR-0018: Hide operation planning behind one user confirmation
 
-- Status: proposed
+- Status: accepted design
 - Class: architecture
 - Date: 2026-09-08
 
 ## Problem
 
-Saving admitted source material and saving curated knowledge each currently require callers to compose planning, operation inspection and apply steps. The primitives are safe and useful, but a person or Agent performing an ordinary save must remember several commands and translate the same workflow separately for CLI, MCP, HTTP and a future UI. A new short entry point must not turn planning into implicit authorization or create a second persistence model.
+A person asking an Agent to research and save material wants to approve the final changes once. The existing review, plan create and apply primitives expose durable planned operations directly, so an Agent can accidentally make a person manage operation IDs, internal staging and multiple confirmations. The durable plan still protects exact content, stale writes, recovery and auditability, so removing it entirely would weaken the write path.
 
 ## Proposal
 
-`kb-app` adds two coordinated requests: source save and knowledge save. Each request first invokes the existing source-review or knowledge-plan behavior and keeps its existing operation record, validation, lock acquisition, stale-plan checks and apply implementation.
+Knowledge-Brain keeps durable plans as an internal execution mechanism and removes them from the standard user-facing workflow.
 
-The coordinated request has an explicit execution flag. Without it, the request returns a preview and creates a normal planned operation when work exists. With it, the request creates the same plan and then applies that exact operation for the selected Vault. The flag is an explicit write authorization; it never simulates an interactive confirmation. A no-change source review returns an unchanged response and performs no write.
+A coordinated source save or knowledge save begins with preparation. Preparation validates the existing inputs, creates the existing operation record, and returns a user-facing change_summary plus a machine-only confirmation_token. The token identifies that exact prepared operation; current implementations may use its operation ID, but user-facing copy and Agent replies must not expose or require it.
 
-CLI exposes the requests as `kb source save [--yes]` and `kb knowledge save <REQUEST.json> [--yes]`. MCP exposes `kb_source_save` and `kb_knowledge_save` with `apply: false` by default. HTTP exposes `POST /source/save` and `POST /knowledge/save`, also with `apply: false` by default. MCP and HTTP accept execution only when their existing write capability has been explicitly enabled; their fixed-Vault and HTTP authentication rules remain in force.
+The Agent or UI shows the user only the combined change summary and requests one final confirmation. After confirmation, it passes the token to the matching coordinated save entry. That entry applies the already prepared operation for the selected Vault through the existing stale-plan, recovery and locking path. A source preparation with no changes returns unchanged and has no token.
 
-The new response is a separate, additive composite contract. It contains `phase` (`planned`, `applied`, or `unchanged`), the unmodified planning `preview`, the current `operation_summary` or `null`, and `result` or `null`. Existing `review`, `plan create`, `operation show` and `apply` contracts remain available and unchanged. If coordinated apply fails after a plan is persisted, the error retains its existing code and includes the created operation ID in structured details so callers can inspect or retry the plan.
+A direct CLI request with --yes, or an MCP/HTTP request with apply: true, remains available when the caller has already obtained authorization before invoking Knowledge-Brain. It prepares and applies in one request. It is not the ordinary follow-up after a preview; the ordinary follow-up uses the confirmation token and applies the exact previewed operation.
+
+The primitive review, plan create, operation show and apply commands remain stable advanced interfaces for scripts, delayed work, debugging and manual review. They preserve their current operation-oriented contracts.
+
+The one-confirmation boundary applies to the writes covered by a user request. An Agent must not write a new raw source file directly in an admitted Vault directory before that confirmation and claim that source capture authorized it retroactively. Staging agent-authored raw material outside the Vault, or adding a first-class source-authoring batch request, is outside this decision.
 
 ## Alternatives considered
 
-**Replace `review`, `plan create` and `apply` with one save command.** This would remove useful composable primitives, break existing clients and make recovery or inspection less direct.
+**Make preview non-persistent and recalculate during --yes.** This makes the ordinary workflow shorter, but the user can approve one version and write a later changed version. It also discards the existing recovery and audit record until after writes begin.
 
-**Use top-level `kb ingest` and `kb save`.** These names make it unclear whether a source capture, curated Wiki change, plan, or direct write will occur. Domain-qualified names preserve the distinction users already make between source material and knowledge.
+**Expose a plan and operation ID to every user.** This retains strict validation but turns internal storage mechanics into a required user concept and lengthens normal Agent conversations.
 
-**Leave composition to Agent Skills.** Skills can guide a conversational workflow but do not shorten the CLI, MCP, HTTP or future UI integration. They would duplicate coordination logic across adapters.
+**Always apply immediately after preparation.** This bypasses the final confirmation boundary for an Agent/UI workflow.
 
-**Make every composite request apply automatically.** Automatic application would collapse preview and authorization, bypassing the single explicit confirmation boundary.
+**Delete the primitive operations.** Existing scripts and advanced review workflows need durable, inspectable and retryable operations. A convenience layer must not remove them.
 
 ## Acceptance criteria
 
-- CLI, MCP, HTTP and a future UI can invoke the same application-level coordinator.
-- Default coordinated requests only prepare previews and preserve all existing stale-plan protections.
-- Explicit execution applies only the operation created by that invocation and only for the selected fixed Vault.
-- Existing primitive commands, operation formats and operation kinds remain compatible.
-- Coordinated responses distinguish planned, applied and unchanged outcomes without hiding the planning preview.
-- MCP and HTTP deny execution unless their existing write controls are enabled; HTTP preserves token requirements for non-loopback listeners.
-- Focused tests exercise CLI, MCP and HTTP previews, authorized execution, no-change source saves, stale-plan failure and selected-Vault isolation.
+- A normal Agent/UI workflow presents one final confirmation containing a human-readable summary, not plan creation or operation IDs.
+- Confirmation applies the exact prepared operation, preserving stale-plan and recovery checks.
+- Source and knowledge preparation produce no user-visible persistence claim beyond a change summary and a machine-only token.
+- --yes and apply: true create and apply in one request only when explicit authorization already exists.
+- Existing primitive command names, operation formats and operation kinds remain compatible.
+- A no-change source save completes without a durable planned operation.
+- MCP and HTTP retain their fixed-Vault, write-enable and HTTP authentication protections.
 
 ## Risks
 
-- A coordinated apply still releases the planning lock before the existing apply path reacquires its exclusive lock, so source or Wiki changes can make a new plan stale. This is intentional: preserving stale-plan validation is safer than holding a broad lock across the whole workflow.
-- New composite response fields are a new public contract and require adapter parity tests.
-- Adding convenience commands can obscure the primitive workflow unless CLI help, Skills and reference material state that preview is the default and `--yes` is the only direct-write form.
+- A machine-only token is still persisted state. The boundary is user experience, not elimination of durable recovery data.
+- A single user confirmation can authorize multiple prepared writes only when the Agent presents their combined summaries and sends each matching token; those writes are not a new cross-operation atomicity guarantee.
+- Agent-authored raw source files require explicit staging discipline until a first-class source-authoring request exists.
