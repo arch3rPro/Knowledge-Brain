@@ -6,6 +6,8 @@
 
 See [ADR-0020](0020-explicit-verified-cli-updates.md) for the installed CLI update boundary and the release signature used by that updater.
 
+The tag-first publication trigger in this proposal is superseded by [ADR-0021](../process/0021-build-before-tag-release.md). Manual selective verification and the shared native-build workflow remain unchanged.
+
 ## Problem
 
 Continuous verification on every push and pull request consumes GitHub Actions time even when a maintainer is still iterating locally. The repository also validates release builds without publishing versioned, downloadable CLI artifacts. A public cross-platform CLI needs a deliberate trigger, exact version identity, verifiable artifacts, and a failure path that does not rebuild unaffected platforms.
