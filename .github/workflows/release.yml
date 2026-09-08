@@ -34,6 +34,9 @@ jobs:
   publish:
     needs: [validate, build]
     runs-on: ubuntu-24.04
+    env:
+      MINISIGN_VERSION: '0.12'
+      MINISIGN_LINUX_SHA256: 9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -41,11 +44,18 @@ jobs:
           pattern: release-*
           path: dist
           merge-multiple: true
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
-        with:
-          toolchain: 1.85.0
       - name: Install pinned Minisign CLI
-        run: cargo install minisign --version 0.9.1 --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="minisign-${MINISIGN_VERSION}-linux.tar.gz"
+          base="https://github.com/jedisct1/minisign/releases/download/${MINISIGN_VERSION}"
+          curl --fail --location --silent --show-error "$base/$archive" -o "$archive"
+          curl --fail --location --silent --show-error "$base/$archive.minisig" -o "$archive.minisig"
+          echo "$MINISIGN_LINUX_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive"
+          ./minisign-linux/x86_64/minisign -Vm "$archive" -x "$archive.minisig" -P RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3
+          sudo install -m 0755 minisign-linux/x86_64/minisign /usr/local/bin/minisign
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
