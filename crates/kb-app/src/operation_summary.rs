@@ -172,6 +172,15 @@ pub(crate) fn summary_for_state_with_event(
     latest_event: OperationEventKind,
 ) -> OperationSummary {
     let mut summary = summary_for_state(state);
+    if matches!(
+        state,
+        OperationState::Applied(_)
+            | OperationState::AppliedSource(_)
+            | OperationState::AppliedKnowledge(_)
+            | OperationState::AppliedSkill(_)
+    ) {
+        return summary;
+    }
     let (operation_state, state_phrase, requires_confirmation, can_apply) = match latest_event {
         OperationEventKind::Planned => ("planned", "planned", true, true),
         OperationEventKind::Applying => ("applying", "being applied", false, true),

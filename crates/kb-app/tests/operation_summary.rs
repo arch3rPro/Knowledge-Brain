@@ -330,6 +330,42 @@ fn failed_operation_show_uses_the_terminal_event_without_hiding_the_plan() {
 }
 
 #[test]
+fn applied_operation_summary_is_authoritative_over_a_stale_applying_event() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let target = temporary.path().join("applied-adoption");
+    fs::create_dir(&target).unwrap();
+    let plan = kb_app::run(
+        AppRequest::Adopt {
+            target: target.clone(),
+        },
+        &context,
+    )
+    .unwrap();
+    let operation_id: OperationId = plan["operation_id"].as_str().unwrap().parse().unwrap();
+    kb_app::run(AppRequest::Apply { operation_id }, &context).unwrap();
+
+    let events = temporary
+        .path()
+        .join("state/operations")
+        .join(operation_id.to_string())
+        .join("events.json");
+    let mut log: serde_json::Value = serde_json::from_slice(&fs::read(&events).unwrap()).unwrap();
+    log["events"].as_array_mut().unwrap().last_mut().unwrap()["kind"] = json!("applying");
+    fs::write(&events, serde_json::to_vec(&log).unwrap()).unwrap();
+
+    let shown = kb_app::run(
+        AppRequest::Operation(OperationRequest::Show { operation_id }),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(shown["state"], "applied");
+    assert_eq!(shown["operation_summary"]["operation_state"], "applied");
+    assert_eq!(shown["operation_summary"]["requires_confirmation"], false);
+    assert_eq!(shown["operation_summary"]["can_apply"], false);
+}
+
+#[test]
 fn legacy_operation_show_without_events_remains_planned_and_applicable() {
     let temporary = tempfile::tempdir().unwrap();
     let context = context(temporary.path());
