@@ -35,6 +35,8 @@ require_text .github/workflows/release.yml "tags: ['v*']"
 require_text .github/workflows/native-build.yml "workflow_call:"
 require_text .github/workflows/native-build.yml "fail-fast: false"
 require_text .github/workflows/native-build.yml "fromJSON(inputs.targets_json)"
+reject_text .github/workflows/native-build.yml "attestations: write"
+reject_text .github/workflows/native-build.yml "id-token: write"
 require_text .github/workflows/release.yml "KB_UPDATE_SIGNING_KEY"
 require_text .github/workflows/release.yml "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
 
