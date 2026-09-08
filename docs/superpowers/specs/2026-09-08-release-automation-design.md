@@ -2,11 +2,11 @@
 
 - Status: approved design
 - Date: 2026-09-08
-- Decision: [ADR-0019](../../decisions/proposed/architecture/0019-on-demand-verification-and-tagged-releases.md)
+- Decisions: [ADR-0019](../../decisions/proposed/architecture/0019-on-demand-verification-and-tagged-releases.md), [ADR-0020](../../decisions/proposed/architecture/0020-explicit-verified-cli-updates.md)
 
 ## 目标
 
-Knowledge-Brain 只在维护者主动请求验证或推送正式版本 tag 时使用 GitHub Actions。正式版本以 GitHub Release 发布三个可下载、可校验、可追溯的 CLI 二进制包。
+Knowledge-Brain 只在维护者主动请求验证或推送正式版本 tag 时使用 GitHub Actions。正式版本以 GitHub Release 发布三个可下载、可校验、可追溯且可由官方二进制安全更新的 CLI 包。
 
 普通 push 和 pull request 不触发工作流。
 
@@ -28,7 +28,7 @@ Knowledge-Brain 只在维护者主动请求验证或推送正式版本 tag 时�
 - Windows Authenticode 签名；
 - Homebrew、Scoop、WinGet、cargo registry 或其他第三方分发通道；
 - Linux ARM64、macOS Intel 或 Windows ARM64 包；
-- 自动升级器。
+- 后台自动检查或自动升级器。
 
 ## 版本与触发
 
@@ -75,14 +75,16 @@ knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip
 
 归档在创建后必须在同一原生 job 中解包并执行 `kb version --json`。输出版本必须等于 tag 版本，且平台可执行文件名正确。通过后才上传内部 artifact。
 
-最终 publication job 对三个归档生成一个标准 `SHA256SUMS` 文件。每个归档还生成 GitHub build provenance，供用户使用 `gh attestation verify <archive> -R arch3rPro/Knowledge-Brain` 验证构建来源。校验和与 provenance 不替代平台代码签名；文档必须明确 macOS Gatekeeper 和 Windows SmartScreen 仍可能显示提示。
+最终 publication job 对三个归档生成一个标准 `SHA256SUMS` 文件，并使用 `KB_UPDATE_SIGNING_KEY` 签名为 `SHA256SUMS.minisig`。与该私钥匹配的公钥是仓库中的审查对象，并编译进官方 Release 二进制。私钥不进入仓库、构建 artifact 或 GitHub Release。缺少该 Secret 时 publication job 失败。
+
+每个归档还生成 GitHub build provenance，供用户使用 `gh attestation verify <archive> -R arch3rPro/Knowledge-Brain` 验证构建来源。校验和、更新签名与 provenance 不替代平台代码签名；文档必须明确 macOS Gatekeeper 和 Windows SmartScreen 仍可能显示提示。
 
 ## GitHub Release 与失败恢复
 
 所有 native job 成功后，publication job：
 
 1. 创建该 tag 的 draft Release；
-2. 上传三个归档和 `SHA256SUMS`；
+2. 上传三个归档、`SHA256SUMS` 与 `SHA256SUMS.minisig`；
 3. 生成 Release Notes；
 4. 将 draft 发布为公开 Release。
 
@@ -102,6 +104,26 @@ knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip
 
 README 的安装部分在实现后以 GitHub Release 二进制下载为主，源码 `cargo install --path` 保留为开发者路径。README 只链接发布指南和校验参考，不重复工作流细节。
 
+## 显式 CLI 更新
+
+`kb update check` 与 `kb update` 是唯一会查询更新服务的命令；程序不会后台检查或自动下载。两者只查询 GitHub 的最新正式 Release，忽略 draft 和 prerelease。
+
+官方 Release 二进制在构建时内嵌自己的目标标识与 Minisign 公钥。只有带这两个标识的二进制可运行更新命令；通过 `cargo install`、源码构建或开发目录启动的 `kb` 返回安装边界错误，并提示使用其原安装方法更新。
+
+`kb update check` 只报告当前版本、可用版本、匹配归档和下载地址，不写入磁盘。`kb update` 按以下顺序执行：
+
+1. 获取最新 Release 的目标归档、`SHA256SUMS` 与 `SHA256SUMS.minisig`；
+2. 用内嵌公钥验证 `SHA256SUMS.minisig`；
+3. 从已验证的 checksum 文件读取目标归档的 SHA-256，并核对下载归档；
+4. 解包到私有临时目录，拒绝路径穿越、链接和多余可执行文件；
+5. 运行已验证的新二进制 `kb version --json`，核对其版本与目标标识；
+6. 启动一个复制出的短生命周期 helper，主进程退出后由 helper 替换安装位置的二进制；
+7. helper 仅在新文件就位后删除可恢复备份和临时文件。
+
+更新只接受比当前版本更新的稳定版本。没有 Release、没有目标归档、版本不新、网络失败、签名失败、hash 不匹配、归档不安全、版本或目标不匹配、无写权限或替换失败时，旧二进制必须保持可用。Windows helper 对临时文件锁使用有限重试；超出限制时保留备份与诊断信息。
+
+更新签名密钥需要轮换时，新的公钥必须先由旧私钥签名并随一个可验证 Release 发布；旧密钥已不可用时，用户按发布指南手工下载并校验新版本，不能绕过签名验证。
+
 ## 验收证据
 
 实现至少提供：
@@ -110,9 +132,11 @@ README 的安装部分在实现后以 GitHub Release 二进制下载为主，源
 - 手动单平台任务只解析并启动该平台的矩阵测试；
 - tag、Cargo 版本、注释 tag 与 `main` 祖先关系的正反例；
 - 三个目标各自的打包、解包和 `kb version --json` 验证；
-- 归档名、内容与 `SHA256SUMS` 的可重复断言；
+- 归档名、内容、`SHA256SUMS` 和 `SHA256SUMS.minisig` 的可重复断言；
 - 无签名凭据时不尝试 notarization 或 Authenticode；
 - 发布 job 仅在三个 artifact 到齐时开始，并在失败重试时复用它们；
-- GitHub 上一次真实预发布 tag 的三平台构建、provenance 与公开 Release 资产检查。
+- `kb update check` 的稳定版本选择、目标选择、无写入与非官方安装拒绝；
+- `kb update` 的签名、checksum、归档、版本、目标、替换、备份恢复与 Windows 锁重试正反例；
+- GitHub 上一次真实发布 tag 的三平台构建、provenance 与公开 Release 资产检查。
 
 本文件拥有发布自动化的设计和验收条件。实现后的命令由发布指南拥有，工作流细节由 `.github/workflows/` 拥有，用户下载步骤由 README 拥有。
