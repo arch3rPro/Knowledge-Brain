@@ -46,6 +46,9 @@ reject_text .github/workflows/release.yml "cargo install minisign"
 require_text .github/workflows/release.yml "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
 require_text .github/workflows/native-build.yml "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
 reject_text .github/workflows/native-build.yml "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+require_text scripts/publish-release.sh 'notes_file="docs/releases/${tag}.md"'
+require_text scripts/publish-release.sh '--notes-file "$notes_file"'
+reject_text scripts/publish-release.sh "--generate-notes"
 
 if grep -R -E 'uses: [^#[:space:]]+@(v[0-9]+|main|master|stable)([[:space:]]|$)' .github/workflows; then
   fail "actions must use immutable commit SHAs"

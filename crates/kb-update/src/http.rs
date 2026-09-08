@@ -1,15 +1,16 @@
-use serde_json::Value;
+use ureq::ResponseExt;
 
 use crate::UpdateError;
 
 /// The narrow network boundary used by release lookup and download verification.
 pub trait ReleaseTransport {
-    /// Fetches a JSON document from a release URL.
+    /// Resolves an HTTPS URL and returns the final URL after redirects.
     ///
     /// # Errors
     ///
-    /// Returns [`UpdateError::Transport`] when the request or JSON parsing fails.
-    fn get_json(&self, url: &str) -> Result<Value, UpdateError>;
+    /// Returns [`UpdateError::Transport`] when the request fails or resolves to
+    /// a non-HTTPS URL.
+    fn resolve_url(&self, url: &str) -> Result<String, UpdateError>;
 
     /// Fetches an opaque release asset from a release URL.
     ///
@@ -25,18 +26,19 @@ pub trait ReleaseTransport {
 pub struct UreqTransport;
 
 impl ReleaseTransport for UreqTransport {
-    fn get_json(&self, url: &str) -> Result<Value, UpdateError> {
-        let bytes = self.get_bytes(url)?;
-        serde_json::from_slice(&bytes)
-            .map_err(|error| UpdateError::Transport(format!("parse release JSON: {error}")))
+    fn resolve_url(&self, url: &str) -> Result<String, UpdateError> {
+        require_https(url)?;
+        let response = ureq::get(url)
+            .header("User-Agent", "knowledge-brain-updater")
+            .call()
+            .map_err(|error| UpdateError::Transport(format!("resolve {url}: {error}")))?;
+        let resolved = response.get_uri().to_string();
+        require_https(&resolved)?;
+        Ok(resolved)
     }
 
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, UpdateError> {
-        if !url.starts_with("https://") {
-            return Err(UpdateError::Transport(
-                "release downloads must use HTTPS".into(),
-            ));
-        }
+        require_https(url)?;
         ureq::get(url)
             .header("User-Agent", "knowledge-brain-updater")
             .call()
@@ -46,5 +48,15 @@ impl ReleaseTransport for UreqTransport {
             .limit(128 * 1024 * 1024)
             .read_to_vec()
             .map_err(|error| UpdateError::Transport(format!("read {url}: {error}")))
+    }
+}
+
+fn require_https(url: &str) -> Result<(), UpdateError> {
+    if url.starts_with("https://") {
+        Ok(())
+    } else {
+        Err(UpdateError::Transport(
+            "release downloads must use HTTPS".into(),
+        ))
     }
 }

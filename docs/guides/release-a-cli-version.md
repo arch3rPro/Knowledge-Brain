@@ -21,11 +21,12 @@
 ## 创建正式版本
 
 1. 确认目标提交已在 `origin/main`，工作区版本为 `X.Y.Z`，三个平台的手动验证均成功。
-2. 创建 annotated tag：`git tag -a vX.Y.Z -m "Knowledge-Brain vX.Y.Z"`。
-3. 推送该 tag：`git push origin vX.Y.Z`。不要通过普通分支 push 代替发布触发。
-4. 观察 **Publish tagged release**。校验任务会拒绝轻量 tag、版本不一致或无法从 `main` 到达的提交。
-5. 三个平台各自运行 workspace 测试、官方 release binary 构建、CLI journey、打包、归档检查和 build provenance。发布任务只在三者全部成功后运行。
-6. 确认公开 Release 正好包含三个平台归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查三个 provenance 证明。
+2. 编写 `docs/releases/vX.Y.Z.md`。至少说明版本用途、主要变化、安装方法、资产与校验方式、已知限制；发布脚本拒绝缺少说明的版本。
+3. 创建 annotated tag：`git tag -a vX.Y.Z -m "Knowledge-Brain vX.Y.Z"`。
+4. 推送该 tag：`git push origin vX.Y.Z`。不要通过普通分支 push 代替发布触发。
+5. 观察 **Publish tagged release**。校验任务会拒绝轻量 tag、版本不一致或无法从 `main` 到达的提交。
+6. 三个平台各自运行 workspace 测试、官方 release binary 构建、CLI journey、打包、归档检查和 build provenance。发布任务只在三者全部成功后运行。
+7. 确认公开 Release 正好包含三个平台归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查三个 provenance 证明和版本说明。
 
 归档名称为：
 
@@ -33,7 +34,7 @@
 - `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz`
 - `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip`
 
-发布脚本先创建或复用 draft Release。它拒绝修改已经公开的 Release；完整资产上传后才取消 draft。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
+发布脚本从 `docs/releases/vX.Y.Z.md` 读取版本说明，再创建或复用 draft Release。它拒绝修改已经公开的 Release；完整资产上传后才取消 draft。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
 
 ## 失败处理
 

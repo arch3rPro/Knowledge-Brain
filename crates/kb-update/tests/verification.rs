@@ -6,7 +6,7 @@ use std::{
 
 use kb_update::{
     AvailableRelease, BuildIdentity, RELEASES_LATEST_URL, ReleaseTarget, ReleaseTransport,
-    UpdateError, parse_latest_release, verify_release,
+    UpdateError, check_for_update, parse_latest_release, verify_release,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -68,8 +68,48 @@ fn resolver_accepts_only_a_strictly_newer_stable_release() {
     assert!(!check.update_available);
     assert_eq!(
         RELEASES_LATEST_URL,
-        "https://api.github.com/repos/arch3rPro/Knowledge-Brain/releases/latest"
+        "https://github.com/arch3rPro/Knowledge-Brain/releases/latest"
     );
+}
+
+#[test]
+fn resolver_uses_the_public_latest_release_redirect_without_the_github_api() {
+    let identity = BuildIdentity::official("0.1.0", "x86_64-unknown-linux-gnu", TEST_KEY).unwrap();
+    let transport =
+        RedirectTransport::new("https://github.com/arch3rPro/Knowledge-Brain/releases/tag/v0.2.0");
+
+    let check = check_for_update(&identity, &transport).unwrap();
+    let release = check.latest.unwrap();
+
+    assert!(check.update_available);
+    assert_eq!(transport.requests(), [RELEASES_LATEST_URL]);
+    assert_eq!(release.version.to_string(), "0.2.0");
+    assert_eq!(
+        release.archive_url,
+        "https://github.com/arch3rPro/Knowledge-Brain/releases/download/v0.2.0/knowledge-brain-v0.2.0-x86_64-unknown-linux-gnu.tar.gz"
+    );
+    assert_eq!(
+        release.checksums_url,
+        "https://github.com/arch3rPro/Knowledge-Brain/releases/download/v0.2.0/SHA256SUMS"
+    );
+    assert_eq!(
+        release.signature_url,
+        "https://github.com/arch3rPro/Knowledge-Brain/releases/download/v0.2.0/SHA256SUMS.minisig"
+    );
+}
+
+#[test]
+fn resolver_rejects_an_unexpected_or_prerelease_redirect() {
+    let identity = BuildIdentity::official("0.1.0", "x86_64-unknown-linux-gnu", TEST_KEY).unwrap();
+
+    for resolved_url in [
+        "https://example.invalid/arch3rPro/Knowledge-Brain/releases/tag/v0.2.0",
+        "https://github.com/arch3rPro/Knowledge-Brain/releases/tag/v0.2.0-rc.1",
+        "https://github.com/another/repository/releases/tag/v0.2.0",
+    ] {
+        let error = check_for_update(&identity, &RedirectTransport::new(resolved_url)).unwrap_err();
+        assert!(matches!(error, UpdateError::InvalidRelease(_)));
+    }
 }
 
 #[test]
@@ -287,17 +327,48 @@ impl MemoryTransport {
 }
 
 impl ReleaseTransport for MemoryTransport {
-    fn get_json(&self, _url: &str) -> Result<serde_json::Value, UpdateError> {
-        Err(UpdateError::Transport(
-            "JSON is not used by this test".into(),
-        ))
-    }
-
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, UpdateError> {
         self.requests.borrow_mut().push(url.to_owned());
         self.values
             .get(url)
             .cloned()
             .ok_or_else(|| UpdateError::Transport(format!("missing fixture: {url}")))
+    }
+
+    fn resolve_url(&self, _url: &str) -> Result<String, UpdateError> {
+        Err(UpdateError::Transport(
+            "URL resolution is not used by this test".into(),
+        ))
+    }
+}
+
+struct RedirectTransport {
+    resolved_url: String,
+    requests: RefCell<Vec<String>>,
+}
+
+impl RedirectTransport {
+    fn new(resolved_url: &str) -> Self {
+        Self {
+            resolved_url: resolved_url.to_owned(),
+            requests: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn requests(&self) -> Vec<String> {
+        self.requests.borrow().clone()
+    }
+}
+
+impl ReleaseTransport for RedirectTransport {
+    fn get_bytes(&self, _url: &str) -> Result<Vec<u8>, UpdateError> {
+        Err(UpdateError::Transport(
+            "asset download is not used by this test".into(),
+        ))
+    }
+
+    fn resolve_url(&self, url: &str) -> Result<String, UpdateError> {
+        self.requests.borrow_mut().push(url.to_owned());
+        Ok(self.resolved_url.clone())
     }
 }

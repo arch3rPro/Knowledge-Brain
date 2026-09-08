@@ -176,8 +176,8 @@ git commit -m "feat: add official release identity"
 **Interfaces:**
 - Produces `UpdateCheck { current: Version, latest: Option<AvailableRelease>, update_available: bool }`.
 - Produces `VerifiedArchive { version: Version, target: ReleaseTarget, archive: PathBuf, executable: PathBuf, sha256: String }`.
-- Consumes `ReleaseTransport`, a small trait returning JSON or bytes for a URL; tests use an in-memory transport and production uses `ureq` with Rustls.
-- Accepts only `https://api.github.com/repos/arch3rPro/Knowledge-Brain/releases/latest` data with a strictly newer stable version and one exact target archive.
+- Consumes `ReleaseTransport`, a small trait resolving redirects or returning asset bytes; tests use in-memory transports and production uses `ureq` with Rustls.
+- Resolves only `https://github.com/arch3rPro/Knowledge-Brain/releases/latest`, accepts the repository's exact stable tag URL, and constructs the three version-pinned asset URLs without consuming the anonymous GitHub API quota.
 
 - [ ] **Step 1: Write failing resolver and verifier tests**
 

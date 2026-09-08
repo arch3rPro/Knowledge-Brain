@@ -7,6 +7,7 @@ if [[ $# -ne 2 ]]; then
 fi
 tag=$1
 dist=$2
+notes_file="docs/releases/${tag}.md"
 if [[ -z ${KB_UPDATE_SIGNING_KEY:-} ]]; then
   echo "KB_UPDATE_SIGNING_KEY is required" >&2
   exit 65
@@ -14,6 +15,10 @@ fi
 if [[ -z ${KB_UPDATE_SIGNING_PASSWORD:-} ]]; then
   echo "KB_UPDATE_SIGNING_PASSWORD is required" >&2
   exit 65
+fi
+if [[ ! -f $notes_file ]]; then
+  echo "release notes are required at $notes_file" >&2
+  exit 68
 fi
 
 bash scripts/create-release-checksums.sh "$dist"
@@ -30,8 +35,9 @@ if [[ -n $release_json ]]; then
     exit 66
   fi
 else
-  gh release create "$tag" --draft --verify-tag --title "$tag" --generate-notes
+  gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes_file"
 fi
+gh release edit "$tag" --notes-file "$notes_file"
 
 mapfile -t assets < <(find "$dist" -maxdepth 1 -type f \( -name 'knowledge-brain-*.tar.gz' -o -name 'knowledge-brain-*.zip' -o -name 'SHA256SUMS' -o -name 'SHA256SUMS.minisig' \) -print | sort)
 if [[ ${#assets[@]} -ne 5 ]]; then

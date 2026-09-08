@@ -4,9 +4,13 @@ use thiserror::Error;
 
 use crate::{BuildIdentity, ReleaseTarget, ReleaseTransport};
 
-/// The only GitHub API endpoint accepted by the updater.
+/// GitHub's public redirect to the repository's latest stable release.
 pub const RELEASES_LATEST_URL: &str =
-    "https://api.github.com/repos/arch3rPro/Knowledge-Brain/releases/latest";
+    "https://github.com/arch3rPro/Knowledge-Brain/releases/latest";
+
+const RELEASE_TAG_PREFIX: &str = "https://github.com/arch3rPro/Knowledge-Brain/releases/tag/v";
+const RELEASE_DOWNLOAD_PREFIX: &str =
+    "https://github.com/arch3rPro/Knowledge-Brain/releases/download/v";
 
 /// A newer official release and its three required download locations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +107,59 @@ pub fn check_for_update(
     identity: &BuildIdentity,
     transport: &dyn ReleaseTransport,
 ) -> Result<UpdateCheck, UpdateError> {
-    parse_latest_release(identity, &transport.get_json(RELEASES_LATEST_URL)?)
+    let resolved_url = transport.resolve_url(RELEASES_LATEST_URL)?;
+    parse_latest_release_url(identity, &resolved_url)
+}
+
+fn parse_latest_release_url(
+    identity: &BuildIdentity,
+    resolved_url: &str,
+) -> Result<UpdateCheck, UpdateError> {
+    let current = identity.version().clone();
+    let target = identity.target().ok_or_else(|| {
+        UpdateError::InvalidRelease("this installation is not an official release".into())
+    })?;
+    if !identity.can_update() {
+        return Err(UpdateError::InvalidRelease(
+            "this installation has no embedded update verification key".into(),
+        ));
+    }
+
+    let version_text = resolved_url
+        .strip_prefix(RELEASE_TAG_PREFIX)
+        .ok_or_else(|| {
+            UpdateError::InvalidRelease(format!(
+                "latest release resolved to an unexpected URL: {resolved_url}"
+            ))
+        })?;
+    let version = Version::parse(version_text).map_err(|error| {
+        UpdateError::InvalidRelease(format!("invalid release tag v{version_text}: {error}"))
+    })?;
+    if !version.pre.is_empty() {
+        return Err(UpdateError::InvalidRelease(
+            "latest release must not be a prerelease".into(),
+        ));
+    }
+    if version <= current {
+        return Ok(UpdateCheck {
+            current,
+            latest: None,
+            update_available: false,
+        });
+    }
+
+    let base_url = format!("{RELEASE_DOWNLOAD_PREFIX}{version}");
+    Ok(UpdateCheck {
+        current,
+        latest: Some(AvailableRelease {
+            archive_url: format!("{base_url}/{}", target.asset_name(&version)),
+            checksums_url: format!("{base_url}/SHA256SUMS"),
+            signature_url: format!("{base_url}/SHA256SUMS.minisig"),
+            version,
+            target,
+        }),
+        update_available: true,
+    })
 }
 
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, UpdateError> {

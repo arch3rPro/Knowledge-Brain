@@ -314,27 +314,31 @@ impl Drop for UpdateStageGuard {
 
 #[allow(clippy::needless_pass_by_value)]
 fn update_error(error: kb_update::UpdateError) -> KbError {
-    let (code, action) = match error {
+    let (code, retryable, action) = match error {
         kb_update::UpdateError::VerificationFailed(_) => (
             ErrorCode::UpdateVerificationFailed,
+            false,
             "Do not install this release; try again later or report the failed verification.",
         ),
         kb_update::UpdateError::Transport(_) => (
             ErrorCode::IoFailure,
+            true,
             "Check your network connection and run the command again.",
         ),
         kb_update::UpdateError::InvalidRelease(_) | kb_update::UpdateError::MissingAsset { .. } => {
             (
                 ErrorCode::CapabilityUnavailable,
+                false,
                 "No compatible official update is available for this installation.",
             )
         }
         kb_update::UpdateError::ReplacementFailed(_) => (
             ErrorCode::IoFailure,
+            true,
             "The previous executable was preserved when possible; check permissions and retry.",
         ),
     };
-    KbError::new(code, "Cannot check for an update.", false, action)
+    KbError::new(code, "Cannot check for an update.", retryable, action)
         .with_details(json!({ "reason": error.to_string() }))
 }
 
@@ -470,4 +474,18 @@ async fn run_server(command: args::ServeCommand, context: AppContext) -> Result<
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::update_error;
+
+    #[test]
+    fn update_transport_errors_are_retryable() {
+        let error = update_error(kb_update::UpdateError::Transport(
+            "temporary failure".into(),
+        ));
+
+        assert!(error.retryable);
+    }
 }
