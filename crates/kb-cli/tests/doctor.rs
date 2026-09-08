@@ -1,6 +1,68 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use assert_cmd::Command;
+
+#[cfg(unix)]
+struct PermissionRestore {
+    path: PathBuf,
+    permissions: fs::Permissions,
+    restored: bool,
+}
+
+#[cfg(unix)]
+impl PermissionRestore {
+    fn restore(&mut self) {
+        fs::set_permissions(&self.path, self.permissions.clone()).unwrap();
+        self.restored = true;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for PermissionRestore {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = fs::set_permissions(&self.path, self.permissions.clone());
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+struct AclRestore {
+    path: PathBuf,
+    acl: String,
+    restored: bool,
+}
+
+#[cfg(target_os = "macos")]
+impl AclRestore {
+    fn restore(&mut self) {
+        assert!(
+            std::process::Command::new("chmod")
+                .args(["-a", &self.acl])
+                .arg(&self.path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        self.restored = true;
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for AclRestore {
+    fn drop(&mut self) {
+        if !self.restored {
+            let _ = std::process::Command::new("chmod")
+                .args(["-a", &self.acl])
+                .arg(&self.path)
+                .status();
+        }
+    }
+}
 
 #[test]
 fn doctor_reports_independent_checks_without_editing_vault_data() {
@@ -17,8 +79,9 @@ fn doctor_reports_independent_checks_without_editing_vault_data() {
     assert!(report["data"].get("score").is_none());
     let checks = report["data"]["checks"].as_array().unwrap();
     for id in [
-        "standard_directories",
+        "machine_runtime_directories",
         "vault_readability",
+        "vault_structure",
         "vault_writability",
         "path_portability",
         "configuration",
@@ -32,8 +95,218 @@ fn doctor_reports_independent_checks_without_editing_vault_data() {
         check["status"].as_str(),
         Some("pass" | "warn" | "fail" | "not_checked")
     )));
+    let runtime = checks
+        .iter()
+        .find(|check| check["id"] == "machine_runtime_directories")
+        .unwrap();
+    assert_eq!(runtime["status"], "pass");
+    assert!(
+        runtime["message"]
+            .as_str()
+            .unwrap()
+            .contains("created on demand")
+    );
     assert_eq!(snapshot_data(&vault), before);
     assert!(!vault.join(".kb/runtime/vault.lock").exists());
+    assert!(!temp.path().join("user-cache").exists());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    let config_dir = temp.path().join("user-config");
+    let mut permissions = PermissionRestore {
+        path: config_dir.clone(),
+        permissions: fs::metadata(&config_dir).unwrap().permissions(),
+        restored: false,
+    };
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o755)).unwrap();
+    let user = String::from_utf8(
+        std::process::Command::new("id")
+            .arg("-un")
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let acl = format!("{} deny write", user.trim());
+    assert!(
+        std::process::Command::new("chmod")
+            .args(["+a", &acl, config_dir.to_str().unwrap()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let mut acl_restore = AclRestore {
+        path: config_dir.clone(),
+        acl,
+        restored: false,
+    };
+
+    let report = run(
+        temp.path(),
+        &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+    acl_restore.restore();
+    permissions.restore();
+
+    let runtime = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "machine_runtime_directories")
+        .unwrap();
+    assert_eq!(runtime["status"], "warn");
+    assert!(
+        runtime["message"]
+            .as_str()
+            .unwrap()
+            .contains("cannot write to configuration directory")
+    );
+    assert!(!temp.path().join("user-cache").exists());
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+#[test]
+fn doctor_json_probes_an_existing_runtime_directory_for_effective_write_access() {
+    use std::{io::Write, os::unix::fs::PermissionsExt};
+
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    let config_dir = temp.path().join("user-config");
+    let mut permissions = PermissionRestore {
+        path: config_dir.clone(),
+        permissions: fs::metadata(&config_dir).unwrap().permissions(),
+        restored: false,
+    };
+    fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let can_write = tempfile::Builder::new()
+        .prefix(".kb-doctor-test-write-probe-")
+        .tempfile_in(&config_dir)
+        .and_then(|mut probe| probe.write_all(b"kb doctor test write probe"))
+        .is_ok();
+    if can_write {
+        permissions.restore();
+        return;
+    }
+
+    let report = run(
+        temp.path(),
+        &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+    permissions.restore();
+
+    let runtime = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "machine_runtime_directories")
+        .unwrap();
+    assert_eq!(runtime["status"], "warn");
+    assert!(
+        runtime["message"]
+            .as_str()
+            .unwrap()
+            .contains("cannot write to configuration directory")
+    );
+    assert!(!temp.path().join("user-cache").exists());
+}
+
+#[test]
+fn doctor_json_preserves_a_missing_vault_runtime_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("incomplete-vault");
+    fs::create_dir(&vault).unwrap();
+
+    let report = run(
+        temp.path(),
+        &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+
+    let structure = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "vault_structure")
+        .unwrap();
+    assert_eq!(structure["status"], "fail");
+    assert!(
+        structure["message"]
+            .as_str()
+            .unwrap()
+            .contains(".kb/runtime is missing")
+    );
+    assert!(!vault.join(".kb/runtime").exists());
+}
+
+#[test]
+fn doctor_json_identifies_a_wrong_type_required_vault_path() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    fs::remove_dir(vault.join(".kb/runtime")).unwrap();
+    fs::write(vault.join(".kb/runtime"), b"not a directory").unwrap();
+
+    let report = run(
+        temp.path(),
+        &["doctor", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+
+    let structure = report["data"]["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == "vault_structure")
+        .unwrap();
+    assert_eq!(structure["status"], "fail");
+    assert!(
+        structure["message"]
+            .as_str()
+            .unwrap()
+            .contains(".kb/runtime is not a directory")
+    );
+    assert!(vault.join(".kb/runtime").is_file());
+}
+
+#[test]
+fn doctor_human_output_names_vault_and_machine_runtime_checks() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .env("KB_CONFIG_DIR", temp.path().join("user-config"))
+        .env("KB_STATE_DIR", temp.path().join("user-state"))
+        .env("KB_CACHE_DIR", temp.path().join("user-cache"))
+        .args(["doctor", "--vault", vault.to_str().unwrap()])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("pass machine_runtime_directories: ")),
+        "{text}"
+    );
+    assert!(
+        text.lines()
+            .any(|line| line.starts_with("pass vault_structure: ")),
+        "{text}"
+    );
+    assert!(!text.contains("standard_directories"), "{text}");
 }
 
 #[test]

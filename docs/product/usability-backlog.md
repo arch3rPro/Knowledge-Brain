@@ -120,9 +120,11 @@ Direct 与 BM25F 的匹配方式不同，也增加了用户判断查询结果的
 
 ## UX-005 — 明确区分 Vault 与机器目录诊断
 
+**状态：** 已解决。`vault_structure` 报告选中 Vault 的必需路径，`machine_runtime_directories` 报告机器级 configuration、state 和 cache 目录；尚未创建的按需目录为 `pass`，既有但不可用的目录才报告问题。
+
 ### 问题
 
-`kb doctor` 的 `standard_directories` 检查统计机器级 config、state 和 cache 目录。新环境中的目录尚未按需创建时，doctor 会报告 `0/3` 或 `2/3 standard directories currently exist` warning。该消息没有说明检查对象位于机器用户目录，容易被理解为 Vault 缺少主题目录、Wiki 目录或备份恢复不完整。
+此前，`kb doctor` 的 `standard_directories` 检查统计机器级 config、state 和 cache 目录。新环境中的目录尚未按需创建时，doctor 会报告 `0/3` 或 `2/3 standard directories currently exist` warning。该消息没有说明检查对象位于机器用户目录，容易被理解为 Vault 缺少主题目录、Wiki 目录或备份恢复不完整。当前已由 `vault_structure` 与 `machine_runtime_directories` 两项独立检查替代。
 
 缺少尚未使用的机器级目录不影响通过显式路径打开、查询或校验 Vault，因此 warning 也可能让正常的首次运行看起来存在故障。
 
@@ -132,17 +134,19 @@ doctor 应分别命名 Vault 结构检查与机器级运行目录检查，并说
 
 ### 验收标准
 
-- `standard_directories` 的结果明确指出检查的是机器级 config、state 和 cache 目录。
-- 每个缺失目录都说明用途、是否按需创建和实际影响。
-- Vault 目录完整性由独立检查报告，不与机器目录计数混合。
-- 新环境通过显式路径完成只读操作时，不显示无法采取行动的笼统 warning。
+- `vault_structure` 报告选中 Vault 的必需文件和目录，以及每个缺失或类型无效的 Vault 路径。
+- `machine_runtime_directories` 报告机器级 configuration、state 和 cache 目录，说明它们按需创建；普通缺失为 `pass`，既有但无法检查、不是目录或权限不可用时才报告问题。
+- Vault 目录完整性与机器运行目录由不同检查 ID 报告，不再混合为目录计数。
+- 新环境通过显式路径完成只读操作时，未创建的机器运行目录不产生无法采取行动的笼统 warning。
 - CLI、MCP、HTTP 和未来 WebUI/GUI 使用同一组诊断事实和含义。
 
 ## UX-006 — 区分备份校验失败与恢复失败
 
+**状态：** 已解决。归档校验失败使用 `backup_verification_failed`；`error.details.reason` 提供具体原因，`error.details.legacy_code` 在迁移期间提供 `restore_failed`。恢复目标与发布错误继续使用各自的稳定代码。
+
 ### 问题
 
-`kb backup verify` 发现 ZIP 条目与 `manifest.json` 不一致时返回稳定错误码 `restore_failed`。错误消息能够说明归档校验失败，但错误码把独立校验操作归类为恢复失败；自动化、MCP、HTTP 以及未来 WebUI/GUI 无法仅凭错误码区分“归档无效”和“恢复目标写入失败”。
+此前，`kb backup verify` 发现 ZIP 条目与 `manifest.json` 不一致时返回稳定错误码 `restore_failed`。错误消息能够说明归档校验失败，但错误码把独立校验操作归类为恢复失败；自动化、MCP、HTTP 以及未来 WebUI/GUI 无法仅凭错误码区分“归档无效”和“恢复目标写入失败”。当前归档校验使用 `backup_verification_failed`，同时保留 `legacy_code: "restore_failed"` 作为迁移详情；旧客户端仍须显式升级以识别新错误码。
 
 ### 目标体验
 
@@ -167,7 +171,7 @@ doctor 应分别命名 Vault 结构检查与机器级运行目录检查，并说
 
 ## 后续实施顺序
 
-1. 调整 Portable Agent Skill 的交互约束和回复格式，消除只读步骤之间的确认。
-2. 统一 CLI、MCP 和 HTTP 的变更摘要，使各入口都能支持一次集中确认。
-3. 设计来源保存与知识保存的组合入口，同时保留现有底层命令。
-4. 将相同语义用于 WebUI 和 GUI，并完成真实端到端工作流验证。
+Portable Agent Skill 的交互约束已由八项 `kb-*` Skill 落地：只读动作不要求确认，创建计划与最终 apply 保持一次明确确认；`kb skills` 与 `npx skills add` 的文件所有权互不覆盖。
+
+1. 设计来源保存与知识保存的组合入口，同时保留现有底层命令。
+2. 将相同语义用于 WebUI 和 GUI，并完成真实端到端工作流验证。

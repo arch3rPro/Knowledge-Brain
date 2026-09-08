@@ -140,6 +140,17 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     assert_eq!(response["schema_version"], "v1.0");
     assert_eq!(response["data"]["root"], vault.display().to_string());
 
+    let (status, response) = request(
+        &server,
+        "POST",
+        "/query",
+        None,
+        r#"{"query":"needle","scope":"wiki","limit":10,"strict_backend":false,"match_mode":"exact"}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{response}");
+    assert_eq!(response["data"]["match_mode"], "exact");
+
     let (status, response) = request(&server, "POST", "/query", None, "{").await;
     assert_eq!(status, 400);
     assert_eq!(response["error"]["code"], "invalid_config");
@@ -202,18 +213,40 @@ async fn enabled_apply_uses_a_reviewed_plan_for_the_fixed_vault() {
     let body = serde_json::to_string(&knowledge_request()).unwrap();
     let (status, response) = request(&server, "POST", "/plans", Some("secret"), &body).await;
     assert_eq!(status, 200, "{response}");
-    let operation_id = response["data"]["operation_id"].as_str().unwrap();
+    let operation_id = response["data"]["operation_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let inspect_path = format!("/operations/{operation_id}");
     let (status, response) = request(&server, "GET", &inspect_path, Some("secret"), "").await;
     assert_eq!(status, 200);
     assert_eq!(response["data"]["state"], "planned");
+    assert!(response["data"]["plan"].is_object());
+    assert_eq!(
+        response["data"]["operation_summary"]["requires_confirmation"],
+        true
+    );
+    assert_eq!(
+        response["data"]["operation_summary"]["operation_id"],
+        operation_id
+    );
 
     let apply_path = format!("/operations/{operation_id}/apply");
     let (status, response) = request(&server, "POST", &apply_path, Some("secret"), "").await;
     assert_eq!(status, 200, "{response}");
     assert_eq!(response["data"]["operation_id"], operation_id);
     assert!(vault.join("Wiki/articles/http.md").is_file());
+
+    let (status, response) = request(&server, "GET", &inspect_path, Some("secret"), "").await;
+    assert_eq!(status, 200);
+    assert_eq!(response["data"]["state"], "applied");
+    assert!(response["data"]["result"].is_object());
+    assert_eq!(
+        response["data"]["operation_summary"]["operation_id"],
+        operation_id
+    );
+    assert_eq!(response["data"]["operation_summary"]["can_apply"], false);
 }
 
 #[tokio::test]

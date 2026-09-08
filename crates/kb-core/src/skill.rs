@@ -60,6 +60,28 @@ pub struct SkillLinkChange {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedSkillAsset {
+    pub path: PathBuf,
+    pub sha256: String,
+}
+
+/// Durable proof that this application owns an installed Skill suite.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedSkillInstallation {
+    pub schema_version: SchemaVersion,
+    pub vault_id: Uuid,
+    pub host: SkillHost,
+    pub scope: SkillScope,
+    pub mode: SkillInstallMode,
+    pub skills_root: PathBuf,
+    pub bridge_file: PathBuf,
+    pub bridge_sha256: String,
+    pub assets: Vec<ManagedSkillAsset>,
+    pub canonical_paths: Vec<PathBuf>,
+    pub links: Vec<SkillLinkChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillPlan {
     pub schema_version: SchemaVersion,
     pub operation_id: OperationId,
@@ -71,9 +93,19 @@ pub struct SkillPlan {
     pub mode: SkillInstallMode,
     pub action: SkillAction,
     pub files: Vec<SkillFileChange>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<SkillLinkChange>,
+    /// Legacy single-link field kept so interrupted older operation plans load.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<SkillLinkChange>,
     pub created_at: String,
     pub app_version: String,
+}
+
+impl SkillPlan {
+    pub fn all_links(&self) -> impl Iterator<Item = &SkillLinkChange> {
+        self.links.iter().chain(self.link.iter())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

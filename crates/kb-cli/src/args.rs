@@ -5,7 +5,9 @@ use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
     InitRequest, OperationRequest, SkillRequest, VaultRequest,
 };
-use kb_core::{KnowledgePlanRequest, OperationId, SkillHost, SkillInstallMode, SkillScope};
+use kb_core::{
+    KnowledgePlanRequest, OperationId, SearchMatchMode, SkillHost, SkillInstallMode, SkillScope,
+};
 use uuid::Uuid;
 
 pub(crate) enum ParsedCommand {
@@ -13,6 +15,7 @@ pub(crate) enum ParsedCommand {
         request: Result<AppRequest, kb_core::KbError>,
         json: bool,
         fail_on_findings: bool,
+        full_hashes: bool,
     },
     Serve(ServeCommand),
     Mcp(McpCommand),
@@ -41,6 +44,9 @@ pub(crate) fn parse() -> ParsedCommand {
     about = "Knowledge-Brain portable knowledge vault"
 )]
 struct Cli {
+    /// Show complete SHA-256 values in human-readable output.
+    #[arg(long, global = true)]
+    full_hashes: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -88,6 +94,9 @@ enum Commands {
         scope: String,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Verify a case-sensitive literal instead of discovering relevant results.
+        #[arg(long)]
+        exact: bool,
         /// Fail instead of falling back when the selected backend is unavailable.
         #[arg(long)]
         strict_backend: bool,
@@ -471,7 +480,7 @@ impl LayerSelection {
 
 impl Cli {
     fn into_command(self) -> ParsedCommand {
-        match self.command {
+        let mut parsed = match self.command {
             Commands::Mcp { allow_write, vault } => {
                 ParsedCommand::Mcp(McpCommand { allow_write, vault })
             }
@@ -487,9 +496,10 @@ impl Cli {
                 query,
                 scope,
                 limit,
+                exact,
                 strict_backend,
                 context,
-            } => query_command(query, &scope, limit, strict_backend, context),
+            } => query_command(query, &scope, limit, exact, strict_backend, context),
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },
@@ -502,6 +512,7 @@ impl Cli {
                 }),
                 json: context.json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Source {
                 command: SourceCommands::Verify { context },
@@ -511,22 +522,26 @@ impl Cli {
                 }),
                 json: context.json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Skills { command } => skill_command(command),
             Commands::Init { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Init(InitRequest { target })),
                 json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Adopt { target, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Adopt { target }),
                 json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Apply { operation_id, json } => ParsedCommand::App {
                 request: Ok(AppRequest::Apply { operation_id }),
                 json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Operation { command } => match command {
                 OperationCommands::Show { operation_id, json } => ParsedCommand::App {
@@ -535,6 +550,7 @@ impl Cli {
                     })),
                     json,
                     fail_on_findings: false,
+                    full_hashes: false,
                 },
             },
             Commands::Config { command } => config_command(command),
@@ -545,6 +561,7 @@ impl Cli {
                 }),
                 json: context.json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Status { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Status {
@@ -552,6 +569,7 @@ impl Cli {
                 }),
                 json: context.json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Doctor { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Doctor {
@@ -559,18 +577,25 @@ impl Cli {
                 }),
                 json: context.json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Version { json } => ParsedCommand::App {
                 request: Ok(AppRequest::Version),
                 json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
             Commands::Capabilities { json } => ParsedCommand::App {
                 request: Ok(AppRequest::Capabilities),
                 json,
                 fail_on_findings: false,
+                full_hashes: false,
             },
+        };
+        if let ParsedCommand::App { full_hashes, .. } = &mut parsed {
+            *full_hashes = self.full_hashes;
         }
+        parsed
     }
 }
 
@@ -631,6 +656,7 @@ fn skill_command(command: SkillCommands) -> ParsedCommand {
         request,
         json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -691,6 +717,7 @@ fn plan_command(request: KnowledgeRequestArg, context: VaultContext) -> ParsedCo
         },
         json: context.json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -719,6 +746,7 @@ fn backup_command(command: BackupCommands) -> ParsedCommand {
         request: Ok(AppRequest::Backup(request)),
         json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -729,6 +757,7 @@ fn review_command(context: VaultContext) -> ParsedCommand {
         }),
         json: context.json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -736,6 +765,7 @@ fn query_command(
     query: String,
     scope: &str,
     limit: usize,
+    exact: bool,
     strict_backend: bool,
     context: VaultContext,
 ) -> ParsedCommand {
@@ -746,6 +776,11 @@ fn query_command(
                 query,
                 limit,
                 strict_backend,
+                match_mode: if exact {
+                    SearchMatchMode::Exact
+                } else {
+                    SearchMatchMode::Relevant
+                },
                 scope: match scope {
                     "sources" => kb_core::SearchScope::Sources,
                     "all" => kb_core::SearchScope::All,
@@ -755,6 +790,7 @@ fn query_command(
         }),
         json: context.json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -765,6 +801,7 @@ fn lint_command(strict: bool, context: VaultContext) -> ParsedCommand {
         }),
         json: context.json,
         fail_on_findings: strict,
+        full_hashes: false,
     }
 }
 
@@ -826,6 +863,7 @@ fn config_command(command: ConfigCommands) -> ParsedCommand {
         request: Ok(AppRequest::Config(request)),
         json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -879,6 +917,7 @@ fn admission_command(command: AdmissionCommands) -> ParsedCommand {
         })),
         json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }
 
@@ -899,5 +938,6 @@ fn vault_command(command: VaultCommands) -> ParsedCommand {
         request: Ok(AppRequest::Vault(request)),
         json,
         fail_on_findings: false,
+        full_hashes: false,
     }
 }

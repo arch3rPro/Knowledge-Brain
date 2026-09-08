@@ -12,7 +12,15 @@
 
 direct 模式每次查询读取真实文件并即时提取；Wiki 人工修改不需要先刷新缓存。来源原始对象在提取前核对 SHA-256，损坏返回 `source_integrity_failed`，不会从未保存的主题文件补齐。unsupported/metadata_only 对象没有正文命中，但来源标题及记录中的人工说明仍可命中。
 
-## Direct 匹配与顺序
+## 匹配意图
+
+查询默认使用 `match_mode=relevant` 发现相关结果；CLI 的 `--exact`、MCP 和 HTTP 的 `match_mode=exact` 改为区分大小写的 Unicode 字面量核验。CLI、MCP 和 HTTP 的查询响应都以 `match_mode` 报告实际采用的模式。跨适配器契约见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#查询意图)。
+
+`exact` 去除查询两端空白后按完整字面文本匹配，不分词、不转小写、不调用模型，也不使用 BM25F 排序或解释。它不读取、构建或更新 BM25F 缓存，结果使用 `backend=direct`，`score_micros` 和 `explanation` 为空。
+
+配置项 `search.mode` 只为 `relevant` 选择 direct 或 BM25F 后端，不改变 `exact` 的行为。
+
+## Relevant：Direct 匹配与顺序
 
 查询去除两端空白并转为小写。匹配完整短语及空白分隔的词项，不分词、不调用模型、不做语义推断；连续中文使用子串匹配。
 
@@ -29,7 +37,7 @@ Markdown 按 ATX 标题分段，围栏代码内的 `#` 不产生新章节。每�
 
 direct 结果的 `backend` 为 `direct`，`match_count` 表示直接命中次数；`score_micros` 和 `explanation` 为空。
 
-## 可选 BM25F
+## Relevant：可选 BM25F
 
 在配置中显式设置 `search.mode: bm25` 后，`kb cache rebuild` 会从实际 Wiki 和已保存来源生成 `.kb/cache/bm25.json`。索引格式使用 `schema_version: v1.0` 和 `indexer_version: bm25f-v1`。它是可删除、可重建的本地派生数据，不是知识或来源的备份。
 

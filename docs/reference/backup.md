@@ -52,6 +52,12 @@ kb backup restore <PATH.zip> --target <EMPTY_DIRECTORY> [--json]
 
 校验成功只说明归档结构完整且每个字节符合清单，不表示 Markdown、YAML 或来源引用在语义上有效。恢复后仍可按需运行 `kb status`、`kb doctor`、`kb lint` 和 `kb source verify`。
 
+## 错误分类与迁移
+
+JSON 错误信封把归档证据和恢复目标分开处理。ZIP 结构、清单、条目范围、Vault 身份、文件大小或哈希等归档校验失败使用稳定的 `backup_verification_failed` 代码；其 `error.details.reason` 说明校验原因，并在迁移期间提供 `legacy_code: "restore_failed"`。`legacy_code` 仅帮助已按旧代码分类的调用方迁移；客户端必须显式识别新的 `error.code`，旧客户端不会自动理解该新枚举值。
+
+归档校验成功后，恢复目标与发布阶段继续使用各自的错误语义：非空目标是 `target_not_empty`，不安全路径、写入或发布失败保留其相应的 `unsafe_path`、`io_failure` 或 `restore_failed` 代码。`backup_verification_failed` 属于 CLI、MCP 与 HTTP 共用的错误信封词汇表；当前 CLI 备份命令返回它，MCP 的 `structuredContent` 和 HTTP 错误响应会保留其所暴露的共享应用错误代码与详情。本错误代码不新增 MCP 备份工具或 HTTP 备份路由。
+
 ## 恢复
 
 目标必须不存在，或是一个真实的空目录；不会覆盖或合并已有内容。程序先完整校验归档，再解压到目标同级的私有临时目录，并在写入时再次核对大小和 SHA-256。所有文件通过后才把该目录放到目标位置。校验失败不会在目标留下部分 Vault。

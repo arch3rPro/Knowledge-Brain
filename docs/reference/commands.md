@@ -2,6 +2,8 @@
 
 所有带 `--json` 的命令在 stdout 输出一个 JSON 信封。成功数据位于 `data`，失败数据位于 `error`；业务失败使用非零退出码。JSON 模式不会把提示或诊断混入 stderr。每个信封都携带 `schema_version`。
 
+`--full-hashes` 是全局选项。人类可读输出默认把独立的 64 位 SHA-256 显示为前 12 位；`--full-hashes` 显示完整 SHA-256。路径、operation ID、Vault ID 以及 `--json` 输出始终保留完整身份值。
+
 ## Vault 创建与采用
 
 ```text
@@ -14,6 +16,8 @@ kb operation show <OPERATION_ID> [--json]
 `init` 只接受不存在或空目录，创建最小 Vault 并尝试登记。它不创建 Git 仓库。
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
+
+计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；`operation show` 响应保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。`state` 选择持久化的 `plan` 或 `result` 载荷，`operation_summary.operation_state` 反映最新的已验证事件；因此失败后仍保留计划的操作会返回 `state: "planned"` 和 `plan`，同时摘要状态为 `failed`。客户端可以继续读取原字段。可提交的计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示；完成或失败的摘要以 `requires_confirmation: false` 和 `can_apply: false` 表示不可提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
 
 ## 备份与恢复
 
@@ -39,7 +43,7 @@ kb apply <OPERATION_ID> [--json]
 
 ```text
 kb review [--vault <PATH_OR_ID>] [--json]
-kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--strict-backend] [--vault <PATH_OR_ID>] [--json]
+kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--exact] [--strict-backend] [--vault <PATH_OR_ID>] [--json]
 kb cache rebuild [--vault <PATH_OR_ID>] [--json]
 kb source verify [--vault <PATH_OR_ID>] [--json]
 kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
@@ -47,7 +51,7 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 
 `review` 只查看启用的准入目录，返回新增、变化、删除及可能移动的来源。有变化时保存用户状态目录中的计划；没有变化时 `operation_id` 为 `null`。它不保存来源、不改主题文件或 Wiki；明确执行该 ID 的 `apply` 才保存来源与日志。计划核对及恢复规则见[来源格式](sources.md)。
 
-`query` 默认 `scope=wiki`、`limit=10`。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。BM25 索引不可用时默认整次回退 direct 并返回 warning；`--strict-backend` 改为返回 `index_stale`。匹配、排序、解释和索引新鲜度规则见[搜索参考](search.md)。
+`query` 默认 `scope=wiki`、`limit=10`，并按相关性发现结果；`--exact` 改为区分大小写的字面量核验。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。每个响应以 `match_mode` 报告实际采用的模式。相关性查询的 BM25 索引不可用时默认整次回退 direct 并返回 warning；`--strict-backend` 改为返回 `index_stale`。匹配、排序、解释和索引新鲜度规则见[搜索参考](search.md)。
 
 `cache rebuild` 从实际文件重建轻量目录；启用 BM25 时同时增量维护字段索引。它不创建知识内容。`source verify` 核对来源记录引用的所有历史对象，逐项返回 `pass`、`fail` 或 `not_checked`。成功取得报告不代表所有对象通过：自动化必须检查各项状态；来源记录无法解析时整个命令失败。
 
@@ -98,7 +102,7 @@ kb capabilities [--json]
 
 旧且不受支持的 schema 上，修改命令返回 `migration_unavailable`，并且不修改 Vault 配置。产品目前没有历史迁移路径，也不提供 `kb migrate` 命令；迁移路径的决策见 [ADR-0016](../decisions/accepted/architecture/0016-explicit-schema-migration-paths.md)。
 
-`doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
+`doctor` 返回彼此独立的 `pass`、`warn`、`fail` 或 `not_checked` 检查，不计算总分。配置损坏作为单项失败保留在报告中。`vault_structure` 检查选中 Vault 的必需文件和目录，并逐项报告缺失或类型无效的 Vault 路径；它不检查机器本地目录。`machine_runtime_directories` 检查本机的配置、状态和缓存目录：它们不是 Vault 内容，缺失时会按需创建，因此普通缺失仍为 `pass`；只有既有路径无法检查、不是目录或权限不可用时才报告发现。除锁检查可以创建并移除自己的空锁文件外，doctor 不编辑配置或 Wiki。
 
 `version` 报告程序与 schema 版本。`capabilities` 明确报告功能是否实现；客户端不能从程序版本号推断能力。
 
@@ -119,7 +123,7 @@ kb skills status [--host auto|codex|claude-code|gemini-cli|opencode] [--scope va
 kb skills uninstall [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
 ```
 
-安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。宿主路径、检测歧义、复制与链接模式见 [Portable Agent Skill 参考](agent-skill.md)。
+安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理八项顶层 `kb-*` Skill；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。宿主路径、检测歧义、复制与链接模式，以及 `npx skills add` 外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
 
 ## MCP stdio
 

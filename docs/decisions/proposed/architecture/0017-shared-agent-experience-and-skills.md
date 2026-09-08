@@ -1,6 +1,6 @@
 # ADR-0017: Share Agent experience semantics and distribute task-scoped Skills
 
-- Status: proposed
+- Status: accepted / implemented
 - Class: architecture
 - Date: 2026-09-08
 

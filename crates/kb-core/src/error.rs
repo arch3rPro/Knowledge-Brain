@@ -16,6 +16,7 @@ pub enum ErrorCode {
     PlanStale,
     WriteBusy,
     VaultNeedsRecovery,
+    BackupVerificationFailed,
     RestoreFailed,
     IndexStale,
     CapabilityUnavailable,

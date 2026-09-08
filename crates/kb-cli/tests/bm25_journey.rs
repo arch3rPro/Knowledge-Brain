@@ -3,6 +3,21 @@ use serde_json::Value;
 use std::{fs, path::Path};
 
 #[test]
+fn human_query_output_reports_the_actual_match_mode() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let path = vault.to_str().unwrap();
+    run(base, &["init", path, "--json"]);
+
+    let default_output = run_human(base, &["query", "needle", "--vault", path]);
+    assert_eq!(default_output, "match_mode: relevant\nNo results.");
+
+    let exact_output = run_human(base, &["query", "needle", "--exact", "--vault", path]);
+    assert_eq!(exact_output, "match_mode: exact\nNo results.");
+}
+
+#[test]
 fn optional_bm25f_is_ranked_explainable_incremental_and_strict_when_requested() {
     let temporary = tempfile::tempdir().unwrap();
     let base = temporary.path();
@@ -35,6 +50,12 @@ fn optional_bm25f_is_ranked_explainable_incremental_and_strict_when_requested() 
 
     let fallback = run(base, &["query", "needle", "--vault", path, "--json"]);
     assert!(!fallback["data"]["warnings"].as_array().unwrap().is_empty());
+    assert_eq!(fallback["data"]["match_mode"], "relevant");
+    let exact = run(
+        base,
+        &["query", "needle", "--exact", "--vault", path, "--json"],
+    );
+    assert_eq!(exact["data"]["match_mode"], "exact");
     run(base, &["cache", "rebuild", "--vault", path, "--json"]);
     let ranked = run(base, &["query", "needle", "--vault", path, "--json"]);
     assert_ranked(&ranked);
@@ -122,6 +143,21 @@ fn run(base: &Path, arguments: &[&str]) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).unwrap()
+}
+
+fn run_human(base: &Path, arguments: &[&str]) -> String {
+    let output = command(base).args(arguments).output().unwrap();
+    assert!(
+        output.status.success(),
+        "args={arguments:?}\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim_end()
+        .to_owned()
 }
 
 fn command(base: &Path) -> Command {

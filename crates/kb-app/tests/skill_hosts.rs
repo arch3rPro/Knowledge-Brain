@@ -15,16 +15,21 @@ fn every_host_has_portable_vault_and_user_targets() {
 
     for (host, vault_parent, user_parent) in cases {
         let local = skill_target(&vault, &roots, host, SkillScope::Vault).unwrap();
+        assert_eq!(local.skills_root, vault.join(vault_parent).join("skills"));
         assert_eq!(
-            local.skill_dir,
-            vault.join(vault_parent).join("skills/knowledge-brain")
+            local.legacy_skill_dir,
+            local.skills_root.join("knowledge-brain")
         );
         assert!(local.bridge_file.starts_with(&vault));
 
         let user = skill_target(&vault, &roots, host, SkillScope::User).unwrap();
-        assert!(user.skill_dir.ends_with("skills/knowledge-brain"));
-        assert!(user.skill_dir.to_string_lossy().contains(user_parent));
-        assert!(!user.skill_dir.starts_with(&vault));
+        assert!(user.skills_root.ends_with("skills"));
+        assert!(user.skills_root.to_string_lossy().contains(user_parent));
+        assert!(!user.skills_root.starts_with(&vault));
+        assert_eq!(
+            user.legacy_skill_dir,
+            user.skills_root.join("knowledge-brain")
+        );
     }
 }
 

@@ -101,7 +101,7 @@
 
 ### Stage 4C — Portable Agent Skill 与 MCP stdio
 
-**Status:** implemented（定向本地测试）。内置 Agent Skill 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改会阻止覆盖或删除。
+**Status:** implemented（定向本地与隔离分发测试）。八项内置 `kb-*` Agent Skills 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改、legacy 或外部 `npx` 安装均不会被静默覆盖或删除。
 
 `kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
 
@@ -156,6 +156,6 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 
 macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 配置的非 Git Vault 完成完整 ZIP 创建、独立校验、恢复、direct 回退、索引重建、严格 BM25 查询、lint 和来源对象校验。恢复目录不包含原 Vault 的缓存、运行状态或 Git 元数据，并使用独立机器配置和状态目录完成验证。
 
-同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 将归档校验错误编码为 `restore_failed` 的接口命名问题记录在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)。
+同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 曾将归档校验错误编码为 `restore_failed`；当前使用 `backup_verification_failed`，并在 `error.details.legacy_code` 中提供 `restore_failed` 过渡值。该接口命名问题已在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)中解决。
 
 使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](docs/superpowers/plans/2026-09-07-verified-zip-backup.md)。

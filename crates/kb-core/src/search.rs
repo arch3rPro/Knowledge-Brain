@@ -7,12 +7,21 @@ pub enum SearchScope {
     Sources,
     All,
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMatchMode {
+    #[default]
+    Relevant,
+    Exact,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     pub query: String,
     pub scope: SearchScope,
     pub limit: usize,
     pub strict_backend: bool,
+    #[serde(default)]
+    pub match_mode: SearchMatchMode,
 }
 impl SearchRequest {
     /// Validate query text and bounded result count.
@@ -84,6 +93,8 @@ pub struct SearchGroup {
 pub struct SearchResponse {
     pub schema_version: SchemaVersion,
     pub query: String,
+    #[serde(default)]
+    pub match_mode: SearchMatchMode,
     pub groups: Vec<SearchGroup>,
     pub warnings: Vec<String>,
 }

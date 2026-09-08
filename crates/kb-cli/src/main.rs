@@ -28,8 +28,9 @@ async fn main() -> ExitCode {
             request,
             json,
             fail_on_findings,
+            full_hashes,
         } => match request.and_then(|request| kb_app::run(request, &context)) {
-            Ok(value) => render::success(&value, json, fail_on_findings),
+            Ok(value) => render::success(&value, json, fail_on_findings, full_hashes),
             Err(error) => render::error(error, json),
         },
         args::ParsedCommand::Serve(command) => match run_server(command, context).await {
