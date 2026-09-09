@@ -1,6 +1,6 @@
 # Knowledge-Brain Roadmap
 
-本文档记录实现阶段和验证状态，是进度的唯一归属。产品语义由[设计文档](.superpowers/specs/2026-09-07-knowledge-brain-design.md)定义，具体开发步骤由各阶段的 implementation plan 定义；旧计划中保留的未勾选步骤不代表当前实现状态。
+本文档记录实现阶段和验证状态，是进度的唯一归属。产品语义、命令契约和架构决策分别由 `docs/reference`、`docs/guides` 和 `docs/decisions` 中的公开文档定义。
 
 状态含义：
 
@@ -15,7 +15,7 @@
 
 短 Hash、人类可读操作摘要、一次最终写入确认、relevant/exact 查询，以及 `kb source save` / `kb knowledge save` 组合入口均已实现。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
 
-实现契约见[使用体验与 Agent Skill 套件设计](.superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
+具体使用契约见[命令参考](docs/reference/commands.md)和[Agent Skill 参考](docs/reference/agent-skill.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
 
 ## Stage 1 — Vault 基础
 
@@ -28,13 +28,9 @@
 - 操作计划、中断恢复和并发锁
 - 状态、诊断和稳定 JSON 协议
 
-实施计划：[Vault Foundation](.superpowers/plans/2026-09-07-vault-foundation.md)
-
 ## Stage 2 — 来源与读取
 
 **Status:** implemented；GitHub Actions 已完成三平台 workspace 测试与 release CLI 旅程。
-
-当前实施计划：[Source Discovery and Direct Search](.superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
 
 - 只遍历 `admission.yml` 中启用的目录
 - 识别新增、变化、删除及可能移动的来源
@@ -78,7 +74,7 @@
 
 本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；三平台 CI 已完成 workspace 回归与 release CLI 旅程。知识写入计划、受管理 index/log 更新和中断恢复由 Stage 3B 提供。
 
-命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](.superpowers/plans/2026-09-07-wiki-lint.md)。
+命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)。
 
 ### Stage 3B — 知识计划与安全保存
 
@@ -86,7 +82,7 @@
 
 本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。三平台 CI 已完成 workspace 回归与 release CLI 旅程；真实断电测试仍未执行。
 
-请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)，实施计划见[Knowledge Save](.superpowers/plans/2026-09-07-knowledge-save.md)。
+请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)。
 
 ## Stage 4 — Agent 与应用入口
 
@@ -110,7 +106,7 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、每个受管理文件写入后进程退出并重试，以及真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。三平台 CI 已完成 Rust 1.85 的原生构建与测试；四种外部 Agent 的实际加载行为仍需在对应宿主环境验证。
 
-参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](.superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](.superpowers/plans/2026-09-07-mcp-stdio.md)。
+参考：[Agent Skill](docs/reference/agent-skill.md)和 [MCP](docs/reference/mcp.md)。
 
 ### Stage 4D — MCP 2026-07-28 与 Streamable HTTP
 
@@ -137,7 +133,7 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回环只读、Bearer token、来源 review/apply、写入后的 direct 回退、重建后的严格 BM25，以及 HTTP 与 CLI 的结果一致性。非回环 `0.0.0.0` 监听在无 token 时拒绝启动，提供 token 后启动成功并拒绝未鉴权请求。
 
-当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。三平台 CI 已运行 workspace 测试和 release CLI 旅程；浏览器 WebUI、拒绝服务加固与真实局域网部署仍未验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](.superpowers/plans/2026-09-07-http-api.md)。
+当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。三平台 CI 已运行 workspace 测试和 release CLI 旅程；浏览器 WebUI、拒绝服务加固与真实局域网部署仍未验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)。
 
 ### Stage 4B — Operation 事件与 SSE
 
@@ -145,7 +141,7 @@ macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回�
 
 真实 HTTP 进程测试观察到来源保存的 `planned → applying → progress → applied` 完整序列和终态自动关闭；使用倒数第二个事件 ID 重连时只返回最终事件，使用超前游标时返回 `invalid_config`。
 
-本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载和跨机器事件同步。三平台 CI 已完成 workspace 测试与 release CLI 旅程；事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](.superpowers/plans/2026-09-07-operation-events-sse.md)。
+本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载和跨机器事件同步。三平台 CI 已完成 workspace 测试与 release CLI 旅程；事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)。
 
 ## Stage 5 — 搜索、备份与发布
 
@@ -168,7 +164,7 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 
 本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。三平台 CI 已完成 workspace 回归与 release CLI 旅程。
 
-排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](.superpowers/plans/2026-09-07-bm25f-search.md)。
+排序与索引语义见[搜索规则](docs/reference/search.md)。
 
 ### Stage 5B — 可校验 ZIP 备份
 
@@ -180,7 +176,7 @@ macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 �
 
 同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 曾将归档校验错误编码为 `restore_failed`；当前使用 `backup_verification_failed`，并在 `error.details.legacy_code` 中提供 `restore_failed` 过渡值。该接口命名问题已在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)中解决。
 
-使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](.superpowers/plans/2026-09-07-verified-zip-backup.md)。
+使用和安全边界见[备份参考](docs/reference/backup.md)。
 
 ### Stage 5C — 原生发布与 CLI 更新
 

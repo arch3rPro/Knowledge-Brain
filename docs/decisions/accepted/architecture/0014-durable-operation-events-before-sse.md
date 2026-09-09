@@ -2,7 +2,6 @@
 
 - Status: accepted / implemented
 - Class: architecture
-- Spec: [Operation events and SSE](../../../../.superpowers/specs/2026-09-07-operation-events-sse.md)
 
 ## Problem
 

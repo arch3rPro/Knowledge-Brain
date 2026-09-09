@@ -2,7 +2,6 @@
 
 - Status: accepted / implemented
 - Class: architecture
-- Spec: [HTTP API design](../../../../.superpowers/specs/2026-09-07-http-api.md)
 
 ## Problem
 

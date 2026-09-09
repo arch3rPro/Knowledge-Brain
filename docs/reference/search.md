@@ -14,7 +14,7 @@ direct 模式每次查询读取真实文件并即时提取；Wiki 人工修改�
 
 ## 匹配意图
 
-查询默认使用 `match_mode=relevant` 发现相关结果；CLI 的 `--exact`、MCP 和 HTTP 的 `match_mode=exact` 改为区分大小写的 Unicode 字面量核验。CLI、MCP 和 HTTP 的查询响应都以 `match_mode` 报告实际采用的模式。跨适配器契约见[已批准的使用体验设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md#查询意图)。
+查询默认使用 `match_mode=relevant` 发现相关结果；CLI 的 `--exact`、MCP 和 HTTP 的 `match_mode=exact` 改为区分大小写的 Unicode 字面量核验。CLI、MCP 和 HTTP 的查询响应都以 `match_mode` 报告实际采用的模式。
 
 `exact` 去除查询两端空白后按完整字面文本匹配，不分词、不转小写、不调用模型，也不使用 BM25F 排序或解释。它不读取、构建或更新 BM25F 缓存，结果使用 `backend=direct`，`score_micros` 和 `explanation` 为空。
 

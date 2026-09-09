@@ -54,7 +54,7 @@ kb:
 
 受管理 concept 还需要非空 `title`、显式合法 `status`、带 `by` 和 `at` 的 `generated`，以及至少一个带唯一 `id` 和 `resource` 的 source。`verified` 仍是可选字段；`stable` 不代表已经验证。可选 `kb.supersedes` 只保存从当前 concept 指向旧 concept 的单向关系。
 
-详细格式和边界由 [Wiki lint 设计](../../.superpowers/specs/2026-09-07-wiki-lint.md)定义；该设计采用 OKF v0.2，不改变未知字段的含义。
+Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 
 ## Finding codes
 

@@ -2,7 +2,6 @@
 
 - Status: accepted / implemented
 - Class: architecture
-- Spec: [Knowledge save](../../../../.superpowers/specs/2026-09-07-knowledge-save.md)
 
 ## Problem
 

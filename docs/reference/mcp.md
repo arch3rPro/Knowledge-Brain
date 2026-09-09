@@ -38,7 +38,7 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 | `kb_plan_knowledge` | 从结构化请求创建 research/article 计划 |
 | `kb_operation_show` | 查看属于固定 Vault 的计划或结果 |
 
-`kb_query` 接受必填的 `query`，以及可选的 `scope`、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)与[已批准的使用体验设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md#查询意图)。
+`kb_query` 接受必填的 `query`，以及可选的 `scope`、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)。
 
 默认不注册 `kb_apply_operation`。创建来源或知识计划只会返回 operation ID，不会写入 Vault。
 
@@ -50,7 +50,7 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 
 成功和业务失败都使用 MCP tool result。`structuredContent` 保留 Knowledge-Brain 的 `schema_version: v1.0` 信封；`isError` 区分业务失败。`kb_review_sources` 有变化时、`kb_plan_knowledge` 以及 `kb_operation_show` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。MCP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。参数错误、隐藏工具和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。备份归档校验与恢复目标的错误代码、`legacy_code` 迁移详情见[备份参考](backup.md#错误分类与迁移)；MCP 沿用共享错误信封，不新增备份工具或为旧客户端转换新枚举。
 
-`--allow-write` 只授予写入能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `kb_source_save` 或 `kb_knowledge_save` 返回的 `change_summary`，在提交 `confirmation_token` 前取得一次明确确认。高级 `kb_apply_operation` 仍使用 `operation_summary`。完整确认语义见[一次确认的保存入口设计](../../.superpowers/specs/2026-09-08-composite-save-entries-design.md)。
+`--allow-write` 只授予写入能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `kb_source_save` 或 `kb_knowledge_save` 返回的 `change_summary`，在提交 `confirmation_token` 前取得一次明确确认。高级 `kb_apply_operation` 仍使用 `operation_summary`。完整确认语义见[命令参考](commands.md)。
 
 ## 安全边界
 

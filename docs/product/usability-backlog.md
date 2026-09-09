@@ -1,6 +1,6 @@
 # 使用体验改进
 
-本文档记录真实 Vault 使用中确认的产品体验改进及其状态。具体交互语义、兼容边界和 Skill 分发约定见[使用体验与 Agent Skill 套件设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md)；现有命令、文件格式和安全边界仍以 reference 与架构文档为准。
+本文档记录真实 Vault 使用中确认的产品体验改进及其状态。具体命令、文件格式、Skill 分发约定和安全边界以 reference 与架构文档为准。
 
 ## 目标原则
 

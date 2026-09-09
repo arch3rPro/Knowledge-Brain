@@ -56,4 +56,4 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 
 ## Agent 行为边界
 
-安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)与[已批准的使用体验设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
