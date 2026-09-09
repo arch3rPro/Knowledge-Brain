@@ -4,7 +4,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 
 本项目使用 [MIT License](LICENSE)。贡献方式与本地验证要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-[Features](#features) · [快速开始](#快速开始) · [命令参考](docs/reference/commands.md) · [Roadmap](ROADMAP.md) · [设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)
+[Features](#features) · [快速开始](#快速开始) · [AI Agent 使用](docs/guides/agent-operations.md) · [命令参考](docs/reference/commands.md) · [Roadmap](ROADMAP.md) · [设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
 ## Features
 
@@ -149,6 +149,8 @@ kb apply <operation-id> --json
 
 项目发布八个可单独安装的 `kb-*` Skills。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --skill '*' --agent codex --yes` 或 `npx skills add . --skill kb-query --agent codex --yes`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
 
+CLI 是 AI Agent 使用 Knowledge-Brain 的基础依赖，MCP 和 Skills 均为可选接入方式。需要把完整操作规则直接交给 Agent 时，使用 [AI Agent 操作指南](docs/guides/agent-operations.md)。
+
 ## 架构
 
 ```text
@@ -188,6 +190,7 @@ Windows PowerShell：
 ## 文档
 
 - [从空目录完成首次使用测试](docs/guides/first-use-walkthrough.md)
+- [AI Agent 操作指南](docs/guides/agent-operations.md)
 - [创建新 Vault](docs/guides/create-a-vault.md)
 - [采用已有目录](docs/guides/adopt-an-existing-directory.md)
 - [保存与查询来源](docs/guides/capture-and-query-sources.md)
