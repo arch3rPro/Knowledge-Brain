@@ -49,15 +49,15 @@ My-Knowledge/
 
 ## 安装
 
-官方版本从 [GitHub Releases](https://github.com/arch3rPro/Knowledge-Brain/releases) 下载。根据平台选择归档：
+官方版本从 [GitHub Releases](https://github.com/arch3rPro/Knowledge-Brain/releases) 下载。每个平台同时提供可执行文件和包含许可证、安装说明的完整归档：
 
-| 平台 | 归档 |
-| --- | --- |
-| Linux x86_64 | `knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
-| macOS Apple Silicon | `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
-| Windows x86_64 | `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
+| 平台 | 可执行文件 | 完整归档 |
+| --- | --- | --- |
+| Linux x86_64 | `knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu` | `knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS Apple Silicon | `knowledge-brain-vX.Y.Z-aarch64-apple-darwin` | `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz` |
+| Windows x86_64 | `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.exe` | `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip` |
 
-解压后，把 `kb`（Windows 为 `kb.exe`）放入用户可执行目录并加入 `PATH`，然后运行：
+直接下载时，把对应文件改名为 `kb`（Windows 为 `kb.exe`）并放入用户可执行目录；Linux 和 macOS 还需赋予执行权限。使用归档时先解压其中的 `kb` 或 `kb.exe`。加入 `PATH` 后运行：
 
 ```bash
 kb version
@@ -187,6 +187,7 @@ Windows PowerShell：
 
 ## 文档
 
+- [从空目录完成首次使用测试](docs/guides/first-use-walkthrough.md)
 - [创建新 Vault](docs/guides/create-a-vault.md)
 - [采用已有目录](docs/guides/adopt-an-existing-directory.md)
 - [保存与查询来源](docs/guides/capture-and-query-sources.md)

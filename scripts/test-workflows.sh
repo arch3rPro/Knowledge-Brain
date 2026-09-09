@@ -41,6 +41,8 @@ require_text .github/workflows/release.yml 'bash scripts/publish-release.sh "${{
 require_text .github/workflows/native-build.yml "workflow_call:"
 require_text .github/workflows/native-build.yml "fail-fast: false"
 require_text .github/workflows/native-build.yml "fromJSON(inputs.targets_json)"
+require_text .github/workflows/native-build.yml 'install -m 755 release-stage/kb "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}"'
+require_text .github/workflows/native-build.yml 'Copy-Item release-stage/kb.exe "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.exe"'
 reject_text .github/workflows/native-build.yml "Build native verification binary"
 reject_text .github/workflows/native-build.yml "attestations: write"
 reject_text .github/workflows/native-build.yml "id-token: write"
@@ -57,7 +59,7 @@ require_text scripts/publish-release.sh '--notes-file "$notes_file"'
 require_text scripts/publish-release.sh 'bash scripts/ensure-release-tag.sh "$tag" "$release_commit"'
 reject_text scripts/publish-release.sh "--generate-notes"
 
-asset_line=$(grep -n 'if \[\[ ${#assets\[@\]} -ne 5 \]\]' scripts/publish-release.sh | cut -d: -f1)
+asset_line=$(grep -n 'if \[\[ ${#assets\[@\]} -ne 8 \]\]' scripts/publish-release.sh | cut -d: -f1)
 tag_line=$(grep -n 'bash scripts/ensure-release-tag.sh' scripts/publish-release.sh | cut -d: -f1)
 [[ -n $asset_line && -n $tag_line && $asset_line -lt $tag_line ]] || fail "release assets must be validated before tag creation"
 

@@ -22,7 +22,13 @@
 3. 工作流先确认运行提交就是当前 `origin/main`，再从 `Cargo.toml` 读取版本并检查版本说明。
 4. 质量检查和 Linux、macOS、Windows 三个平台在同一次运行中完成测试、构建、CLI journey、打包和 build provenance。
 5. 三个平台全部成功后，发布任务才创建 annotated `vX.Y.Z` tag、签名校验和、上传资产并公开 Release。
-6. 确认公开 Release 正好包含三个平台归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查三个 provenance 证明和版本说明。
+6. 确认公开 Release 正好包含三个平台可执行文件、三个完整归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查 provenance 证明和版本说明。
+
+可执行文件名称为：
+
+- `knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu`
+- `knowledge-brain-vX.Y.Z-aarch64-apple-darwin`
+- `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.exe`
 
 归档名称为：
 
@@ -30,7 +36,7 @@
 - `knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz`
 - `knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip`
 
-发布脚本从 `docs/releases/vX.Y.Z.md` 读取版本说明。只有三个归档、`SHA256SUMS` 和 `SHA256SUMS.minisig` 全部存在时才创建 tag；完整资产上传后才取消 draft。它拒绝修改已经公开的 Release。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
+发布脚本从 `docs/releases/vX.Y.Z.md` 读取版本说明。只有三个可执行文件、三个归档、`SHA256SUMS` 和 `SHA256SUMS.minisig` 全部存在时才创建 tag；完整资产上传后才取消 draft。它拒绝修改已经公开的 Release。macOS notarization 和 Windows Authenticode 不在当前发布流程中。
 
 ## 失败处理
 

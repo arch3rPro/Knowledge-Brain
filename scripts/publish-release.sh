@@ -38,9 +38,18 @@ printf '%s\n' "$KB_UPDATE_SIGNING_PASSWORD" | minisign -S -s "$secret_file" -m "
 assets=()
 while IFS= read -r asset; do
   assets+=("$asset")
-done < <(find "$dist" -maxdepth 1 -type f \( -name 'knowledge-brain-*.tar.gz' -o -name 'knowledge-brain-*.zip' -o -name 'SHA256SUMS' -o -name 'SHA256SUMS.minisig' \) -print | sort)
-if [[ ${#assets[@]} -ne 5 ]]; then
-  echo "expected three archives, SHA256SUMS, and SHA256SUMS.minisig" >&2
+done < <(find "$dist" -maxdepth 1 -type f \( \
+  -name 'knowledge-brain-v*-x86_64-unknown-linux-gnu.tar.gz' -o \
+  -name 'knowledge-brain-v*-aarch64-apple-darwin.tar.gz' -o \
+  -name 'knowledge-brain-v*-x86_64-pc-windows-msvc.zip' -o \
+  -name 'knowledge-brain-v*-x86_64-unknown-linux-gnu' -o \
+  -name 'knowledge-brain-v*-aarch64-apple-darwin' -o \
+  -name 'knowledge-brain-v*-x86_64-pc-windows-msvc.exe' -o \
+  -name 'SHA256SUMS' -o \
+  -name 'SHA256SUMS.minisig' \
+\) -print | sort)
+if [[ ${#assets[@]} -ne 8 ]]; then
+  echo "expected three archives, three executables, SHA256SUMS, and SHA256SUMS.minisig" >&2
   exit 67
 fi
 

@@ -7,16 +7,23 @@ if [[ $# -ne 1 ]]; then
 fi
 
 dist=$1
-archives=()
-while IFS= read -r archive; do
-  archives+=("$archive")
-done < <(find "$dist" -maxdepth 1 -type f \( -name 'knowledge-brain-*.tar.gz' -o -name 'knowledge-brain-*.zip' \) -print | sort)
-if [[ ${#archives[@]} -ne 3 ]]; then
-  echo "expected exactly three release archives, found ${#archives[@]}" >&2
+release_files=()
+while IFS= read -r release_file; do
+  release_files+=("$release_file")
+done < <(find "$dist" -maxdepth 1 -type f \( \
+  -name 'knowledge-brain-v*-x86_64-unknown-linux-gnu.tar.gz' -o \
+  -name 'knowledge-brain-v*-aarch64-apple-darwin.tar.gz' -o \
+  -name 'knowledge-brain-v*-x86_64-pc-windows-msvc.zip' -o \
+  -name 'knowledge-brain-v*-x86_64-unknown-linux-gnu' -o \
+  -name 'knowledge-brain-v*-aarch64-apple-darwin' -o \
+  -name 'knowledge-brain-v*-x86_64-pc-windows-msvc.exe' \
+\) -print | sort)
+if [[ ${#release_files[@]} -ne 6 ]]; then
+  echo "expected exactly three release archives and three executables, found ${#release_files[@]}" >&2
   exit 65
 fi
 : > "$dist/SHA256SUMS"
-for archive in "${archives[@]}"; do
-  digest=$(sha256sum "$archive" | cut -d ' ' -f 1)
-  echo "$digest  $(basename "$archive")" >> "$dist/SHA256SUMS"
+for release_file in "${release_files[@]}"; do
+  digest=$(sha256sum "$release_file" | cut -d ' ' -f 1)
+  echo "$digest  $(basename "$release_file")" >> "$dist/SHA256SUMS"
 done

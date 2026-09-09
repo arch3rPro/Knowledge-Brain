@@ -67,6 +67,14 @@ knowledge-brain-vX.Y.Z-aarch64-apple-darwin.tar.gz
 knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip
 ~~~
 
+每个平台同时发布一份无需解压的可执行文件：
+
+~~~text
+knowledge-brain-vX.Y.Z-x86_64-unknown-linux-gnu
+knowledge-brain-vX.Y.Z-aarch64-apple-darwin
+knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.exe
+~~~
+
 每个归档只包含：
 
 - 对应平台的 `kb` 或 `kb.exe`；
@@ -75,18 +83,18 @@ knowledge-brain-vX.Y.Z-x86_64-pc-windows-msvc.zip
 
 归档在创建后必须在同一原生 job 中解包并执行 `kb version --json`。输出版本必须等于 tag 版本，且平台可执行文件名正确。通过后才上传内部 artifact。
 
-最终 publication job 对三个归档生成一个标准 `SHA256SUMS` 文件，并使用 `KB_UPDATE_SIGNING_KEY` 签名为 `SHA256SUMS.minisig`。与该私钥匹配的公钥是仓库中的审查对象，并编译进官方 Release 二进制。私钥不进入仓库、构建 artifact 或 GitHub Release。缺少该 Secret 时 publication job 失败。
+最终 publication job 对三个归档和三个可执行文件生成一个标准 `SHA256SUMS` 文件，并使用 `KB_UPDATE_SIGNING_KEY` 签名为 `SHA256SUMS.minisig`。与该私钥匹配的公钥是仓库中的审查对象，并编译进官方 Release 二进制。私钥不进入仓库、构建 artifact 或 GitHub Release。缺少该 Secret 时 publication job 失败。
 
-每个归档还生成 GitHub build provenance，供用户使用 `gh attestation verify <archive> -R arch3rPro/Knowledge-Brain` 验证构建来源。校验和、更新签名与 provenance 不替代平台代码签名；文档必须明确 macOS Gatekeeper 和 Windows SmartScreen 仍可能显示提示。
+每个归档和可执行文件还生成 GitHub build provenance，供用户使用 `gh attestation verify <file> -R arch3rPro/Knowledge-Brain` 验证构建来源。校验和、更新签名与 provenance 不替代平台代码签名；文档必须明确 macOS Gatekeeper 和 Windows SmartScreen 仍可能显示提示。
 
 ## GitHub Release 与失败恢复
 
 所有 native job 成功后，publication job：
 
-1. 生成三个归档的 `SHA256SUMS` 与 `SHA256SUMS.minisig`，并确认五个资产完整；
+1. 生成三个归档和三个可执行文件的 `SHA256SUMS` 与 `SHA256SUMS.minisig`，并确认八个资产完整；
 2. 在本次运行提交上创建并推送带注释 tag；若 publication 重试时该 tag 已存在，则严格核对其类型和提交；
 3. 使用 `docs/releases/vX.Y.Z.md` 创建该 tag 的 draft Release；
-4. 上传三个归档、`SHA256SUMS` 与 `SHA256SUMS.minisig`；
+4. 上传三个归档、三个可执行文件、`SHA256SUMS` 与 `SHA256SUMS.minisig`；
 5. 将 draft 发布为公开 Release。
 
 用户只会看到完整的公开 Release。若 publication job 失败，重跑该 job，并复用本次运行的已验证内部 artifact；不得重新触发三个 native build job。发布脚本必须拒绝覆盖已有公开 Release；维护者需要撤回或替换版本时，创建新补丁版本，而不是静默替换资产。

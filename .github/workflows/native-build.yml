@@ -66,6 +66,7 @@ jobs:
           chmod 755 release-stage/kb
           bash scripts/package-release.sh release-stage "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.tar.gz" "${{ inputs.expected_version }}" "${{ matrix.target }}"
           bash scripts/verify-release-package.sh "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.tar.gz" "${{ matrix.target }}"
+          install -m 755 release-stage/kb "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}"
       - name: Stage and package Windows release
         if: ${{ inputs.package && runner.os == 'Windows' }}
         shell: pwsh
@@ -76,14 +77,15 @@ jobs:
           $asset = "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.zip"
           ./scripts/package-release.ps1 -Stage release-stage -Asset $asset -Version '${{ inputs.expected_version }}' -Target '${{ matrix.target }}'
           ./scripts/verify-release-package.ps1 -Asset $asset -Target '${{ matrix.target }}'
-      - name: Upload release archive
+          Copy-Item release-stage/kb.exe "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.exe"
+      - name: Upload release files
         if: ${{ inputs.package }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
-      - name: Attest release archive
+      - name: Attest release files
         if: ${{ inputs.attest }}
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
