@@ -47,6 +47,10 @@ pub fn skill_assets() -> &'static [SkillAsset] {
                 include_bytes!("../../../skills/kb-save/SKILL.md").as_slice(),
             ),
             (
+                "kb-save/references/request-format.md",
+                include_bytes!("../../../skills/kb-save/references/request-format.md").as_slice(),
+            ),
+            (
                 "kb-ops/SKILL.md",
                 include_bytes!("../../../skills/kb-ops/SKILL.md").as_slice(),
             ),

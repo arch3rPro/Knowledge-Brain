@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024 edition（MSRV 1.85）、Cargo workspace、clap、serde/serde_json、serde_yaml_ng、yaml-edit、directories、uuid、sha2、unicode-normalization、atomic-write-file、fs2、assert_cmd、predicates、tempfile。
 
-**Spec:** `docs/superpowers/specs/2026-09-07-knowledge-brain-design.md`
+**Spec:** `.superpowers/specs/2026-09-07-knowledge-brain-design.md`
 
 ## Global Constraints
 
@@ -46,7 +46,7 @@ docs/reference/                    # 阶段 1 当前行为的查阅文档
 docs/guides/                       # 初始化和采用的顺序式教程
 ```
 
-`docs/superpowers/` 保存设计和执行计划，不承载产品使用手册。Schema 的字段语义以 `schemas/` 为唯一来源；参考页链接 Schema，不复制完整字段目录。
+`.superpowers/` 保存设计和执行计划，不承载产品使用手册。Schema 的字段语义以 `schemas/` 为唯一来源；参考页链接 Schema，不复制完整字段目录。
 
 ---
 

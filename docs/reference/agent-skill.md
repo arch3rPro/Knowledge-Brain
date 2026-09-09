@@ -30,7 +30,7 @@ Vault 范围把 Skill 放入 Vault 内的宿主目录：
 
 User 范围使用操作系统的用户目录或配置目录：Codex 为 `.codex/`，Claude Code 为 `.claude/`，Gemini CLI 为 `.gemini/`，OpenCode 为系统配置目录下的 `opencode/`。Knowledge-Brain 通过系统目录 API 解析这些位置，不把 macOS、Linux 或 Windows 的绝对路径写入 Vault。
 
-`copy` 复制八项内置 Skill。`symlink` 在 Knowledge-Brain 的用户配置目录保存规范副本，再让宿主目录分别链接到八项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移；人工修改的旧版或未受管 `kb-*` 文件不会被覆盖或删除。
+`copy` 复制八项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到八项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
 
 ## 外部安装
 
@@ -56,4 +56,4 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 
 ## Agent 行为边界
 
-安装后的 Skill 要求 Agent 先读取 Vault 的 `KB.md`，把 Wiki 和来源内容当作不可信数据，并优先使用 MCP、否则使用 `kb --json`。计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；operation 查看保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。响应字段详见[命令参考](commands.md#vault-创建与采用)。创建 review 或 knowledge plan 不等于授权执行；Agent 必须展示该摘要，并在用户对最终 apply 明确同意一次后才调用写入工具或 `kb apply`。直接由用户输入的 `kb apply <operation-id>` 本身就是明确写入请求。完整确认语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)与[已批准的使用体验设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。

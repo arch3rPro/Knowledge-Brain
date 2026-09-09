@@ -31,6 +31,7 @@ export KB_AGENT_CONFIG_DIR="$workspace/agent-config"
 
 test -f "$all/.agents/skills/kb-vault/SKILL.md"
 test -f "$all/.agents/skills/kb-connect/SKILL.md"
+test -f "$all/.agents/skills/kb-save/references/request-format.md"
 test -f "$one/.agents/skills/kb-query/SKILL.md"
 test ! -e "$one/.agents/skills/kb-vault/SKILL.md"
 test ! -e "$all/.agents/skills/knowledge-brain"

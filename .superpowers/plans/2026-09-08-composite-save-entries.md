@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust stable, Clap, Serde JSON, Axum, MCP JSON-RPC, existing kb-app operations.
 
-**Spec:** docs/superpowers/specs/2026-09-08-composite-save-entries-design.md
+**Spec:** .superpowers/specs/2026-09-08-composite-save-entries-design.md
 
 ## Global Constraints
 

@@ -102,6 +102,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         vec![
             "kb_capabilities",
             "kb_status",
+            "kb_maintenance",
             "kb_query",
             "kb_lint",
             "kb_review_sources",
@@ -141,9 +142,21 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         vault_id
     );
 
+    let maintenance = call(&mut server, 5, "kb_maintenance", &json!({}));
+    assert_eq!(maintenance["result"]["isError"], false);
+    assert_eq!(
+        maintenance["result"]["structuredContent"]["data"]["kind"],
+        "maintenance"
+    );
+    assert!(
+        maintenance["result"]["structuredContent"]["data"]
+            .get("operation_id")
+            .is_none()
+    );
+
     let denied = call(
         &mut server,
-        5,
+        6,
         "kb_apply_operation",
         &json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
     );

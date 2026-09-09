@@ -15,7 +15,7 @@
 - 8 个面向任务的 Portable Agent Skills；
 - 升级 `kb skills install`，并提供 `npx skills add` 标准分发。
 
-本期不新增交互式 CLI 向导、组合命令、WebUI、GUI、PDF/OCR、Embedding、rerank 或任意 Agent 宿主专用插件。未来能力的范围见[未来扩展](../../product/future-extensions.md)。
+本期不新增交互式 CLI 向导、组合命令、WebUI、GUI、PDF/OCR、Embedding、rerank 或任意 Agent 宿主专用插件。未来能力的范围见[未来扩展](../../docs/product/future-extensions.md)。
 
 ## 共享体验语义
 
@@ -131,7 +131,7 @@ npx skills add <owner>/knowledge-brain --skill kb-query
 
 本规范是本期交互语义、兼容性和 Skill 分发边界的唯一设计来源。使用说明分别归入 CLI、搜索、备份、MCP、HTTP 和 Agent Skill reference；它们链接本规范而不重复设计理由。
 
-[未来扩展](../../product/future-extensions.md) 是未实施能力范围的唯一归属。`ROADMAP.md` 只记录阶段进度、已验证事实和指向该文档的链接。`docs/product/usability-backlog.md` 保留问题与验收背景，并链接本规范的实现契约。
+[未来扩展](../../docs/product/future-extensions.md) 是未实施能力范围的唯一归属。`ROADMAP.md` 只记录阶段进度、已验证事实和指向该文档的链接。`docs/product/usability-backlog.md` 保留问题与验收背景，并链接本规范的实现契约。
 
 ## 验收与验证
 

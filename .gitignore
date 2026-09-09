@@ -1,6 +1,10 @@
 /target/
 /.worktrees/
 /reference/
-/.superpowers/
+/.superpowers/*
+!/.superpowers/plans/
+!/.superpowers/plans/**
+!/.superpowers/specs/
+!/.superpowers/specs/**
 .DS_Store
 *.tmp

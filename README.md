@@ -4,7 +4,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 
 本项目使用 [MIT License](LICENSE)。贡献方式与本地验证要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-[Features](#features) · [快速开始](#快速开始) · [AI Agent 使用](docs/guides/agent-operations.md) · [命令参考](docs/reference/commands.md) · [Roadmap](ROADMAP.md) · [设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)
+[Features](#features) · [快速开始](#快速开始) · [AI Agent 使用](docs/guides/agent-operations.md) · [命令参考](docs/reference/commands.md) · [Roadmap](ROADMAP.md)
 
 ## Features
 
@@ -75,7 +75,19 @@ cargo install --path crates/kb-cli --locked
 
 ## 快速开始
 
-### 创建 Vault
+### AI Agent（推荐）
+
+先安装 `kb` CLI，然后将下面整句话中的路径替换为目标目录并直接发给 Agent：
+
+```markdown
+请阅读并遵循 [Knowledge-Brain AI Agent 操作指南](https://github.com/arch3rPro/Knowledge-Brain/blob/main/docs/guides/agent-operations.md)，使用系统 PATH 中已安装的 `kb` CLI 初始化或操作 Vault `<VAULT_PATH_OR_NEW_TARGET>`；开始前先报告 `kb` 版本、目标目录现状和实际采用的 CLI、Skill 或 MCP 入口，如果当前宿主支持 Knowledge-Brain Agent Skills，请先说明宿主、安装范围和目标路径并在我确认后安装，Skill 不可用或不安装时继续使用完整 CLI 流程，然后按我的要求持续执行并验证实际持久化结果。
+```
+
+CLI 是基础依赖。Agent Skills 是推荐的可选增强，MCP 也是可选入口；二者都不阻塞 CLI 使用，也不改变写入前的一次明确确认。
+
+### 人类手动操作
+
+#### 创建 Vault
 
 ```bash
 kb init ./my-knowledge
@@ -84,7 +96,7 @@ mkdir ./my-knowledge/Notes
 
 `kb init` 创建最小 Vault，不会创建 Git 仓库或个人主题目录。
 
-### 配置准入目录
+#### 配置准入目录
 
 ```bash
 kb config admission add notes Notes --vault ./my-knowledge --yes
@@ -92,7 +104,7 @@ kb config admission add notes Notes --vault ./my-knowledge --yes
 
 这里的 `--yes` 表示本次命令已经获得写入授权；省略时只显示差异预览。准入操作要求目录已经存在，并且不会删除目录内容。
 
-### 保存来源与查询
+#### 保存来源与查询
 
 将 Markdown 或文本放入 `Notes/`。明确要求保存时可以在一次命令内检查并写入：
 
@@ -103,7 +115,7 @@ kb query "关键词" --scope sources --vault ./my-knowledge
 
 省略 `--yes` 时，命令返回一次变更摘要和确认 token，适合 Agent 或 UI 在最终写入前取得确认。没有变化时不要求确认。来源文件保持原样，保存的副本位于 `Wiki/external-sources/`。查询默认只搜索 Wiki；`--scope all` 同时返回 Wiki 与来源两组结果。见[保存与查询来源](docs/guides/capture-and-query-sources.md)。
 
-### 检查结果
+#### 检查结果
 
 ```bash
 kb status --vault ./my-knowledge
@@ -111,7 +123,7 @@ kb config admission list --vault ./my-knowledge
 kb doctor --vault ./my-knowledge
 ```
 
-### 采用已有目录
+#### 采用已有目录
 
 ```bash
 kb adopt ./existing-notes --json
@@ -129,6 +141,7 @@ kb apply <operation-id> --json
 | `kb adopt` | 审核已有目录并生成采用计划 |
 | `kb apply` | 执行已审核的操作计划 |
 | `kb review` | 查看准入来源变化并生成保存计划 |
+| `kb maintain` | 只读汇总状态、来源变化、lint 与诊断 |
 | `kb query` | 查询 Wiki 或已保存来源 |
 | `kb cache rebuild` | 重建轻量目录及已启用的搜索索引 |
 | `kb source verify` | 核对已保存来源的完整性 |
@@ -207,5 +220,4 @@ Windows PowerShell：
 - [架构概览](docs/architecture/overview.md)
 - [Roadmap](ROADMAP.md)
 - [安全边界](SECURITY.md)
-- [完整设计](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)
 - [架构决策记录](docs/decisions/)

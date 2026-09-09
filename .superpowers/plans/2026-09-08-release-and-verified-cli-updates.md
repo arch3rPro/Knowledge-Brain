@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 1.85, `ureq` with Rustls, `minisign`, `semver`, existing `zip` and `tar`/gzip support, GitHub Actions, GitHub CLI, GitHub artifact attestations, Minisign.
 
-**Spec:** `docs/superpowers/specs/2026-09-08-release-automation-design.md`
+**Spec:** `.superpowers/specs/2026-09-08-release-automation-design.md`
 
 ## Global Constraints
 
@@ -418,7 +418,7 @@ git commit -m "docs: publish cli release and update guides"
 ### Task 7: Final evidence and controlled first release handoff
 
 **Files:**
-- Modify: `docs/superpowers/plans/2026-09-08-release-and-verified-cli-updates.md`
+- Modify: `.superpowers/plans/2026-09-08-release-and-verified-cli-updates.md`
 - Test: all targets named below
 
 **Interfaces:**
@@ -454,6 +454,6 @@ Report the exact candidate version, commit SHA, three verified manual run URLs, 
 - [ ] **Step 5: Commit final plan evidence**
 
 ```bash
-git add docs/superpowers/plans/2026-09-08-release-and-verified-cli-updates.md
+git add .superpowers/plans/2026-09-08-release-and-verified-cli-updates.md
 git commit -m "test: verify release automation"
 ```

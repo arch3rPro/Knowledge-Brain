@@ -62,6 +62,7 @@ impl McpServer {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     fn tools(&self) -> Vec<Value> {
         let mut tools = vec![
             tool(
@@ -73,6 +74,12 @@ impl McpServer {
             tool(
                 "kb_status",
                 "Report factual state for the fixed Vault.",
+                &object_schema(vec![], &[]),
+                true,
+            ),
+            tool(
+                "kb_maintenance",
+                "Inspect Vault status, admitted source changes, Wiki lint, and diagnostics without creating plans or modifying knowledge.",
                 &object_schema(vec![], &[]),
                 true,
             ),
@@ -235,6 +242,9 @@ impl McpServer {
         let request = match name {
             "kb_capabilities" => empty(&arguments).map(|()| AppRequest::Capabilities),
             "kb_status" => empty(&arguments).map(|()| AppRequest::Status {
+                vault: Some(self.vault_selector.clone()),
+            }),
+            "kb_maintenance" => empty(&arguments).map(|()| AppRequest::Maintenance {
                 vault: Some(self.vault_selector.clone()),
             }),
             "kb_query" => decode::<QueryArguments>(arguments).map(|args| AppRequest::Query {

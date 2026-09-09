@@ -1,4 +1,4 @@
-use std::{io::Write, process::ExitCode};
+use std::{fmt::Write as _, io::Write, process::ExitCode};
 
 use kb_core::KbError;
 use kb_protocol::{Envelope, ErrorEnvelope};
@@ -34,7 +34,11 @@ pub(crate) fn success(
     }
 }
 
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError> {
+    if value.get("kind").and_then(Value::as_str) == Some("maintenance") {
+        return Ok(render_maintenance(value));
+    }
     if let Some(diff) = value.get("diff").and_then(Value::as_str) {
         return Ok(diff.to_owned());
     }
@@ -54,6 +58,121 @@ pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError>
     let mut output = String::new();
     render_value(&mut output, value, 0, full_hashes, false);
     Ok(output.trim_end().to_owned())
+}
+
+#[allow(clippy::too_many_lines)]
+fn render_maintenance(value: &Value) -> String {
+    let mut lines = Vec::new();
+    if let Some(root) = value.get("root").and_then(Value::as_str) {
+        lines.push(format!("vault: {root}"));
+    }
+
+    if let Some(status) = value.get("status") {
+        let pending = status
+            .pointer("/recovery/pending_operations")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if pending > 0 {
+            lines.push(format!("recovery: {pending} pending operation(s)"));
+        }
+        if let Some(compatibility) = status
+            .pointer("/schema/compatibility")
+            .and_then(Value::as_str)
+            .filter(|compatibility| *compatibility != "current")
+        {
+            lines.push(format!("schema: {compatibility}"));
+        }
+        if let Some(configuration) = status
+            .get("configuration")
+            .and_then(Value::as_str)
+            .filter(|configuration| *configuration != "valid")
+        {
+            lines.push(format!("configuration: {configuration}"));
+        }
+    }
+
+    if let Some(sources) = value.get("sources") {
+        if sources.get("status").and_then(Value::as_str) == Some("not_checked") {
+            lines.push("sources: not checked (Vault recovery is required)".to_owned());
+        } else {
+            let changes = sources
+                .get("changes")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let unchanged = sources
+                .get("unchanged")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let skipped = sources
+                .get("skipped")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            if changes == 0 {
+                lines.push(format!("sources: no changes ({unchanged} unchanged)"));
+            } else {
+                let mut counts = std::collections::BTreeMap::new();
+                for change in sources
+                    .get("changes")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if let Some(kind) = change.get("kind").and_then(Value::as_str) {
+                        *counts.entry(kind).or_insert(0usize) += 1;
+                    }
+                }
+                let breakdown = counts
+                    .into_iter()
+                    .map(|(kind, count)| format!("{kind} {count}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                lines.push(format!("sources: {changes} change(s) ({breakdown})"));
+            }
+            if skipped > 0 {
+                lines.push(format!("sources_skipped: {skipped}"));
+            }
+        }
+    }
+
+    if let Some(lint) = value.get("lint") {
+        if lint.get("status").and_then(Value::as_str) == Some("not_checked") {
+            lines.push("lint: not checked (Vault recovery is required)".to_owned());
+        } else {
+            let checked = lint
+                .get("checked_files")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let findings = lint
+                .get("findings")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            lines.push(if findings == 0 {
+                format!("lint: no findings in {checked} file(s)")
+            } else {
+                format!("lint: {findings} finding(s) in {checked} file(s)")
+            });
+        }
+    }
+
+    if let Some(checks) = value
+        .get("doctor")
+        .and_then(|doctor| doctor.get("checks"))
+        .and_then(Value::as_array)
+    {
+        let mut counts = std::collections::BTreeMap::new();
+        for check in checks {
+            if let Some(status) = check.get("status").and_then(Value::as_str) {
+                *counts.entry(status).or_insert(0usize) += 1;
+            }
+        }
+        let summary = counts
+            .into_iter()
+            .map(|(status, count)| format!("{status} {count}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!("doctor: {summary}"));
+    }
+    lines.join("\n")
 }
 
 fn render_operation_summary(summary: &serde_json::Map<String, Value>, full_hashes: bool) -> String {
@@ -143,7 +262,7 @@ fn render_query_groups(value: &Value, groups: &[Value], full_hashes: bool) -> St
                 render_value(&mut output, result, 0, full_hashes, false);
                 continue;
             };
-            output.push_str(&format!("scope: {scope}\n"));
+            let _ = writeln!(output, "scope: {scope}");
             for field in ["path", "title", "snippet"] {
                 if let Some(value) = result.get(field) {
                     push_scalar_line(

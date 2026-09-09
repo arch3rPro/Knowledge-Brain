@@ -16,7 +16,7 @@ mod source_record;
 mod source_verify;
 pub use discovery::{DiscoveredSource, DiscoverySnapshot, SkippedSource, discover_sources};
 pub use extract::{BuiltinTextExtractor, classify_media_type, extract_bytes};
-pub use review::review_sources;
+pub use review::{inspect_source_changes, review_sources};
 pub use search::{query, rebuild_catalog};
 pub use skill_assets::{SKILL_NAMES, SkillAsset, legacy_skill_assets, skill_assets};
 pub use skill_hosts::{
@@ -27,7 +27,9 @@ pub use skill_plan::{
     SkillInstallState, SkillPlanRequest, SkillStatusReport, apply_skill_plan, create_skill_plan,
     skill_status,
 };
-pub use source_plan::{ReviewReport, SourceCapturePlan, SourceCaptureResult};
+pub use source_plan::{
+    ReviewReport, SourceCapturePlan, SourceCaptureResult, SourceInspectionReport,
+};
 pub use source_verify::{Verification, VerificationItem, verify_sources};
 mod app;
 mod bm25;

@@ -1,0 +1,42 @@
+{
+  "kb-vault": {
+    "positive": ["在这个空目录初始化知识库", "Adopt my existing notes folder as a Vault"],
+    "adjacent": ["把 Research 目录加入准入清单"],
+    "negative": ["搜索已经保存的 SearXNG 笔记"]
+  },
+  "kb-config": {
+    "positive": ["查看当前生效配置并启用 Research 准入", "Validate admission.yml without ingesting files"],
+    "adjacent": ["初始化一个新的 Vault"],
+    "negative": ["把已准入的来源保存下来"]
+  },
+  "kb-ingest": {
+    "positive": ["将准入目录里的新增文件保存到知识库", "Capture modified admitted sources and verify them"],
+    "adjacent": ["只检查有哪些来源发生变化，不要入库"],
+    "negative": ["写一篇新的研究文章"]
+  },
+  "kb-query": {
+    "positive": ["查找知识库里关于 MCP 的内容", "Find exact saved evidence for this phrase"],
+    "adjacent": ["调研网上最新 MCP 规范"],
+    "negative": ["把这篇笔记入库"]
+  },
+  "kb-save": {
+    "positive": ["把调研结果整理成 Wiki research", "Update the maintained article and preserve its sources"],
+    "adjacent": ["在主题目录里写一篇普通笔记"],
+    "negative": ["检查 Vault 是否正常"]
+  },
+  "kb-ops": {
+    "positive": ["做一次只读知识库维护汇总", "Run diagnostics and report source changes without saving them"],
+    "adjacent": ["明确重建 BM25 缓存"],
+    "negative": ["保存全部新增来源"]
+  },
+  "kb-backup": {
+    "positive": ["创建并校验一个知识库备份", "Restore this verified archive into a new empty directory"],
+    "adjacent": ["把 Vault 提交到 Git"],
+    "negative": ["重建搜索缓存"]
+  },
+  "kb-connect": {
+    "positive": ["给当前 Agent 安装 Knowledge-Brain Skills", "Start a fixed-Vault MCP server"],
+    "adjacent": ["用已安装的 Skill 查询知识库"],
+    "negative": ["初始化 Vault"]
+  }
+}

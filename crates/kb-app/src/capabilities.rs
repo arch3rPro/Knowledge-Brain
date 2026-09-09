@@ -39,6 +39,7 @@ pub fn capabilities() -> Capabilities {
             "apply",
             "plan",
             "review",
+            "maintain",
             "query",
             "lint",
             "cache",

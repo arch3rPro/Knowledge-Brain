@@ -185,6 +185,102 @@ fn diff_output_remains_byte_for_byte_identical_to_the_response_diff() {
     assert_eq!(output.stdout, format!("{diff}\n").as_bytes());
 }
 
+#[test]
+fn maintenance_reports_real_checks_without_persisting_a_plan() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = initialized_vault(base);
+    fs::create_dir(vault.join("Notes")).unwrap();
+    run_json(
+        base,
+        &[
+            "config",
+            "admission",
+            "add",
+            "notes",
+            "Notes",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--yes",
+            "--json",
+        ],
+    );
+    fs::write(vault.join("Notes/new.md"), "# New source\n").unwrap();
+    let vault_before = file_snapshot(&vault);
+    let state_before = file_snapshot(&base.join("state"));
+
+    let report = run_json(
+        base,
+        &["maintain", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+
+    assert_eq!(report["data"]["kind"], "maintenance");
+    assert_eq!(report["data"]["sources"]["changes"][0]["kind"], "added");
+    assert!(report["data"].get("operation_id").is_none());
+    assert!(!report["data"].to_string().contains("operation_id"));
+    assert_eq!(file_snapshot(&vault), vault_before);
+    assert_eq!(file_snapshot(&base.join("state")), state_before);
+
+    let text = run_text(base, &["maintain", "--vault", vault.to_str().unwrap()]);
+    assert!(text.contains("sources: 1 change(s) (added 1)"), "{text}");
+    assert!(text.contains("lint:"), "{text}");
+    assert!(text.contains("doctor:"), "{text}");
+    assert!(!text.contains("operation"), "{text}");
+}
+
+#[test]
+fn maintenance_reports_recovery_without_claiming_skipped_checks_passed() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = initialized_vault(base);
+    fs::write(vault.join(".kb/runtime/source-pending.json"), "{}\n").unwrap();
+    fs::write(vault.join(".kb/runtime/vault.lock"), "").unwrap();
+    let before = file_snapshot(&vault);
+
+    let report = run_json(
+        base,
+        &["maintain", "--vault", vault.to_str().unwrap(), "--json"],
+    );
+    assert_eq!(
+        report["data"]["status"]["recovery"]["pending_operations"],
+        1
+    );
+    assert_eq!(report["data"]["sources"]["status"], "not_checked");
+    assert_eq!(report["data"]["lint"]["status"], "not_checked");
+    assert_eq!(file_snapshot(&vault), before);
+
+    let text = run_text(base, &["maintain", "--vault", vault.to_str().unwrap()]);
+    assert!(text.contains("recovery: 1 pending operation(s)"), "{text}");
+    assert!(text.contains("sources: not checked"), "{text}");
+    assert!(text.contains("lint: not checked"), "{text}");
+    assert!(!text.contains("sources: no changes"), "{text}");
+    assert!(!text.contains("lint: no findings"), "{text}");
+}
+
+fn file_snapshot(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    fn collect(root: &Path, current: &Path, files: &mut Vec<(std::path::PathBuf, Vec<u8>)>) {
+        let Ok(entries) = fs::read_dir(current) else {
+            return;
+        };
+        for entry in entries {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                collect(root, &path, files);
+            } else {
+                files.push((
+                    path.strip_prefix(root).unwrap().to_path_buf(),
+                    fs::read(path).unwrap(),
+                ));
+            }
+        }
+    }
+    let mut files = Vec::new();
+    collect(root, root, &mut files);
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    files
+}
+
 fn initialized_vault(base: &Path) -> std::path::PathBuf {
     let vault = base.join("vault");
     run_json(base, &["init", vault.to_str().unwrap(), "--json"]);

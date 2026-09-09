@@ -39,3 +39,67 @@ fn changing_admission_state_preserves_owner_comments() {
     assert!(after.contains("path: Notes # keep\n"));
     assert!(after.contains("enabled: false\n"));
 }
+
+#[test]
+fn adding_admission_entry_preserves_block_style() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(temp.path().join("Notes")).unwrap();
+    std::fs::create_dir(temp.path().join("Research")).unwrap();
+    let before = "schema_version: \"v1.0\"\ndirectories:\n  - id: notes\n    path: Notes # keep\n    enabled: true\n";
+
+    let after = edit_admission(
+        before,
+        temp.path(),
+        &AdmissionAction::Add {
+            id: "research".to_owned(),
+            path: "Research".to_owned(),
+        },
+    )
+    .unwrap();
+
+    assert!(after.contains("path: Notes # keep\n"));
+    assert!(after.contains("  - id: \"research\"\n    path: \"Research\"\n    enabled: true\n"));
+    assert!(!after.contains("- { id:"));
+}
+
+#[test]
+fn adding_admission_entry_preserves_flow_style() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(temp.path().join("Notes")).unwrap();
+    std::fs::create_dir(temp.path().join("Research")).unwrap();
+    let before = "schema_version: \"v1.0\"\ndirectories:\n  - { id: \"notes\", path: \"Notes\", enabled: true }\n";
+
+    let after = edit_admission(
+        before,
+        temp.path(),
+        &AdmissionAction::Add {
+            id: "research".to_owned(),
+            path: "Research".to_owned(),
+        },
+    )
+    .unwrap();
+
+    assert!(after.contains("  - { id: \"research\", path: \"Research\", enabled: true }\n"));
+}
+
+#[test]
+fn adding_first_admission_entry_uses_block_style() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(temp.path().join("Notes")).unwrap();
+    let before = "schema_version: \"v1.0\"\ndirectories: []\n";
+
+    let after = edit_admission(
+        before,
+        temp.path(),
+        &AdmissionAction::Add {
+            id: "notes".to_owned(),
+            path: "Notes".to_owned(),
+        },
+    )
+    .unwrap();
+
+    assert!(
+        after.contains("directories:\n  - id: \"notes\"\n    path: \"Notes\"\n    enabled: true\n"),
+        "{after}"
+    );
+}

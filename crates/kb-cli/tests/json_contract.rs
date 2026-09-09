@@ -94,6 +94,12 @@ fn version_and_capabilities_are_explicit_contracts() {
         capabilities["data"]["commands"]
             .as_array()
             .unwrap()
+            .contains(&serde_json::Value::String("maintain".to_owned()))
+    );
+    assert!(
+        capabilities["data"]["commands"]
+            .as_array()
+            .unwrap()
             .contains(&serde_json::Value::String("plan".to_owned()))
     );
     assert!(

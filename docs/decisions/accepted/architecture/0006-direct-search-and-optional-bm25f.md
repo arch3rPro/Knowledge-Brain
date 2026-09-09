@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Class: architecture
-- Spec: [Knowledge-Brain design](../../../superpowers/specs/2026-09-07-knowledge-brain-design.md)
+- Spec: [Knowledge-Brain design](../../../../.superpowers/specs/2026-09-07-knowledge-brain-design.md)
 
 ## Problem
 

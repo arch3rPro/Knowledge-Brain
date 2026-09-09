@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, existing OKF parser, SHA-256, serde JSON/YAML, atomic file replacement, OS file locks.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-knowledge-save.md`
+**Spec:** `.superpowers/specs/2026-09-07-knowledge-save.md`
 
 ## Global Constraints
 

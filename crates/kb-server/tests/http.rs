@@ -140,6 +140,11 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     assert_eq!(response["schema_version"], "v1.0");
     assert_eq!(response["data"]["root"], vault.display().to_string());
 
+    let (status, response) = request(&server, "GET", "/maintenance", None, "").await;
+    assert_eq!(status, 200);
+    assert_eq!(response["data"]["kind"], "maintenance");
+    assert!(response["data"].get("operation_id").is_none());
+
     let (status, response) = request(
         &server,
         "POST",

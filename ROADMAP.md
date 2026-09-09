@@ -1,6 +1,6 @@
 # Knowledge-Brain Roadmap
 
-本文档记录实现阶段和验证状态，是进度的唯一归属。产品语义由[设计文档](docs/superpowers/specs/2026-09-07-knowledge-brain-design.md)定义，具体开发步骤由各阶段的 implementation plan 定义；旧计划中保留的未勾选步骤不代表当前实现状态。
+本文档记录实现阶段和验证状态，是进度的唯一归属。产品语义由[设计文档](.superpowers/specs/2026-09-07-knowledge-brain-design.md)定义，具体开发步骤由各阶段的 implementation plan 定义；旧计划中保留的未勾选步骤不代表当前实现状态。
 
 状态含义：
 
@@ -15,7 +15,7 @@
 
 短 Hash、人类可读操作摘要、一次最终写入确认、relevant/exact 查询，以及 `kb source save` / `kb knowledge save` 组合入口均已实现。问题定义、目标体验和验收标准见[使用体验改进](docs/product/usability-backlog.md)。
 
-实现契约见[使用体验与 Agent Skill 套件设计](docs/superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
+实现契约见[使用体验与 Agent Skill 套件设计](.superpowers/specs/2026-09-08-usable-agent-skills-design.md)。PDF/OCR、向量检索、宿主原生插件、WebUI/GUI 与发布安全等未实施方向见[未来扩展](docs/product/future-extensions.md)。
 
 ## Stage 1 — Vault 基础
 
@@ -28,13 +28,13 @@
 - 操作计划、中断恢复和并发锁
 - 状态、诊断和稳定 JSON 协议
 
-实施计划：[Vault Foundation](docs/superpowers/plans/2026-09-07-vault-foundation.md)
+实施计划：[Vault Foundation](.superpowers/plans/2026-09-07-vault-foundation.md)
 
 ## Stage 2 — 来源与读取
 
 **Status:** implemented；GitHub Actions 已完成三平台 workspace 测试与 release CLI 旅程。
 
-当前实施计划：[Source Discovery and Direct Search](docs/superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
+当前实施计划：[Source Discovery and Direct Search](.superpowers/plans/2026-09-07-source-discovery-and-direct-search.md)
 
 - 只遍历 `admission.yml` 中启用的目录
 - 识别新增、变化、删除及可能移动的来源
@@ -78,7 +78,7 @@
 
 本阶段运行了 core、app 和真实 CLI 的定向测试，以及格式和相关 crate 的 Clippy；三平台 CI 已完成 workspace 回归与 release CLI 旅程。知识写入计划、受管理 index/log 更新和中断恢复由 Stage 3B 提供。
 
-命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](docs/superpowers/plans/2026-09-07-wiki-lint.md)。
+命令与 finding code 见 [Wiki lint 参考](docs/reference/lint.md)，实施计划见 [Wiki Lint](.superpowers/plans/2026-09-07-wiki-lint.md)。
 
 ### Stage 3B — 知识计划与安全保存
 
@@ -86,14 +86,15 @@
 
 本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。三平台 CI 已完成 workspace 回归与 release CLI 旅程；真实断电测试仍未执行。
 
-请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)，实施计划见[Knowledge Save](docs/superpowers/plans/2026-09-07-knowledge-save.md)。
+请求格式和恢复语义见[知识计划参考](docs/reference/knowledge-plans.md)，实施计划见[Knowledge Save](.superpowers/plans/2026-09-07-knowledge-save.md)。
 
 ## Stage 4 — Agent 与应用入口
 
-**Status:** implemented
+**Status:** in progress
 
 - 可移植 Agent Skill
-- MCP 适配器
+- MCP stdio 适配器（Stage 4C implemented）
+- MCP Streamable HTTP 与最新协议兼容（Stage 4D planned）
 - 本机/局域网可选 HTTP（Stage 4A implemented）
 - 可恢复 operation 事件与 SSE（Stage 4B implemented）
 - 可选局域网访问策略
@@ -109,7 +110,26 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 本阶段验证了 Skill 资源校验、宿主检测歧义、复制/链接安装、安全卸载、每个受管理文件写入后进程退出并重试，以及真实 CLI 安装流程；MCP 验证了异常帧继续处理、工具契约、默认无写入、跨 Vault 拒绝，以及真实子进程的计划 → 显式 apply → 退出 → 重启 → 查询持久化结果。三平台 CI 已完成 Rust 1.85 的原生构建与测试；四种外部 Agent 的实际加载行为仍需在对应宿主环境验证。
 
-参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](docs/superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](docs/superpowers/plans/2026-09-07-mcp-stdio.md)。
+参考：[Agent Skill](docs/reference/agent-skill.md)、[MCP](docs/reference/mcp.md)、[Skill 实施计划](.superpowers/plans/2026-09-07-portable-agent-skill.md)、[MCP 实施计划](.superpowers/plans/2026-09-07-mcp-stdio.md)。
+
+### Stage 4D — MCP 2026-07-28 与 Streamable HTTP
+
+**Status:** planned（调研后实施）。当前 `kb mcp` 只提供本地 stdio；`kb serve` 是 Knowledge-Brain 自有 HTTP/SSE API，不是 MCP transport。项目因此不能把现有网络接口声明为远程 MCP 服务。
+
+实施前以 MCP 官方 `latest` 入口重新确认稳定版本。当前目标基线是 [`2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28)，需要同时处理协议语义升级和 Streamable HTTP，而不是只增加一个 HTTP 路由：
+
+- 支持每请求携带协议版本、客户端能力和身份元数据的 modern MCP，并实现必需的 `server/discover` 与不支持版本错误。
+- 明确 stdio 和 Streamable HTTP 对 `2025-11-25` 及更早 initialize-based 客户端的兼容策略；选择 modern-only 或 dual-era 必须有客户端互操作证据。
+- 按 [`2026-07-28 Streamable HTTP`](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) 提供单一 POST MCP endpoint，每次请求返回 JSON 或仅属于该请求的 SSE 流。
+- 不实现该版本已经移除的 GET stream、`Mcp-Session-Id`、协议级 session、SSE 断点续传或 `Last-Event-ID` 语义；需要长时订阅时使用规范定义的机制。
+- stdio 与 Streamable HTTP 复用同一组 `kb-app` 工具和固定 Vault 边界，不复制来源、查询、计划、确认、apply、错误码或缓存规则。
+- 默认保持只读。远程写入同时要求服务端写权限、经过认证的调用方和用户对具体变化的明确授权，不能因为连接已认证就跳过操作确认。
+- 网络实现必须覆盖 Origin 校验、DNS rebinding、防止任意 Vault 选择、请求与响应大小、并发、超时、取消、慢客户端、断线重试和日志脱敏。
+- 默认监听回环地址。开放局域网或公网是显式选择；鉴权、TLS 终止和反向代理边界按 MCP 最新授权与安全规范单独设计，现有静态 Bearer token 不自动等同于完整 MCP 授权实现。
+
+验收需要使用官方 MCP Inspector 和至少两个真实远程 MCP 客户端，验证协议发现、版本不匹配、工具枚举、普通 JSON 响应、请求级 SSE、默认只读、授权失败、明确写入、进程重启后的持久化结果以及 stdio 回归。Windows、macOS 和 Linux 分别完成原生网络入口验证；只通过单元测试或普通 HTTP 客户端不能宣称远程 MCP 可用。
+
+实现后更新 [MCP 参考](docs/reference/mcp.md)、命令与能力发现，并明确列出支持的 MCP 版本、transport、监听默认值、认证模式和未支持能力。
 
 ### Stage 4A — 可选 HTTP 适配器
 
@@ -117,7 +137,7 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回环只读、Bearer token、来源 review/apply、写入后的 direct 回退、重建后的严格 BM25，以及 HTTP 与 CLI 的结果一致性。非回环 `0.0.0.0` 监听在无 token 时拒绝启动，提供 token 后启动成功并拒绝未鉴权请求。
 
-当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。三平台 CI 已运行 workspace 测试和 release CLI 旅程；浏览器 WebUI、拒绝服务加固与真实局域网部署仍未验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](docs/superpowers/plans/2026-09-07-http-api.md)。
+当前没有 TLS、daemon 或自启动。局域网明文模式只适用于受信任网络或用户管理的 TLS 反向代理。三平台 CI 已运行 workspace 测试和 release CLI 旅程；浏览器 WebUI、拒绝服务加固与真实局域网部署仍未验证。路由和安全边界见 [HTTP 参考](docs/reference/http.md)，实施计划见 [HTTP API](.superpowers/plans/2026-09-07-http-api.md)。
 
 ### Stage 4B — Operation 事件与 SSE
 
@@ -125,7 +145,7 @@ macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回�
 
 真实 HTTP 进程测试观察到来源保存的 `planned → applying → progress → applied` 完整序列和终态自动关闭；使用倒数第二个事件 ID 重连时只返回最终事件，使用超前游标时返回 `invalid_config`。
 
-本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载和跨机器事件同步。三平台 CI 已完成 workspace 测试与 release CLI 旅程；事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](docs/superpowers/plans/2026-09-07-operation-events-sse.md)。
+本阶段未验证浏览器 `EventSource`、慢客户端/拒绝服务负载和跨机器事件同步。三平台 CI 已完成 workspace 测试与 release CLI 旅程；事件字段和续传规则见 [Operation 事件参考](docs/reference/operation-events.md)，实施计划见 [Operation Events and SSE](.superpowers/plans/2026-09-07-operation-events-sse.md)。
 
 ## Stage 5 — 搜索、备份与发布
 
@@ -148,7 +168,7 @@ Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足�
 
 本阶段运行了 core 搜索契约、应用层索引/排序/失效、来源及知识保存后的双缓存失效、真实 CLI BM25 流程、JSON/文档契约和既有 Stage 2 查询流程的定向测试，以及格式和相关 crate 的 Clippy。三平台 CI 已完成 workspace 回归与 release CLI 旅程。
 
-排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](docs/superpowers/plans/2026-09-07-bm25f-search.md)。
+排序与索引语义见[搜索规则](docs/reference/search.md)，实施计划见[BM25F Search](.superpowers/plans/2026-09-07-bm25f-search.md)。
 
 ### Stage 5B — 可校验 ZIP 备份
 
@@ -160,7 +180,7 @@ macOS 上另使用一个包含 8 个准入目录、Wiki、来源历史和 BM25 �
 
 同一 Vault 的后续实测逐项比较了完整备份清单中的 44 个文件：原目录与恢复目录的大小和 SHA-256 全部一致。精简备份明确排除 16 个来源对象，恢复后 `source verify` 对这些缺失证据逐项报告失败。删除 ZIP 条目后的归档被 verify 和 restore 拒绝，失败恢复未留下目标目录；已有输出和非空恢复目标也被拒绝。`backup verify` 曾将归档校验错误编码为 `restore_failed`；当前使用 `backup_verification_failed`，并在 `error.details.legacy_code` 中提供 `restore_failed` 过渡值。该接口命名问题已在[使用体验改进](docs/product/usability-backlog.md#ux-006--区分备份校验失败与恢复失败)中解决。
 
-使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](docs/superpowers/plans/2026-09-07-verified-zip-backup.md)。
+使用和安全边界见[备份参考](docs/reference/backup.md)，实施计划见[Verified ZIP Backup](.superpowers/plans/2026-09-07-verified-zip-backup.md)。
 
 ### Stage 5C — 原生发布与 CLI 更新
 

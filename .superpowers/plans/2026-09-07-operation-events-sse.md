@@ -4,7 +4,7 @@
 
 **Architecture:** `kb-core` owns event types, `kb-app` atomically records and reads per-operation logs, and `kb-server` converts repeated fixed-Vault snapshots into authenticated SSE.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-operation-events-sse.md`
+**Spec:** `.superpowers/specs/2026-09-07-operation-events-sse.md`
 
 **Verification constraint:** Run focused tests only; do not run the workspace-wide suite.
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, serde, existing `kb-core` / `kb-app` / `kb-cli` crate boundaries, assert_cmd integration tests.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-explicit-schema-migration-paths.md`
+**Spec:** `.superpowers/specs/2026-09-07-explicit-schema-migration-paths.md`
 
 ## Global Constraints
 

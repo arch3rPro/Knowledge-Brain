@@ -4,7 +4,7 @@
 
 **Architecture:** `kb-core` owns serializable manifest/request/report contracts. `kb-app` owns safe collection, streaming ZIP IO, hostile-archive validation and staged restore. `kb-cli` owns only command argument translation and rendering.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-verified-zip-backup.md`
+**Spec:** `.superpowers/specs/2026-09-07-verified-zip-backup.md`
 
 **Verification constraint:** Run focused tests only; do not run the workspace-wide suite.
 

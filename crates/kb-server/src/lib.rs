@@ -187,6 +187,7 @@ fn router(state: ServerState) -> Router {
     Router::new()
         .route("/capabilities", get(capabilities))
         .route("/status", get(status))
+        .route("/maintenance", get(maintenance))
         .route("/doctor", get(doctor))
         .route("/query", post(query))
         .route("/lint", post(lint))
@@ -233,6 +234,17 @@ async fn status(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         &state,
         &headers,
         AppRequest::Status {
+            vault: Some(selected(&state)),
+        },
+    )
+    .await
+}
+
+async fn maintenance(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    run_authenticated(
+        &state,
+        &headers,
+        AppRequest::Maintenance {
             vault: Some(selected(&state)),
         },
     )

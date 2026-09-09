@@ -12,6 +12,8 @@ fn project_readme_covers_the_first_run_contract() {
         "## Features",
         "## Vault 如何组织",
         "## 快速开始",
+        "### AI Agent（推荐）",
+        "### 人类手动操作",
         "## 架构",
         "## 开发",
         "## 文档",
@@ -20,6 +22,7 @@ fn project_readme_covers_the_first_run_contract() {
     }
 
     assert!(!PROJECT_README.contains("## 当前能力"));
+    assert!(PROJECT_README.contains("```markdown\n请阅读并遵循 [Knowledge-Brain AI Agent 操作指南](https://github.com/arch3rPro/Knowledge-Brain/blob/main/docs/guides/agent-operations.md)"));
 
     for contract in [
         "admission.yml",
@@ -83,6 +86,7 @@ fn command_reference_names_every_real_top_level_command() {
         "operation",
         "config",
         "status",
+        "maintain",
         "doctor",
         "vault",
         "paths",
@@ -132,6 +136,7 @@ fn agent_skill_and_mcp_references_own_their_public_contracts() {
         "stdout",
         "kb_source_save",
         "kb_knowledge_save",
+        "kb_maintenance",
         "confirmation_token",
     ] {
         assert!(mcp.contains(contract), "missing MCP contract: {contract}");

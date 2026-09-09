@@ -115,6 +115,11 @@ enum Commands {
         #[command(flatten)]
         context: VaultContext,
     },
+    /// Run a read-only Vault maintenance inspection.
+    Maintain {
+        #[command(flatten)]
+        context: VaultContext,
+    },
     /// Search Wiki Markdown or captured sources.
     Query {
         query: String,
@@ -594,6 +599,7 @@ impl LayerSelection {
 }
 
 impl Cli {
+    #[allow(clippy::too_many_lines)]
     fn into_command(self) -> ParsedCommand {
         let mut parsed = match self.command {
             Commands::Mcp { allow_write, vault } => {
@@ -607,6 +613,14 @@ impl Cli {
             } => serve_command(bind, token_file, allow_write, vault),
             Commands::Backup { command } => backup_command(command),
             Commands::Review { context } => review_command(context),
+            Commands::Maintain { context } => ParsedCommand::App {
+                request: Ok(AppRequest::Maintenance {
+                    vault: context.vault,
+                }),
+                json: context.json,
+                fail_on_findings: false,
+                full_hashes: false,
+            },
             Commands::Query {
                 query,
                 scope,
@@ -626,7 +640,7 @@ impl Cli {
                         execution,
                         context,
                     },
-            } => knowledge_save_command(request, execution, context),
+            } => knowledge_save_command(request, &execution, context),
             Commands::Cache {
                 command: CacheCommands::Rebuild { context },
             } => ParsedCommand::App {
@@ -876,10 +890,10 @@ fn plan_command(request: KnowledgeRequestArg, context: VaultContext) -> ParsedCo
 
 fn knowledge_save_command(
     request: Option<KnowledgeRequestArg>,
-    execution: SaveExecution,
+    execution: &SaveExecution,
     context: VaultContext,
 ) -> ParsedCommand {
-    let mode = save_mode(&execution);
+    let mode = save_mode(execution);
     let request = match (request, &mode) {
         (
             Some(KnowledgeRequestArg::Parsed(request)),

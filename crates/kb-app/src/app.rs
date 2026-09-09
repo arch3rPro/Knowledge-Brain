@@ -60,6 +60,9 @@ pub enum AppRequest {
     Review {
         vault: Option<String>,
     },
+    Maintenance {
+        vault: Option<String>,
+    },
     SourceSave {
         vault: Option<String>,
         mode: SaveMode,
@@ -234,6 +237,7 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
     match request {
         AppRequest::Backup(request) => run_backup(request, context),
         AppRequest::Review { vault } => run_review(context, vault),
+        AppRequest::Maintenance { vault } => run_maintenance(context, vault),
         AppRequest::SourceSave { vault, mode } => run_source_save(context, vault, mode),
         AppRequest::Query { vault, request } => {
             request.validate()?;
@@ -310,6 +314,46 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
         })),
         AppRequest::Capabilities => to_value(capabilities()),
     }
+}
+
+fn run_maintenance(context: &AppContext, vault: Option<String>) -> Result<Value, KbError> {
+    let selected = select_vault(context, vault)?;
+    let status = {
+        let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "maintenance", None)?;
+        vault_status(&selected.root, context.user_paths()?, &context.overrides())?
+    };
+    let (sources, lint) = if status.recovery.pending_operations > 0 {
+        let unavailable = json!({
+            "status": "not_checked",
+            "reason": "vault_needs_recovery",
+        });
+        (unavailable.clone(), unavailable)
+    } else {
+        let config = crate::load_effective_config(
+            &selected.root,
+            context.user_paths()?,
+            &context.overrides(),
+        )?;
+        let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "maintenance", None)?;
+        (
+            to_value(crate::inspect_source_changes(&selected.root, &config)?)?,
+            to_value(crate::lint(
+                &selected.root,
+                &config,
+                time::OffsetDateTime::now_utc(),
+            )?)?,
+        )
+    };
+    let diagnostics = doctor(&selected.root, context.user_paths()?, &context.overrides())?;
+    Ok(json!({
+        "kind": "maintenance",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+        "root": selected.root,
+        "status": status,
+        "sources": sources,
+        "lint": lint,
+        "doctor": diagnostics,
+    }))
 }
 
 fn run_backup(request: BackupRequest, context: &AppContext) -> Result<Value, KbError> {
@@ -408,8 +452,8 @@ fn run_source_save(
                 context,
                 vault,
                 operation_id,
-                preview,
-                mode,
+                &preview,
+                &mode,
                 SaveKind::Source,
             )
         }
@@ -437,8 +481,8 @@ fn run_knowledge_save(
                 context,
                 vault,
                 operation_id,
-                preview,
-                mode,
+                &preview,
+                &mode,
                 SaveKind::Knowledge,
             )
         }
@@ -455,8 +499,8 @@ fn respond_to_prepared_save(
     context: &AppContext,
     vault: Option<String>,
     operation_id: Option<OperationId>,
-    preview: Value,
-    mode: SaveMode,
+    preview: &Value,
+    mode: &SaveMode,
     kind: SaveKind,
 ) -> Result<Value, KbError> {
     let Some(operation_id) = operation_id else {
@@ -471,7 +515,7 @@ fn respond_to_prepared_save(
     match mode {
         SaveMode::Prepare => Ok(json!({
             "phase": "awaiting_confirmation",
-            "change_summary": change_summary(&preview)?,
+            "change_summary": change_summary(preview)?,
             "confirmation_token": operation_id,
             "preview": preview,
             "result": Value::Null,

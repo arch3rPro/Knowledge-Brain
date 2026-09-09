@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, serde/JSON, existing operation storage and atomic file utilities, Markdown Agent Skill assets.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-knowledge-brain-design.md` sections 13, 16, 17, and 20.
+**Spec:** `.superpowers/specs/2026-09-07-knowledge-brain-design.md` sections 13, 16, 17, and 20.
 
 ## Global Constraints
 

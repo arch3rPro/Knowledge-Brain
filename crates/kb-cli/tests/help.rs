@@ -10,7 +10,8 @@ fn help_identifies_the_portable_cli() {
         .success()
         .stdout(predicate::str::contains("Knowledge-Brain"))
         .stdout(predicate::str::contains("Usage: kb"))
-        .stdout(predicate::str::contains("lint"));
+        .stdout(predicate::str::contains("lint"))
+        .stdout(predicate::str::contains("maintain"));
 }
 
 #[test]

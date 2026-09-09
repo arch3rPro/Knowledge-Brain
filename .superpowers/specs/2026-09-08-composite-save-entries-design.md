@@ -2,7 +2,7 @@
 
 - Status: approved design
 - Date: 2026-09-08
-- Decision: [ADR-0018](../../decisions/proposed/architecture/0018-composite-save-coordination.md)
+- Decision: [ADR-0018](../../docs/decisions/proposed/architecture/0018-composite-save-coordination.md)
 
 ## 用户层目标
 

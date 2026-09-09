@@ -4,7 +4,7 @@ use crate::{
     source_io::{Budget, hash, read_config_hash, safe_path},
     source_plan::{
         CaptureKind, ChangeKind, RecordWrite, ReviewReport, SourceCapturePlan, SourceChange,
-        SourceInput,
+        SourceInput, SourceInspectionReport,
     },
     source_record::{self, SourceRecord},
 };
@@ -20,6 +20,43 @@ pub fn review_sources(
     paths: &UserPaths,
     config: &EffectiveConfig,
 ) -> Result<ReviewReport, KbError> {
+    let prepared = prepare_review(root, config)?;
+    let operation_id = persist_plan(
+        root,
+        paths,
+        config,
+        prepared.inputs,
+        prepared.writes,
+        prepared.at,
+    )?;
+    Ok(ReviewReport {
+        schema_version: CURRENT_SCHEMA_VERSION,
+        vault_id: config.vault_id,
+        operation_id,
+        changes: prepared.report.changes,
+        unchanged: prepared.report.unchanged,
+        skipped: prepared.report.skipped,
+    })
+}
+
+/// Inspect admitted source changes without creating a plan or changing state.
+/// # Errors
+/// Returns admission, source, limit, or record errors.
+pub fn inspect_source_changes(
+    root: &Path,
+    config: &EffectiveConfig,
+) -> Result<SourceInspectionReport, KbError> {
+    Ok(prepare_review(root, config)?.report)
+}
+
+struct PreparedReview {
+    report: SourceInspectionReport,
+    inputs: Vec<SourceInput>,
+    writes: Vec<RecordWrite>,
+    at: String,
+}
+
+fn prepare_review(root: &Path, config: &EffectiveConfig) -> Result<PreparedReview, KbError> {
     let admission = load_admission(root)?;
     let snapshot = discover_sources(root, &admission, config)?;
     let mut budget = Budget::new(config);
@@ -101,14 +138,17 @@ pub fn review_sources(
         });
     }
     changes.sort_by_key(|c| c.source.logical_uri());
-    let operation_id = persist_plan(root, paths, config, inputs, writes, at)?;
-    Ok(ReviewReport {
-        schema_version: CURRENT_SCHEMA_VERSION,
-        vault_id: config.vault_id,
-        operation_id,
-        changes,
-        unchanged,
-        skipped: snapshot.skipped,
+    Ok(PreparedReview {
+        report: SourceInspectionReport {
+            schema_version: CURRENT_SCHEMA_VERSION,
+            vault_id: config.vault_id,
+            changes,
+            unchanged,
+            skipped: snapshot.skipped,
+        },
+        inputs,
+        writes,
+        at,
     })
 }
 fn plan_input(record: &SourceRecord, topic: &str) -> Result<SourceInput, KbError> {

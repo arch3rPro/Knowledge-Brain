@@ -2,7 +2,7 @@
 
 - Status: proposed revision
 - Date: 2026-09-08
-- Decisions: [ADR-0019](../../decisions/proposed/architecture/0019-on-demand-verification-and-tagged-releases.md), [ADR-0020](../../decisions/proposed/architecture/0020-explicit-verified-cli-updates.md), [ADR-0021](../../decisions/proposed/process/0021-build-before-tag-release.md)
+- Decisions: [ADR-0019](../../docs/decisions/proposed/architecture/0019-on-demand-verification-and-tagged-releases.md), [ADR-0020](../../docs/decisions/proposed/architecture/0020-explicit-verified-cli-updates.md), [ADR-0021](../../docs/decisions/proposed/process/0021-build-before-tag-release.md)
 
 ## 目标
 

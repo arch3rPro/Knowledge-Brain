@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 2024, html2text/html5ever, quick-xml, zip, serde, existing `kb-core`/`kb-app` application path.
 
-**Spec:** `docs/superpowers/specs/2026-09-07-knowledge-brain-design.md`
+**Spec:** `.superpowers/specs/2026-09-07-knowledge-brain-design.md`
 
 ## Global Constraints
 

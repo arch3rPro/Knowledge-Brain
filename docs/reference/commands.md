@@ -17,7 +17,7 @@ kb operation show <OPERATION_ID> [--json]
 
 `adopt` 审查已有目录并把计划保存到用户状态目录，不修改目标。`apply` 按操作 ID 重新验证并执行；同一已完成 ID 再次执行时返回保存的结果，不重复产生影响。
 
-计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；`operation show` 响应保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。`state` 选择持久化的 `plan` 或 `result` 载荷，`operation_summary.operation_state` 反映最新的已验证事件；因此失败后仍保留计划的操作会返回 `state: "planned"` 和 `plan`，同时摘要状态为 `failed`。客户端可以继续读取原字段。可提交的计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示；完成或失败的摘要以 `requires_confirmation: false` 和 `can_apply: false` 表示不可提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
+计划创建响应保留各自既有的根字段，并在同一根级增加 `operation_summary`；`operation show` 响应保留 `state` 以及 `plan` 或 `result`，并在同一根级增加 `operation_summary`。`state` 选择持久化的 `plan` 或 `result` 载荷，`operation_summary.operation_state` 反映最新的已验证事件；因此失败后仍保留计划的操作会返回 `state: "planned"` 和 `plan`，同时摘要状态为 `failed`。客户端可以继续读取原字段。可提交的计划摘要以 `requires_confirmation: true` 和 `can_apply: true` 表示；完成或失败的摘要以 `requires_confirmation: false` 和 `can_apply: false` 表示不可提交。直接输入 `kb apply <OPERATION_ID>` 已是 CLI 用户的明确写入请求；由 Agent 或 UI 发起时，外层调用方须展示该摘要并在最终 apply 前取得一次明确确认。完整语义见[已批准的使用体验设计](../../.superpowers/specs/2026-09-08-usable-agent-skills-design.md#操作摘要与一次确认)。
 
 ## 备份与恢复
 
@@ -40,13 +40,14 @@ kb apply <OPERATION_ID> [--json]
 
 通常的 Agent 或 UI 保存使用 `kb knowledge save`。默认调用只准备变更，返回机器使用的 `confirmation_token` 和面向用户的变更摘要；Agent 或 UI 只展示摘要并取得一次确认。确认后，它以 `--confirm <TOKEN>` 提交刚才准备的同一份内容。用户不需要看到或输入 token、operation ID，也不需要运行 `apply`。已在调用前取得授权的自动化可以使用 `--yes`，在一次调用内准备并保存。
 
-`plan create`、`operation show` 和 `apply` 是高级接口，适用于延后执行、脚本编排或人工逐项审阅。`plan create` 把结构化 research/article 建议转换为可审阅计划，不修改 Vault；`apply` 在独占锁内重新核对并整批保存。请求字段、冲突和恢复语义见[知识计划参考](knowledge-plans.md)与[一次确认的保存入口设计](../superpowers/specs/2026-09-08-composite-save-entries-design.md)。
+`plan create`、`operation show` 和 `apply` 是高级接口，适用于延后执行、脚本编排或人工逐项审阅。`plan create` 把结构化 research/article 建议转换为可审阅计划，不修改 Vault；`apply` 在独占锁内重新核对并整批保存。请求字段、冲突和恢复语义见[知识计划参考](knowledge-plans.md)与[一次确认的保存入口设计](../../.superpowers/specs/2026-09-08-composite-save-entries-design.md)。
 
 ## 来源与搜索
 
 ```text
 kb source save [--yes | --confirm <TOKEN>] [--vault <PATH_OR_ID>] [--json]
 kb review [--vault <PATH_OR_ID>] [--json]
+kb maintain [--vault <PATH_OR_ID>] [--json]
 kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--exact] [--strict-backend] [--vault <PATH_OR_ID>] [--json]
 kb cache rebuild [--vault <PATH_OR_ID>] [--json]
 kb source verify [--vault <PATH_OR_ID>] [--json]
@@ -55,7 +56,9 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 
 通常的来源保存使用 `kb source save`。默认调用只检查 `admission.yml` 中启用的目录、准备来源变更，并返回 Agent/UI 保留的 `confirmation_token` 和变更摘要。Agent/UI 向用户展示一次摘要后，以 `--confirm <TOKEN>` 保存同一份来源版本；用户不需要理解 token、operation 或 `apply`。`--yes` 仅用于调用前已经取得授权的一次调用内准备并保存。没有来源变化时结果为 `unchanged`，不会产生 token 或待确认操作。
 
-`review` 只查看启用的准入目录，返回新增、变化、删除及可能移动的来源。有变化时保存用户状态目录中的计划；没有变化时 `operation_id` 为 `null`。它是脚本、延后执行和人工审阅的高级接口；明确执行该 ID 的 `apply` 才保存来源与日志。计划核对及恢复规则见[来源格式](sources.md)与[一次确认的保存入口设计](../superpowers/specs/2026-09-08-composite-save-entries-design.md)。
+`review` 只查看启用的准入目录，返回新增、变化、删除及可能移动的来源。有变化时保存用户状态目录中的计划；没有变化时 `operation_id` 为 `null`。它是脚本、延后执行和人工审阅的高级接口；明确执行该 ID 的 `apply` 才保存来源与日志。计划核对及恢复规则见[来源格式](sources.md)与[一次确认的保存入口设计](../../.superpowers/specs/2026-09-08-composite-save-entries-design.md)。
+
+`maintain` 是只读维护入口：聚合 Vault 状态、准入来源变化、Wiki lint 和 doctor 独立诊断。来源检查不创建 operation、确认 token 或入库记录；命令也不生成 Wiki、修复文件或重建缓存。和其他并发安全的读取命令一样，它可能在 `.kb/runtime` 创建空锁文件；该文件不承载知识或操作状态。摘要只使用各报告实际返回的字段。存在待恢复操作时，来源与 lint 明确返回 `not_checked`，而不是把跳过检查显示成正常。
 
 `query` 默认 `scope=wiki`、`limit=10`，并按相关性发现结果；`--exact` 改为区分大小写的字面量核验。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。每个响应以 `match_mode` 报告实际采用的模式。相关性查询的 BM25 索引不可用时默认整次回退 direct 并返回 warning；`--strict-backend` 改为返回 `index_stale`。匹配、排序、解释和索引新鲜度规则见[搜索参考](search.md)。
 
@@ -99,6 +102,7 @@ kb paths [--vault <PATH_OR_ID>] [--json]
 
 ```text
 kb status [--vault <PATH_OR_ID>] [--json]
+kb maintain [--vault <PATH_OR_ID>] [--json]
 kb doctor [--vault <PATH_OR_ID>] [--json]
 kb version [--json]
 kb capabilities [--json]

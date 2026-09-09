@@ -1,6 +1,6 @@
 # AI Agent 操作指南
 
-本文可直接作为 AI Agent 使用 Knowledge-Brain 的操作说明。`kb` CLI 是基础依赖，能够独立完成所有核心工作；MCP 和 Agent Skills 是可选接入方式，不能替代 CLI 的安装，也不改变 Vault 的业务规则和写入授权边界。
+本文可直接作为 AI Agent 使用 Knowledge-Brain 的操作说明。`kb` CLI 是基础依赖，能够独立完成所有核心工作；在宿主支持时，推荐安装专项 Agent Skills 来改善任务触发和执行稳定性，但安装仍是需要用户授权的可选写操作。MCP 也是可选入口。两者不能替代 CLI 的安装，也不改变 Vault 的业务规则和写入授权边界。
 
 详细参数以[命令参考](../reference/commands.md)为准。本文负责说明任务顺序、操作边界和完成证据。
 
@@ -32,14 +32,14 @@ kb status --vault "<VAULT_PATH_OR_ID>" --json
 
 如果 `kb` 不可用，停止 Knowledge-Brain 操作并说明 CLI 尚未安装。MCP 连接或 Skill 文件存在都不能证明本机 CLI 可用。
 
-仅在需要使用或测试 Agent Skills 时检查其状态：
+宿主支持 Agent Skills 时，推荐先检查其状态：
 
 ```text
 kb skills detect --vault "<VAULT_PATH_OR_ID>" --json
 kb skills status --host <HOST> --scope vault --vault "<VAULT_PATH_OR_ID>" --json
 ```
 
-`detect` 只检测宿主，不安装 Skill。只有 `status` 明确报告受管理安装或已识别的外部安装，且当前 Agent 实际读取并遵循该 Skill 时，才能把操作描述为通过 Skill 完成。
+`detect` 只检测宿主，不安装 Skill。安装前必须向用户说明宿主、Vault/User 范围、copy/symlink 模式和目标路径，并取得授权。用户不安装、宿主不支持或 Skill 不可用时，直接继续 CLI 流程。只有 `status` 明确报告受管理安装或已识别的外部安装，且当前 Agent 实际读取并遵循该 Skill 时，才能把操作描述为通过 Skill 完成。
 
 ## 初始化 Vault
 
@@ -142,13 +142,10 @@ kb query "<QUERY>" --scope wiki|sources|all --limit <LIMIT> --vault "<VAULT>" --
 
 ## 维护与诊断
 
-“维护”“体检”和“维护汇总”默认是只读检查，不包含入库、Wiki 整理、修复或缓存重建。按任务需要组合：
+“维护”“体检”和“维护汇总”默认是只读检查，不包含入库、Wiki 整理、修复或缓存重建。使用原生聚合入口：
 
 ```text
-kb status --vault "<VAULT>" --json
-kb review --vault "<VAULT>" --json
-kb lint --vault "<VAULT>" --json
-kb doctor --vault "<VAULT>" --json
+kb maintain --vault "<VAULT>" --json
 ```
 
 维护摘要必须来自实际响应：
@@ -158,7 +155,7 @@ kb doctor --vault "<VAULT>" --json
 - doctor 分别报告失败、警告、未检查和通过项；没有整体 `ok` 字段时不创造健康分数。
 - 正常分项可以压缩，异常和用户可执行的下一步优先展示。
 
-`kb review` 当前可能同时准备内部操作计划。维护请求不展示该计划、不发起确认，也不执行保存。只有用户随后明确要求处理某项变化时，才进入对应写入流程。
+`kb maintain` 检查准入来源变化但不创建操作计划、确认 token 或可应用 operation。只有用户随后明确要求处理某项变化时，才进入对应写入流程。
 
 `kb cache rebuild` 是独立维护动作，只在用户明确要求重建缓存、配置启用的索引需要刷新，或诊断结果明确要求时执行。它不会创建知识，也不是备份。
 

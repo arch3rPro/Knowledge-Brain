@@ -39,6 +39,7 @@ pub fn edit_admission(
     vault_root: &Path,
     action: &AdmissionAction,
 ) -> Result<String, KbError> {
+    let admission_style = admission_sequence_style(input);
     let parsed: AdmissionDocument = serde_yaml_ng::from_str(input)
         .map_err(|error| KbError::invalid_config("admission.yml", error.to_string()))?;
     parsed.validate(vault_root)?;
@@ -96,13 +97,77 @@ pub fn edit_admission(
         }
     }
 
-    let output = file
+    let mut output = file
         .to_string()
         .replace("directories:  []", "directories: []");
+    if let (AdmissionAction::Add { id, path }, AdmissionSequenceStyle::Block { item_indent }) =
+        (action, admission_style)
+    {
+        let quoted_id = serde_json::to_string(id)
+            .map_err(|error| KbError::invalid_config("admission.yml", error.to_string()))?;
+        let quoted_path = serde_json::to_string(path)
+            .map_err(|error| KbError::invalid_config("admission.yml", error.to_string()))?;
+        let flow =
+            format!("{item_indent}- {{ id: {quoted_id}, path: {quoted_path}, enabled: true }}");
+        let continuation = format!("{item_indent}  ");
+        let block = format!(
+            "{item_indent}- id: {quoted_id}\n{continuation}path: {quoted_path}\n{continuation}enabled: true"
+        );
+        if !output.contains(&flow) {
+            return Err(KbError::invalid_config(
+                "admission.yml",
+                "cannot preserve the existing directories entry style",
+            ));
+        }
+        output = output.replacen(&flow, &block, 1);
+        output = output.replace("directories: \n", "directories:\n");
+    }
     let candidate: AdmissionDocument = serde_yaml_ng::from_str(&output)
         .map_err(|error| KbError::invalid_config("admission.yml", error.to_string()))?;
     candidate.validate(vault_root)?;
     Ok(output)
+}
+
+#[derive(Debug, Clone)]
+enum AdmissionSequenceStyle {
+    Block { item_indent: String },
+    Flow,
+}
+
+fn admission_sequence_style(input: &str) -> AdmissionSequenceStyle {
+    let mut directories_indent = None;
+    for line in input.lines() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if directories_indent.is_none() {
+            if let Some(rest) = trimmed.strip_prefix("directories:") {
+                let inline_value = rest.trim();
+                if inline_value.starts_with('[') && inline_value != "[]" {
+                    return AdmissionSequenceStyle::Flow;
+                }
+                directories_indent = Some(indent);
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let base_indent = directories_indent.unwrap_or_default();
+        if indent <= base_indent {
+            break;
+        }
+        if trimmed.starts_with("- {") {
+            return AdmissionSequenceStyle::Flow;
+        }
+        if trimmed.starts_with('-') {
+            return AdmissionSequenceStyle::Block {
+                item_indent: line[..indent].to_owned(),
+            };
+        }
+    }
+    AdmissionSequenceStyle::Block {
+        item_indent: " ".repeat(directories_indent.unwrap_or_default() + 2),
+    }
 }
 
 fn entry_mapping(sequence: &yaml_edit::Sequence, id: &str) -> Result<Mapping, KbError> {

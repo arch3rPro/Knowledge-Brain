@@ -59,6 +59,11 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
                 .is_file()
         );
     }
+    assert_eq!(
+        fs::read_to_string(vault.join(".agents/skills/kb-save/references/request-format.md"))
+            .unwrap(),
+        include_str!("../../../skills/kb-save/references/request-format.md")
+    );
     assert!(temp.path().join("state/skill-installations/vault").exists());
     let bridge = fs::read_to_string(vault.join("AGENTS.md")).unwrap();
     assert!(bridge.starts_with(original));
@@ -94,6 +99,7 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
     )
     .unwrap();
     assert!(!vault.join(".agents/skills/kb-vault").exists());
+    assert!(!vault.join(".agents/skills/kb-save").exists());
     assert!(!temp.path().join("state/skill-installations/vault").exists());
     assert_eq!(
         fs::read_to_string(vault.join("AGENTS.md")).unwrap(),
@@ -554,9 +560,11 @@ fn legacy_tree_rejects_extra_entries_and_links_without_creating_a_migration_plan
             "empty-directory" => fs::create_dir(legacy.join("empty")).unwrap(),
             "extra-file" => fs::write(legacy.join("extra.md"), "extra\n").unwrap(),
             "directory-link" => {
-                std::os::unix::fs::symlink(temporary.path(), legacy.join("linked")).unwrap()
+                std::os::unix::fs::symlink(temporary.path(), legacy.join("linked")).unwrap();
             }
-            "loop-link" => std::os::unix::fs::symlink(".", legacy.join("loop")).unwrap(),
+            "loop-link" => {
+                std::os::unix::fs::symlink(".", legacy.join("loop")).unwrap();
+            }
             _ => unreachable!(),
         }
         let context = context(temporary.path());

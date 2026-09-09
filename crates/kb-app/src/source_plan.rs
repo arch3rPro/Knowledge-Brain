@@ -73,3 +73,12 @@ pub struct ReviewReport {
     pub unchanged: usize,
     pub skipped: Vec<crate::SkippedSource>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceInspectionReport {
+    pub schema_version: SchemaVersion,
+    pub vault_id: Uuid,
+    pub changes: Vec<SourceChange>,
+    pub unchanged: usize,
+    pub skipped: Vec<crate::SkippedSource>,
+}

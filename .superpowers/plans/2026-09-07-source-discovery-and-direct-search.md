@@ -32,7 +32,7 @@ Implementation refinements:
 - Source plans carry a digest and enforce the configured retention interval before new writes; recovery is attempted before expiry rejection. Completed receipts remain repeatable. Pending journals and markers cannot be discarded as cache.
 - Read limits are conservative per reading phase, not process-wide cumulative IO. Directory entries are bounded while enumerating, before sorting.
 
-Durable contracts are maintained in [sources](../../reference/sources.md), [search](../../reference/search.md) and [configuration](../../reference/configuration.md); current platform evidence lives in [Roadmap](../../../ROADMAP.md). ADR-0002, ADR-0003, ADR-0006 and ADR-0007 remain proposed pending their full acceptance evidence; local tests alone do not prove every native platform.
+Durable contracts are maintained in [sources](../../docs/reference/sources.md), [search](../../docs/reference/search.md) and [configuration](../../docs/reference/configuration.md); current platform evidence lives in [Roadmap](../../ROADMAP.md). ADR-0002, ADR-0003, ADR-0006 and ADR-0007 remain proposed pending their full acceptance evidence; local tests alone do not prove every native platform.
 
 ## Global Constraints
 
