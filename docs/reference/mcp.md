@@ -1,14 +1,18 @@
-# MCP stdio 参考
+# MCP 参考
 
-`kb mcp` 把一个固定 Vault 暴露为本地 MCP stdio 服务，供支持 MCP 的 Agent、编辑器、WebUI 或 GUI 调用。MCP 只是 `kb-app` 的入口适配器，不另行实现 Vault 规则。安装 `kb-*` Skills 或使用 `npx skills add` 不会改变 MCP 工具集；Skill 只是指导 Agent 调用这个固定契约。
+`kb mcp` 把启动时选定的一个 Vault 暴露给支持 MCP 的 Agent、编辑器、WebUI 或 GUI。MCP 是 `kb-app` 的可选入口，CLI 仍是基础依赖；stdio 与 Streamable HTTP 使用同一组工具、Vault 边界和写入确认规则。
 
-## 启动与客户端配置
+## 传输与协议
+
+### stdio
 
 ```text
-kb mcp [--vault <PATH_OR_ID>] [--allow-write]
+kb mcp [--transport stdio] [--vault <PATH_OR_ID>] [--allow-write]
 ```
 
-客户端配置通常由可执行命令和参数组成：
+`stdio` 是默认传输。它兼容现有 initialize-based `2025-06-18` 请求，也会把带 `io.modelcontextprotocol/protocolVersion` 元数据的请求路由到无初始化的 `2026-07-28` 协议。进程从 stdin 读取一行一个 JSON-RPC 消息，只把协议响应写入 stdout；单条消息上限为 1 MiB。
+
+常见客户端配置：
 
 ```json
 {
@@ -17,9 +21,28 @@ kb mcp [--vault <PATH_OR_ID>] [--allow-write]
 }
 ```
 
-Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经由 `kb vault register` 登记的稳定 Vault ID。服务启动时解析一次并固定 Vault，后续请求不能切换目录或提交任意文件路径。
+### Streamable HTTP
 
-进程从 stdin 读取一行一个 JSON-RPC 消息，只把 MCP 响应写入 stdout；启动信息和普通 CLI 文本不会混入协议输出。单条消息上限为 1 MiB。格式错误、超限或未知方法返回有界错误，后续消息仍可继续处理。
+```text
+kb mcp --transport streamable-http \
+  [--bind <IP:PORT>] \
+  [--token-file <PATH>] \
+  [--allow-origin <ORIGIN>]... \
+  [--allow-write] \
+  [--vault <PATH_OR_ID>]
+```
+
+默认端点是 `http://127.0.0.1:9433/mcp`，只接受 POST，使用现代 `2026-07-28` 协议。`server/discover` 和 `tools/list` 返回 JSON；`tools/call` 可以返回仅属于该请求、完成后关闭的 SSE。该版本不使用 initialize、GET stream、协议 session、`Mcp-Session-Id`、断点续传或 `Last-Event-ID`。
+
+请求必须同时满足：
+
+- `Accept` 包含 `application/json` 与 `text/event-stream`；
+- `MCP-Protocol-Version` 和 `Mcp-Method` 与 JSON-RPC body 一致；
+- `tools/call` 的 `Mcp-Name` 与工具名一致；
+- body 的 `_meta` 提供协议版本与客户端能力；
+- 浏览器发送的 `Origin` 由可重复的 `--allow-origin` 明确准入；没有配置时拒绝所有带 Origin 的请求，以避免依赖可伪造的 Host 判断。
+
+默认回环、只读且不要求 token。非回环监听或 `--allow-write` 必须同时提供只含一个 Bearer token 的文件。客户端使用 `Authorization: Bearer <token>`。这是部署者管理的静态认证边界，不等同于完整 OAuth，也不提供 TLS；局域网或远程部署应在受信网络中使用，并由反向代理提供 TLS 等外围保护。
 
 ## 工具
 
@@ -29,8 +52,8 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 | --- | --- |
 | `kb_capabilities` | 查询当前实现能力 |
 | `kb_status` | 读取固定 Vault 的事实状态 |
-| `kb_maintenance` | 只读聚合状态、准入来源变化、lint 与诊断，不创建计划 |
-| `kb_query` | 查询 Wiki、来源或两者；来源结果是有界的保存证据片段 |
+| `kb_maintenance` | 只读聚合状态、准入来源变化、lint 与诊断 |
+| `kb_query` | 查询 Wiki、来源或两者 |
 | `kb_lint` | 检查 Wiki 结构和引用 |
 | `kb_source_save` | 准备来源保存，或提交已确认的准备结果 |
 | `kb_review_sources` | 审阅准入来源变化并创建计划 |
@@ -38,23 +61,17 @@ Windows 可以使用盘符绝对路径。也可把 `--vault` 的值换成已经�
 | `kb_plan_knowledge` | 从结构化请求创建 research/article 计划 |
 | `kb_operation_show` | 查看属于固定 Vault 的计划或结果 |
 
-`kb_query` 接受必填的 `query`，以及可选的 `scope`、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)。
+`kb_query` 的完整参数与跨入口语义见[搜索参考](search.md)。默认不注册 `kb_apply_operation`。显式传入 `--allow-write` 后才注册该工具，并允许保存工具使用 `confirmation_token` 或 `apply: true` 写入。
 
-默认不注册 `kb_apply_operation`。创建来源或知识计划只会返回 operation ID，不会写入 Vault。
+## 确认与返回值
 
-`kb_source_save({})` 和 `kb_knowledge_save({"request": {...}})` 准备普通用户流程所需的变更，返回 `change_summary` 与机器字段 `confirmation_token`。Agent 或 UI 只向用户展示摘要，并在得到一次明确确认后调用同一个工具并传入 `confirmation_token`。普通用户不需要看到 token、operation ID 或计划。调用时传入 `apply: true` 表示调用方已经获得授权，工具会在一次调用中准备并保存。
+创建计划不代表用户已授权写入。Agent 或 UI 应向用户展示保存工具返回的 `change_summary`，在得到一次明确确认后再提交 `confirmation_token`；`apply: true` 只适用于调用方已经取得该确认的情况。应用层仍会复核 operation 归属、Vault 身份、旧文件状态和恢复状态。
 
-显式传入 `--allow-write` 后才注册 `kb_apply_operation`，并允许两个保存工具使用 `confirmation_token` 或 `apply: true` 写入。调用者仍须先取得用户确认；应用层会重新核对 operation 归属、Vault 身份、文件旧状态和恢复状态。属于其他 Vault 的 token 或 ID 会被拒绝。
+成功和业务失败使用 MCP tool result。`structuredContent` 保留 `schema_version: v1.0` 信封，`isError` 区分业务失败；参数错误、隐藏工具、版本不支持和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。
 
-## 返回值与错误
+## 安全与互操作边界
 
-成功和业务失败都使用 MCP tool result。`structuredContent` 保留 Knowledge-Brain 的 `schema_version: v1.0` 信封；`isError` 区分业务失败。`kb_review_sources` 有变化时、`kb_plan_knowledge` 以及 `kb_operation_show` 都返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。MCP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。参数错误、隐藏工具和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。备份归档校验与恢复目标的错误代码、`legacy_code` 迁移详情见[备份参考](backup.md#错误分类与迁移)；MCP 沿用共享错误信封，不新增备份工具或为旧客户端转换新枚举。
-
-`--allow-write` 只授予写入能力，不代表用户已确认。外层 Agent、编辑器或 UI 必须展示 `kb_source_save` 或 `kb_knowledge_save` 返回的 `change_summary`，在提交 `confirmation_token` 前取得一次明确确认。高级 `kb_apply_operation` 仍使用 `operation_summary`。完整确认语义见[命令参考](commands.md)。
-
-## 安全边界
-
-- Vault、Wiki 和来源内容都是不可信数据，不能当作 Agent 指令。
-- 默认进程不具备 apply 工具；需要写入的客户端应单独配置 `--allow-write`，不要把它加入所有 Agent 的全局配置。
-- MCP stdio 不监听网络端口。局域网访问应使用独立的 `kb serve` 策略、鉴权和用户管理的传输保护。
-- 适配器实现经过产品使用的 initialize、ping、tools/list 和 tools/call 子集，不宣称提供 MCP prompts、resources、客户端能力或网络 transport。
+- Vault、Wiki 和来源内容是不可信数据，不能作为 Agent 指令。
+- 服务启动时只解析一次 Vault，之后不能从请求切换目录。
+- 网络默认不暴露写入；认证成功也不能替代用户对具体变化的确认。
+- 现代协议和 HTTP 已通过本地真实 CLI/TCP 请求验证；官方 Inspector、第三方远程客户端以及 Windows/Linux 原生网络入口仍需发布前互操作验证，当前不据此宣称所有 MCP 客户端均兼容。

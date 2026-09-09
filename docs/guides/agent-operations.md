@@ -184,11 +184,15 @@ kb update check --json
 
 MCP 可以把固定 Vault 的能力提供给支持 MCP 的 Agent。它是 CLI 之上的可选入口：优先调用匹配的 MCP action，缺少对应 action 时回到 `kb --json`。MCP 默认只读；写入还要求服务以 `--allow-write` 启动，并且调用方已经取得用户对具体变化的一次确认。配置方式见[MCP 参考](../reference/mcp.md)。
 
+本地子进程集成使用默认 stdio；需要远程或局域网连接时，显式使用 `kb mcp --transport streamable-http`。网络模式默认仅监听回环地址；非回环或写入模式必须配置 token，浏览器 Origin 必须显式准入。不要把独立的 `kb serve` HTTP API 当作 MCP endpoint。
+
 ### Agent Skills
 
 Agent Skills 帮助宿主根据用户意图选择专项流程。Skill 不是可执行程序，也不是核心能力依赖；实际任务仍通过 `kb` CLI 或 MCP 完成。
 
 `kb init` 不安装 Skill。安装、状态、外部文件所有权和卸载规则见[Agent Skill 参考](../reference/agent-skill.md)。未安装 Skill 时直接使用本文的 CLI 流程，不把缺少 Skill 描述为 Knowledge-Brain 不可用。
+
+`kb skills` 原生支持 Codex、Claude Code、Gemini CLI、OpenCode、OpenClaw、Hermes Agent、DeepSeek Harness 和 Pi。使用 `kb skills install --help` 中的稳定宿主 ID；Hermes 只支持 User 范围，因为其项目级发现依赖受信任 Git checkout，而 Vault 本身不要求 Git。
 
 ## 面向用户报告结果
 

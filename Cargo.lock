@@ -1003,6 +1003,7 @@ dependencies = [
  "axum",
  "kb-app",
  "kb-core",
+ "kb-mcp",
  "kb-protocol",
  "serde",
  "serde_json",

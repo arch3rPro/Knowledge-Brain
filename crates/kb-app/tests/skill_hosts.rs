@@ -20,7 +20,7 @@ fn every_host_has_portable_vault_and_user_targets() {
             local.legacy_skill_dir,
             local.skills_root.join("knowledge-brain")
         );
-        assert!(local.bridge_file.starts_with(&vault));
+        assert!(local.bridge_file.as_ref().unwrap().starts_with(&vault));
 
         let user = skill_target(&vault, &roots, host, SkillScope::User).unwrap();
         assert!(user.skills_root.ends_with("skills"));
@@ -31,6 +31,50 @@ fn every_host_has_portable_vault_and_user_targets() {
             user.skills_root.join("knowledge-brain")
         );
     }
+}
+
+#[test]
+fn new_hosts_use_native_roots_and_only_supported_scopes() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    let home = temp.path().join("home");
+    let roots = AgentRoots::new(home.clone(), temp.path().join("config"));
+
+    let cases = [
+        (
+            SkillHost::OpenClaw,
+            vault.join("skills"),
+            home.join(".openclaw/skills"),
+        ),
+        (
+            SkillHost::DeepSeekHarness,
+            vault.join(".dsh/skills"),
+            home.join(".dsh/skills"),
+        ),
+        (
+            SkillHost::Pi,
+            vault.join(".pi/skills"),
+            home.join(".pi/agent/skills"),
+        ),
+    ];
+    for (host, vault_root, user_root) in cases {
+        let local = skill_target(&vault, &roots, host, SkillScope::Vault).unwrap();
+        assert_eq!(local.skills_root, vault_root);
+        assert!(local.bridge_file.is_none());
+
+        let user = skill_target(&vault, &roots, host, SkillScope::User).unwrap();
+        assert_eq!(user.skills_root, user_root);
+        assert!(user.bridge_file.is_none());
+    }
+
+    let hermes = skill_target(&vault, &roots, SkillHost::Hermes, SkillScope::User).unwrap();
+    assert_eq!(hermes.skills_root, home.join(".hermes/skills"));
+    assert!(hermes.bridge_file.is_none());
+
+    let error = skill_target(&vault, &roots, SkillHost::Hermes, SkillScope::Vault).unwrap_err();
+    assert_eq!(error.code, ErrorCode::CapabilityUnavailable);
+    assert!(error.message.contains("Hermes"));
+    assert!(error.next_action.contains("--scope user"));
 }
 
 #[test]
@@ -62,4 +106,19 @@ fn dedicated_host_directory_is_unambiguous() {
         resolve_skill_host(None, &detected).unwrap(),
         SkillHost::GeminiCli
     );
+}
+
+#[test]
+fn new_native_host_directories_are_detected_without_generic_roots() {
+    let temp = tempfile::tempdir().unwrap();
+    for (directory, host) in [
+        (".hermes", SkillHost::Hermes),
+        (".dsh", SkillHost::DeepSeekHarness),
+        (".pi", SkillHost::Pi),
+    ] {
+        let root = temp.path().join(host.as_str());
+        std::fs::create_dir_all(root.join(directory)).unwrap();
+        let detected = detect_skill_hosts(&root).unwrap();
+        assert_eq!(resolve_skill_host(None, &detected).unwrap(), host);
+    }
 }

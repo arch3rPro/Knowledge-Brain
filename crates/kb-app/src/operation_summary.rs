@@ -302,6 +302,10 @@ fn host_relative_path(
         SkillHost::ClaudeCode => ".claude",
         SkillHost::GeminiCli => ".gemini",
         SkillHost::OpenCode => "opencode",
+        SkillHost::OpenClaw => ".openclaw",
+        SkillHost::Hermes => ".hermes",
+        SkillHost::DeepSeekHarness => ".dsh",
+        SkillHost::Pi => ".pi",
     };
     let start = components
         .iter()

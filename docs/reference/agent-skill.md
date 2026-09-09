@@ -13,7 +13,7 @@ kb skills status [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--
 kb skills uninstall [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
 ```
 
-`HOST` 可取 `auto`、`codex`、`claude-code`、`gemini-cli` 或 `opencode`。对应宿主为 Codex、Claude Code、Gemini CLI 和 OpenCode。
+`HOST` 可取 `auto`、`codex`、`claude-code`、`gemini-cli`、`opencode`、`openclaw`、`hermes`、`dsh` 或 `pi`。命令也接受 `hermes-agent`、`deepseek-harness` 和 `pi-coding-agent` 别名；状态和受管理记录始终使用短 ID。
 
 `detect` 只报告检测证据，不修改文件。`auto` 仅在结果唯一时选择宿主；例如只有 `AGENTS.md` 时可能同时匹配 Codex 与 OpenCode，必须显式传入 `--host`。
 
@@ -27,8 +27,13 @@ Vault 范围把 Skill 放入 Vault 内的宿主目录：
 | Claude Code | `.claude/skills/kb-*/` | `CLAUDE.md` |
 | Gemini CLI | `.gemini/skills/kb-*/` | `GEMINI.md` |
 | OpenCode | `.opencode/skills/kb-*/` | `AGENTS.md` |
+| OpenClaw | `skills/kb-*/` | 无 |
+| DeepSeek Harness | `.dsh/skills/kb-*/` | 无 |
+| Pi | `.pi/skills/kb-*/` | 无 |
 
-User 范围使用操作系统的用户目录或配置目录：Codex 为 `.codex/`，Claude Code 为 `.claude/`，Gemini CLI 为 `.gemini/`，OpenCode 为系统配置目录下的 `opencode/`。Knowledge-Brain 通过系统目录 API 解析这些位置，不把 macOS、Linux 或 Windows 的绝对路径写入 Vault。
+User 范围使用操作系统用户目录或配置目录：Codex 为 `.codex/skills`，Claude Code 为 `.claude/skills`，Gemini CLI 为 `.gemini/skills`，OpenCode 为系统配置目录下的 `opencode/skills`，OpenClaw 为 `.openclaw/skills`，Hermes Agent 为 `.hermes/skills`，DeepSeek Harness 为 `.dsh/skills`，Pi 为 `.pi/agent/skills`。Knowledge-Brain 通过系统目录 API 解析用户位置，不把某一操作系统的绝对路径写入 Vault。
+
+Hermes 的 Vault 范围不会被伪装成普通目录安装：Hermes 只在受信任的 Git checkout 中启用项目 Skill，而 Knowledge-Brain Vault 不要求 Git，因此 `--host hermes --scope vault` 返回明确的不支持结果并提示使用 User 范围。新增宿主使用其原生 Skill 目录，不创建无官方含义的桥接文件。
 
 `copy` 复制八项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到八项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
 
@@ -57,3 +62,5 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 ## Agent 行为边界
 
 安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
+
+宿主目录约定依据各项目公开文档：[OpenClaw Skills](https://docs.openclaw.ai/skills)、[Hermes Agent Skills](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/work-with-skills.md)、[DeepSeek Harness Skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) 与 [Pi Skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)。目录适配完成不等于宿主触发行为已经验证；真实加载状态见路线图。

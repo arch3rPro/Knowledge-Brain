@@ -10,6 +10,12 @@ pub enum SkillHost {
     ClaudeCode,
     GeminiCli,
     OpenCode,
+    #[serde(rename = "openclaw")]
+    OpenClaw,
+    Hermes,
+    #[serde(rename = "dsh")]
+    DeepSeekHarness,
+    Pi,
 }
 
 impl SkillHost {
@@ -20,6 +26,10 @@ impl SkillHost {
             Self::ClaudeCode => "claude-code",
             Self::GeminiCli => "gemini-cli",
             Self::OpenCode => "opencode",
+            Self::OpenClaw => "openclaw",
+            Self::Hermes => "hermes",
+            Self::DeepSeekHarness => "dsh",
+            Self::Pi => "pi",
         }
     }
 }
@@ -74,8 +84,10 @@ pub struct ManagedSkillInstallation {
     pub scope: SkillScope,
     pub mode: SkillInstallMode,
     pub skills_root: PathBuf,
-    pub bridge_file: PathBuf,
-    pub bridge_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_file: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_sha256: Option<String>,
     pub assets: Vec<ManagedSkillAsset>,
     pub canonical_paths: Vec<PathBuf>,
     pub links: Vec<SkillLinkChange>,

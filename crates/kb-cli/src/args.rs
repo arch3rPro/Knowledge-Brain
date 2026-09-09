@@ -1,6 +1,6 @@
 use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr};
 
-use clap::{ArgGroup, Args, Parser, Subcommand};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use kb_app::{
     AdmissionAction, AdmissionRequest, AppRequest, BackupRequest, ConfigRequest, ConfigTarget,
     InitRequest, OperationRequest, SaveMode, SkillRequest, VaultRequest,
@@ -25,8 +25,18 @@ pub(crate) enum ParsedCommand {
 }
 
 pub(crate) struct McpCommand {
+    pub transport: McpTransport,
+    pub bind: SocketAddr,
+    pub token_file: Option<PathBuf>,
+    pub allow_origins: Vec<String>,
     pub allow_write: bool,
     pub vault: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum McpTransport {
+    Stdio,
+    StreamableHttp,
 }
 
 pub(crate) struct ServeCommand {
@@ -81,8 +91,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Serve one fixed Vault over MCP stdio.
+    /// Serve one fixed Vault over MCP stdio or Streamable HTTP.
     Mcp {
+        /// MCP transport; stdio remains the local default.
+        #[arg(long, value_enum, default_value = "stdio")]
+        transport: McpTransport,
+        /// HTTP listen address; non-loopback addresses require a token file.
+        #[arg(long, default_value = "127.0.0.1:9433")]
+        bind: SocketAddr,
+        /// File containing one Bearer token value for Streamable HTTP.
+        #[arg(long)]
+        token_file: Option<PathBuf>,
+        /// Additional browser Origin permitted to call Streamable HTTP; repeatable.
+        #[arg(long = "allow-origin")]
+        allow_origins: Vec<String>,
         /// Permit the explicit apply tool in addition to read and planning tools.
         #[arg(long)]
         allow_write: bool,
@@ -414,7 +436,7 @@ enum SkillCommands {
     },
     /// Create a reviewable Skill installation plan.
     Install {
-        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        #[arg(long, default_value = "auto", value_parser = skill_host_values())]
         host: String,
         #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
         scope: String,
@@ -425,7 +447,7 @@ enum SkillCommands {
     },
     /// Report whether the installed Skill matches the embedded version.
     Status {
-        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        #[arg(long, default_value = "auto", value_parser = skill_host_values())]
         host: String,
         #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
         scope: String,
@@ -434,7 +456,7 @@ enum SkillCommands {
     },
     /// Create a reviewable plan that removes only unchanged managed files.
     Uninstall {
-        #[arg(long, default_value = "auto", value_parser = ["auto", "codex", "claude-code", "gemini-cli", "opencode"])]
+        #[arg(long, default_value = "auto", value_parser = skill_host_values())]
         host: String,
         #[arg(long, default_value = "vault", value_parser = ["vault", "user"])]
         scope: String,
@@ -602,9 +624,21 @@ impl Cli {
     #[allow(clippy::too_many_lines)]
     fn into_command(self) -> ParsedCommand {
         let mut parsed = match self.command {
-            Commands::Mcp { allow_write, vault } => {
-                ParsedCommand::Mcp(McpCommand { allow_write, vault })
-            }
+            Commands::Mcp {
+                transport,
+                bind,
+                token_file,
+                allow_origins,
+                allow_write,
+                vault,
+            } => ParsedCommand::Mcp(McpCommand {
+                transport,
+                bind,
+                token_file,
+                allow_origins,
+                allow_write,
+                vault,
+            }),
             Commands::Serve {
                 bind,
                 token_file,
@@ -834,6 +868,10 @@ fn parse_skill_host(value: &str) -> Result<Option<SkillHost>, kb_core::KbError> 
         "claude-code" => Some(SkillHost::ClaudeCode),
         "gemini-cli" => Some(SkillHost::GeminiCli),
         "opencode" => Some(SkillHost::OpenCode),
+        "openclaw" => Some(SkillHost::OpenClaw),
+        "hermes" | "hermes-agent" => Some(SkillHost::Hermes),
+        "dsh" | "deepseek-harness" => Some(SkillHost::DeepSeekHarness),
+        "pi" | "pi-coding-agent" => Some(SkillHost::Pi),
         _ => {
             return Err(kb_core::KbError::invalid_config(
                 "Skill host",
@@ -841,6 +879,23 @@ fn parse_skill_host(value: &str) -> Result<Option<SkillHost>, kb_core::KbError> 
             ));
         }
     })
+}
+
+fn skill_host_values() -> [&'static str; 12] {
+    [
+        "auto",
+        "codex",
+        "claude-code",
+        "gemini-cli",
+        "opencode",
+        "openclaw",
+        "hermes",
+        "hermes-agent",
+        "dsh",
+        "deepseek-harness",
+        "pi",
+        "pi-coding-agent",
+    ]
 }
 
 fn parse_skill_scope(value: &str) -> SkillScope {

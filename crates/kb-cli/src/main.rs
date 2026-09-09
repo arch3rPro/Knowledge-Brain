@@ -41,7 +41,7 @@ async fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => render::error(error, false),
         },
-        args::ParsedCommand::Mcp(command) => match run_mcp(command, context) {
+        args::ParsedCommand::Mcp(command) => match run_mcp(command, context).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => render::error(error, false),
         },
@@ -391,7 +391,15 @@ fn compiled_identity() -> Result<kb_update::BuildIdentity, KbError> {
     })
 }
 
-fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError> {
+async fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError> {
+    if command.transport == args::McpTransport::Stdio
+        && (command.token_file.is_some() || !command.allow_origins.is_empty())
+    {
+        return Err(KbError::invalid_config(
+            "MCP transport options",
+            "--token-file and --allow-origin require --transport streamable-http",
+        ));
+    }
     let selected = kb_app::run(
         kb_app::AppRequest::Paths {
             vault: command.vault,
@@ -402,13 +410,55 @@ fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), KbError
         .as_str()
         .ok_or_else(|| KbError::invalid_config("selected Vault", "missing root"))?
         .to_owned();
-    let mut server = kb_mcp::McpServer::new(context, fixed_vault, command.allow_write);
-    let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    kb_mcp::serve_frames(stdin.lock(), stdout.lock(), |request| {
-        server.handle(&request)
+    let server = kb_mcp::McpServer::new(context, fixed_vault, command.allow_write);
+    if command.transport == args::McpTransport::Stdio {
+        let mut server = server;
+        let stdin = std::io::stdin();
+        let stdout = std::io::stdout();
+        return kb_mcp::serve_frames(stdin.lock(), stdout.lock(), |request| {
+            server.handle(&request)
+        })
+        .map_err(|error| {
+            KbError::io_failure("serve MCP stdio", "stdin/stdout", error.to_string())
+        });
+    }
+
+    let token = command
+        .token_file
+        .as_deref()
+        .map(kb_server::read_token_file)
+        .transpose()?;
+    let _ = kb_server::ServerPolicy::new(command.bind, token.clone(), command.allow_write)?;
+    let listener = tokio::net::TcpListener::bind(command.bind)
+        .await
+        .map_err(|error| {
+            KbError::io_failure(
+                "bind MCP HTTP listener",
+                command.bind.to_string(),
+                error.to_string(),
+            )
+        })?;
+    let address = listener.local_addr().map_err(|error| {
+        KbError::io_failure(
+            "read MCP HTTP listener address",
+            command.bind.to_string(),
+            error.to_string(),
+        )
+    })?;
+    let policy = kb_server::ServerPolicy::new(address, token, command.allow_write)?;
+    let state = kb_server::McpHttpState::new(server, policy.clone(), command.allow_origins);
+    render::startup(&json!({
+        "transport": "streamable-http",
+        "protocol_version": kb_mcp::MODERN_PROTOCOL_VERSION,
+        "endpoint": format!("http://{address}/mcp"),
+        "root": selected["root"],
+        "allow_write": policy.allow_write(),
+        "authentication_required": policy.authentication_required(),
+    }))?;
+    kb_server::serve_mcp(listener, state, async {
+        let _ = tokio::signal::ctrl_c().await;
     })
-    .map_err(|error| KbError::io_failure("serve MCP stdio", "stdin/stdout", error.to_string()))
+    .await
 }
 
 async fn run_server(command: args::ServeCommand, context: AppContext) -> Result<(), KbError> {

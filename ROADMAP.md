@@ -90,7 +90,7 @@
 
 - 可移植 Agent Skill
 - MCP stdio 适配器（Stage 4C implemented）
-- MCP Streamable HTTP 与最新协议兼容（Stage 4D planned）
+- MCP Streamable HTTP 与最新协议兼容（Stage 4D implemented locally）
 - 本机/局域网可选 HTTP（Stage 4A implemented）
 - 可恢复 operation 事件与 SSE（Stage 4B implemented）
 - 可选局域网访问策略
@@ -100,7 +100,7 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 ### Stage 4C — Portable Agent Skill 与 MCP stdio
 
-**Status:** implemented（定向本地与隔离分发测试）。八项内置 `kb-*` Agent Skills 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI 和 OpenCode 创建可审阅的 Vault/User 范围安装或卸载计划。复制和显式符号链接模式共用受管理桥接区块；人工修改、legacy 或外部 `npx` 安装均不会被静默覆盖或删除。
+**Status:** implemented（定向本地与隔离分发测试）。八项内置 `kb-*` Agent Skills 不包含个人路径或特定模型要求，可通过 `kb skills` 为 Codex、Claude Code、Gemini CLI、OpenCode、OpenClaw、Hermes Agent、DeepSeek Harness 和 Pi 创建受支持范围内的可审阅安装或卸载计划。复制和显式符号链接模式共用受管理文件校验；人工修改、legacy 或外部 `npx` 安装均不会被静默覆盖或删除。
 
 `kb mcp` 启动固定 Vault 的 stdio 服务，默认仅提供状态、查询、lint、来源审阅、知识计划和 operation 查看；`--allow-write` 才暴露 apply。所有工具复用 `kb-app`，跨 Vault operation 被拒绝，协议帧限制为 1 MiB。
 
@@ -110,9 +110,9 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 ### Stage 4D — MCP 2026-07-28 与 Streamable HTTP
 
-**Status:** planned（调研后实施）。当前 `kb mcp` 只提供本地 stdio；`kb serve` 是 Knowledge-Brain 自有 HTTP/SSE API，不是 MCP transport。项目因此不能把现有网络接口声明为远程 MCP 服务。
+**Status:** implemented locally，外部互操作与三平台网络验证待补。`kb mcp` 默认保留 stdio，并新增 modern-only Streamable HTTP；`kb serve` 仍是独立的 Knowledge-Brain HTTP/SSE API，不冒充 MCP transport。
 
-实施前以 MCP 官方 `latest` 入口重新确认稳定版本。当前目标基线是 [`2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28)，需要同时处理协议语义升级和 Streamable HTTP，而不是只增加一个 HTTP 路由：
+实现基线已通过 MCP 官方 `latest` 入口确认为 [`2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28)。当前实现包括：
 
 - 支持每请求携带协议版本、客户端能力和身份元数据的 modern MCP，并实现必需的 `server/discover` 与不支持版本错误。
 - 明确 stdio 和 Streamable HTTP 对 `2025-11-25` 及更早 initialize-based 客户端的兼容策略；选择 modern-only 或 dual-era 必须有客户端互操作证据。
@@ -123,9 +123,9 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 - 网络实现必须覆盖 Origin 校验、DNS rebinding、防止任意 Vault 选择、请求与响应大小、并发、超时、取消、慢客户端、断线重试和日志脱敏。
 - 默认监听回环地址。开放局域网或公网是显式选择；鉴权、TLS 终止和反向代理边界按 MCP 最新授权与安全规范单独设计，现有静态 Bearer token 不自动等同于完整 MCP 授权实现。
 
-验收需要使用官方 MCP Inspector 和至少两个真实远程 MCP 客户端，验证协议发现、版本不匹配、工具枚举、普通 JSON 响应、请求级 SSE、默认只读、授权失败、明确写入、进程重启后的持久化结果以及 stdio 回归。Windows、macOS 和 Linux 分别完成原生网络入口验证；只通过单元测试或普通 HTTP 客户端不能宣称远程 MCP 可用。
+本地真实 CLI/TCP 已验证协议发现、工具枚举、JSON、请求级 SSE、默认只读、鉴权和请求头拒绝；stdio 兼容测试也已通过。完整验收仍需官方 MCP Inspector、至少两个真实远程 MCP 客户端，以及 Windows、macOS 和 Linux 原生网络入口；完成前不宣称所有远程 MCP 客户端兼容。
 
-实现后更新 [MCP 参考](docs/reference/mcp.md)、命令与能力发现，并明确列出支持的 MCP 版本、transport、监听默认值、认证模式和未支持能力。
+[MCP 参考](docs/reference/mcp.md)已列出支持的协议版本、transport、监听默认值、认证模式和未支持能力。
 
 ### Stage 4A — 可选 HTTP 适配器
 

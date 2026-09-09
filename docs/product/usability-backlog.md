@@ -329,7 +329,7 @@ CLI 仍是唯一必需依赖。对于支持 Agent Skills 的宿主，提示词�
 
 ## UX-013 — 扩展 `kb skills` 的 Agent 宿主支持
 
-**状态：** 待调研。`kb skills` 当前只支持 Codex、Claude Code、Gemini CLI 和 OpenCode。用户还需要 OpenClaw、Hermes Agent、DeepSeek Harness、Pi 等 Agent；其正式名称、Skill 发现目录、项目级与用户级范围、桥接文件和符号链接兼容性必须依据各项目的实际约定核验。
+**状态：** 实现已完成，真实宿主加载验证待补。`kb skills` 已增加 OpenClaw、Hermes Agent、DeepSeek Harness 和 Pi 的原生目录适配、稳定短 ID、常用别名、检测与受管理生命周期。Hermes 项目级 Skill 依赖受信任 Git checkout，而 Vault 不要求 Git，因此只支持 User 范围并返回明确提示；其他新增宿主不创建虚构桥接文件。
 
 ### 目标体验
 

@@ -1,5 +1,9 @@
 //! Optional HTTP transport over the shared Knowledge-Brain application layer.
 
+mod mcp_http;
+
+pub use mcp_http::{McpHttpState, serve_mcp};
+
 use std::{fs, future::Future, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
 
 use axum::{

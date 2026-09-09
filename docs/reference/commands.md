@@ -137,17 +137,17 @@ kb serve [--bind <IP:PORT>] [--token-file <PATH>] [--allow-write] [--vault <PATH
 
 ```text
 kb skills detect [--vault <PATH_OR_ID>] [--json]
-kb skills install [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--mode copy|symlink] [--vault <PATH_OR_ID>] [--json]
-kb skills status [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
-kb skills uninstall [--host auto|codex|claude-code|gemini-cli|opencode] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
+kb skills install [--host <HOST>] [--scope vault|user] [--mode copy|symlink] [--vault <PATH_OR_ID>] [--json]
+kb skills status [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
+kb skills uninstall [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
 ```
 
-安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理八项顶层 `kb-*` Skill；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。宿主路径、检测歧义、复制与链接模式，以及 `npx skills add` 外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
+安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理八项顶层 `kb-*` Skill；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。`HOST` 支持 `auto|codex|claude-code|gemini-cli|opencode|openclaw|hermes|dsh|pi`；宿主路径、兼容别名、Hermes Vault 范围限制和外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
 
-## MCP stdio
+## MCP
 
 ```text
-kb mcp [--vault <PATH_OR_ID>] [--allow-write]
+kb mcp [--transport stdio|streamable-http] [--bind <IP:PORT>] [--token-file <PATH>] [--allow-origin <ORIGIN>]... [--vault <PATH_OR_ID>] [--allow-write]
 ```
 
-服务固定使用启动时选中的 Vault，默认只暴露读取和计划工具。`--allow-write` 才注册 apply 工具；operation 归属和旧状态仍由应用层复核。工具列表、客户端配置和协议输出边界见 [MCP 参考](mcp.md)。
+默认使用 stdio；Streamable HTTP 默认监听 `127.0.0.1:9433` 的 `/mcp`，非回环或写入模式要求 token。服务固定使用启动时选中的 Vault，默认只暴露读取和计划工具。`--allow-write` 才注册 apply 工具；operation 归属和旧状态仍由应用层复核。协议版本、安全边界和客户端配置见 [MCP 参考](mcp.md)。

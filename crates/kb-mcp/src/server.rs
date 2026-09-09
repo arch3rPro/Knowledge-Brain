@@ -28,6 +28,14 @@ impl McpServer {
 
     #[must_use]
     pub fn handle(&mut self, request: &Value) -> Option<Value> {
+        if request
+            .get("params")
+            .and_then(|params| params.get("_meta"))
+            .and_then(|metadata| metadata.get("io.modelcontextprotocol/protocolVersion"))
+            .is_some()
+        {
+            return request.get("id").map(|_| self.handle_modern(request));
+        }
         let Some(object) = request.as_object() else {
             return Some(protocol_error(
                 &Value::Null,
@@ -62,8 +70,13 @@ impl McpServer {
         })
     }
 
+    #[must_use]
+    pub fn handle_modern(&self, request: &Value) -> Value {
+        crate::protocol::handle_modern(self, request)
+    }
+
     #[allow(clippy::too_many_lines)]
-    fn tools(&self) -> Vec<Value> {
+    pub(crate) fn tools(&self) -> Vec<Value> {
         let mut tools = vec![
             tool(
                 "kb_capabilities",
@@ -212,7 +225,7 @@ impl McpServer {
         tools
     }
 
-    fn call_tool(&self, id: &Value, params: Value) -> Value {
+    pub(crate) fn call_tool(&self, id: &Value, params: Value) -> Value {
         let Ok(call) = serde_json::from_value::<ToolCall>(params) else {
             return protocol_error(id, -32602, "Invalid tools/call parameters.");
         };

@@ -68,7 +68,8 @@ pub struct SkillStatusReport {
     pub scope: SkillScope,
     pub state: SkillInstallState,
     pub skills_root: PathBuf,
-    pub bridge_file: PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_file: Option<PathBuf>,
 }
 
 /// Compare one installed Skill and bridge with the embedded assets.
@@ -226,7 +227,9 @@ fn install_changes(
             links.push(link);
         }
     }
-    files.push(bridge_install_change(&target.bridge_file)?);
+    if let Some(bridge_file) = &target.bridge_file {
+        files.push(bridge_install_change(bridge_file)?);
+    }
     Ok((files, links))
 }
 
@@ -238,8 +241,10 @@ fn uninstall_changes(
     if state == SkillInstallState::Legacy {
         let legacy_canonical = legacy_canonical_dir(request.user_paths);
         let mut files = legacy_asset_changes(&target.legacy_skill_dir, &legacy_canonical)?;
-        if let Some(bridge) = marked_bridge_uninstall_change(&target.bridge_file)? {
-            files.push(bridge);
+        if let Some(bridge_file) = &target.bridge_file {
+            if let Some(bridge) = marked_bridge_uninstall_change(bridge_file)? {
+                files.push(bridge);
+            }
         }
         let links = legacy_link_removal(&target.legacy_skill_dir, &legacy_canonical)?
             .into_iter()
@@ -272,7 +277,9 @@ fn uninstall_changes(
         &record,
     )?;
     let mut files = managed_asset_removals(&removable)?;
-    files.push(bridge_uninstall_change(&record.bridge_file)?);
+    if let Some(bridge_file) = &record.bridge_file {
+        files.push(bridge_uninstall_change(bridge_file)?);
+    }
     Ok((
         files,
         record
@@ -657,6 +664,8 @@ fn managed_state(
         || record.host != target.host
         || record.scope != target.scope
         || record.skills_root != target.skills_root
+        || record.bridge_file != target.bridge_file
+        || record.bridge_file.is_some() != record.bridge_sha256.is_some()
         || record.assets.len() != skill_assets().len()
         || record.canonical_paths.len() != record.assets.len()
         || record
@@ -697,10 +706,12 @@ fn managed_state(
             Err(error) => return Err(io("inspect managed Skill link", &link.path, &error)),
         }
     }
-    match digest_optional_file(&record.bridge_file)? {
-        None => missing = true,
-        Some(actual) if actual == record.bridge_sha256 => {}
-        Some(_) => return Ok(SkillInstallState::Modified),
+    if let (Some(bridge_file), Some(bridge_sha256)) = (&record.bridge_file, &record.bridge_sha256) {
+        match digest_optional_file(bridge_file)? {
+            None => missing = true,
+            Some(actual) if actual == *bridge_sha256 => {}
+            Some(_) => return Ok(SkillInstallState::Modified),
+        }
     }
     Ok(if missing {
         SkillInstallState::Partial
@@ -727,12 +738,20 @@ fn installation_from_plan(
             sha256: asset.sha256.clone(),
         })
         .collect::<Vec<_>>();
-    let bridge = plan
-        .files
-        .iter()
-        .find(|change| change.path == target.bridge_file)
-        .and_then(|change| change.after.as_deref())
-        .ok_or_else(|| KbError::invalid_config("Skill plan bridge", "missing installed bridge"))?;
+    let bridge_sha256 = target
+        .bridge_file
+        .as_ref()
+        .map(|bridge_file| {
+            plan.files
+                .iter()
+                .find(|change| change.path == *bridge_file)
+                .and_then(|change| change.after.as_deref())
+                .map(|bridge| hash(bridge.as_bytes()))
+                .ok_or_else(|| {
+                    KbError::invalid_config("Skill plan bridge", "missing installed bridge")
+                })
+        })
+        .transpose()?;
     Ok(ManagedSkillInstallation {
         schema_version: CURRENT_SCHEMA_VERSION,
         vault_id: plan.vault_id,
@@ -741,7 +760,7 @@ fn installation_from_plan(
         mode: plan.mode,
         skills_root: target.skills_root,
         bridge_file: target.bridge_file,
-        bridge_sha256: hash(bridge.as_bytes()),
+        bridge_sha256,
         canonical_paths: assets.iter().map(|asset| asset.path.clone()).collect(),
         assets,
         links: plan
@@ -991,7 +1010,9 @@ fn validate_install_plan(
         .iter()
         .map(|(path, _)| path.clone())
         .collect::<BTreeSet<_>>();
-    expected.insert(target.bridge_file.clone());
+    if let Some(bridge_file) = &target.bridge_file {
+        expected.insert(bridge_file.clone());
+    }
     let legacy_roots = legacy_plan_roots(target, user_paths)?;
     for root in &legacy_roots {
         for asset in legacy_skill_assets() {
@@ -1003,7 +1024,11 @@ fn validate_install_plan(
     }
     ensure_exact_file_paths(plan, &expected)?;
     for change in &plan.files {
-        if change.path == target.bridge_file {
+        if target
+            .bridge_file
+            .as_ref()
+            .is_some_and(|bridge_file| change.path == *bridge_file)
+        {
             if !change
                 .after
                 .as_deref()
@@ -1050,7 +1075,9 @@ fn validate_uninstall_plan(
             .iter()
             .map(|asset| asset.path.clone())
             .collect::<BTreeSet<_>>();
-        paths.insert(record.bridge_file.clone());
+        if let Some(bridge_file) = &record.bridge_file {
+            paths.insert(bridge_file.clone());
+        }
         paths
     } else {
         let mut paths = legacy_plan_roots(target, user_paths)?
@@ -1062,12 +1089,10 @@ fn validate_uninstall_plan(
             })
             .filter(|path| plan.files.iter().any(|change| change.path == *path))
             .collect::<BTreeSet<_>>();
-        if plan
-            .files
-            .iter()
-            .any(|change| change.path == target.bridge_file)
-        {
-            paths.insert(target.bridge_file.clone());
+        if let Some(bridge_file) = &target.bridge_file {
+            if plan.files.iter().any(|change| change.path == *bridge_file) {
+                paths.insert(bridge_file.clone());
+            }
         }
         paths
     };
@@ -1075,7 +1100,7 @@ fn validate_uninstall_plan(
     if plan
         .files
         .iter()
-        .any(|change| change.path != target.bridge_file && change.after.is_some())
+        .any(|change| target.bridge_file.as_ref() != Some(&change.path) && change.after.is_some())
     {
         return invalid_plan("Skill plan", "uninstall may only remove owned content");
     }
@@ -1102,7 +1127,9 @@ fn is_legacy_operation_plan(
             .map(|asset| asset_root.join(asset.path))
             .collect(),
     };
-    expected.insert(target.bridge_file.clone());
+    if let Some(bridge_file) = &target.bridge_file {
+        expected.insert(bridge_file.clone());
+    }
     let actual = plan
         .files
         .iter()
@@ -1143,10 +1170,12 @@ fn validate_legacy_operation_plan(
             .map(|asset| asset_root.join(asset.path))
             .collect(),
     };
-    expected.insert(target.bridge_file.clone());
+    if let Some(bridge_file) = &target.bridge_file {
+        expected.insert(bridge_file.clone());
+    }
     ensure_exact_file_paths(plan, &expected)?;
     for change in &plan.files {
-        if change.path == target.bridge_file {
+        if target.bridge_file.as_ref() == Some(&change.path) {
             let valid = match (plan.action, change.after.as_deref()) {
                 (SkillAction::Install, Some(after)) => {
                     after.ends_with(BRIDGE_BLOCK) || after.ends_with(LEGACY_BRIDGE_BLOCK)
@@ -1320,17 +1349,16 @@ fn finalize_ownership(
                     ));
                 }
             }
-            let bridge_after = plan
-                .files
-                .iter()
-                .find(|change| change.path == installation.bridge_file)
-                .and_then(|change| change.after.as_deref())
-                .map(|text| hash(text.as_bytes()));
-            if digest_optional_file(&installation.bridge_file)? != bridge_after {
-                return Err(stale(
-                    &installation.bridge_file,
-                    "managed bridge differs after uninstall",
-                ));
+            if let Some(bridge_file) = &installation.bridge_file {
+                let bridge_after = plan
+                    .files
+                    .iter()
+                    .find(|change| change.path == *bridge_file)
+                    .and_then(|change| change.after.as_deref())
+                    .map(|text| hash(text.as_bytes()));
+                if digest_optional_file(bridge_file)? != bridge_after {
+                    return Err(stale(bridge_file, "managed bridge differs after uninstall"));
+                }
             }
             remove_installation(user_paths, plan)?;
             Ok(())

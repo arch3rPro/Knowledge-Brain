@@ -9,6 +9,7 @@ publish.workspace = true
 axum.workspace = true
 kb-app = { path = "../kb-app" }
 kb-core = { path = "../kb-core" }
+kb-mcp = { path = "../kb-mcp" }
 kb-protocol = { path = "../kb-protocol" }
 serde.workspace = true
 serde_json.workspace = true

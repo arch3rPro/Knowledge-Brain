@@ -83,6 +83,73 @@ fn real_cli_installs_reports_and_safely_uninstalls_the_portable_skill() {
     assert!(!vault.join(".agents/skills/knowledge-brain").exists());
 }
 
+#[test]
+fn real_cli_installs_nested_assets_for_a_native_host_without_a_bridge() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    run(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+
+    let planned = run(
+        temp.path(),
+        &[
+            "skills",
+            "install",
+            "--host",
+            "pi-coding-agent",
+            "--scope",
+            "vault",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert!(planned["data"]["bridge_file"].is_null());
+    let id = planned["data"]["operation_id"].as_str().unwrap();
+    run(temp.path(), &["apply", id, "--json"]);
+
+    let request_format = vault.join(".pi/skills/kb-save/references/request-format.md");
+    assert_eq!(
+        fs::read_to_string(&request_format).unwrap(),
+        include_str!("../../../skills/kb-save/references/request-format.md")
+    );
+    assert!(!vault.join("AGENTS.md").exists());
+
+    let status = run(
+        temp.path(),
+        &[
+            "skills",
+            "status",
+            "--host",
+            "pi",
+            "--scope",
+            "vault",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    assert_eq!(status["data"]["host"], "pi");
+    assert_eq!(status["data"]["state"], "current");
+
+    let uninstall = run(
+        temp.path(),
+        &[
+            "skills",
+            "uninstall",
+            "--host",
+            "pi",
+            "--scope",
+            "vault",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--json",
+        ],
+    );
+    let uninstall_id = uninstall["data"]["operation_id"].as_str().unwrap();
+    run(temp.path(), &["apply", uninstall_id, "--json"]);
+    assert!(!request_format.exists());
+}
+
 fn run(user_root: &Path, arguments: &[&str]) -> Value {
     let output = Command::cargo_bin("kb")
         .unwrap()

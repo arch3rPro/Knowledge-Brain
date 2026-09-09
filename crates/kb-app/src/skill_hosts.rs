@@ -66,7 +66,7 @@ pub struct SkillTarget {
     pub scope: SkillScope,
     pub skills_root: PathBuf,
     pub legacy_skill_dir: PathBuf,
-    pub bridge_file: PathBuf,
+    pub bridge_file: Option<PathBuf>,
 }
 
 /// Resolve the Skill and bridge locations for one host and scope.
@@ -90,41 +90,64 @@ pub fn skill_target(
         ));
     }
 
-    let (base, bridge_file) = match (scope, host) {
-        (SkillScope::Vault, SkillHost::Codex) => {
-            (vault_root.join(".agents"), vault_root.join("AGENTS.md"))
-        }
-        (SkillScope::Vault, SkillHost::ClaudeCode) => {
-            (vault_root.join(".claude"), vault_root.join("CLAUDE.md"))
-        }
-        (SkillScope::Vault, SkillHost::GeminiCli) => {
-            (vault_root.join(".gemini"), vault_root.join("GEMINI.md"))
-        }
-        (SkillScope::Vault, SkillHost::OpenCode) => {
-            (vault_root.join(".opencode"), vault_root.join("AGENTS.md"))
-        }
+    if host == SkillHost::Hermes && scope == SkillScope::Vault {
+        return Err(KbError::new(
+            ErrorCode::CapabilityUnavailable,
+            "Hermes project Skills require a trusted Git project, but a Knowledge-Brain Vault does not require Git.",
+            false,
+            "Install Hermes Skills with --scope user, or configure and trust a project directly in Hermes.",
+        ));
+    }
+
+    let (skills_root, bridge_file) = match (scope, host) {
+        (SkillScope::Vault, SkillHost::Codex) => (
+            vault_root.join(".agents/skills"),
+            Some(vault_root.join("AGENTS.md")),
+        ),
+        (SkillScope::Vault, SkillHost::ClaudeCode) => (
+            vault_root.join(".claude/skills"),
+            Some(vault_root.join("CLAUDE.md")),
+        ),
+        (SkillScope::Vault, SkillHost::GeminiCli) => (
+            vault_root.join(".gemini/skills"),
+            Some(vault_root.join("GEMINI.md")),
+        ),
+        (SkillScope::Vault, SkillHost::OpenCode) => (
+            vault_root.join(".opencode/skills"),
+            Some(vault_root.join("AGENTS.md")),
+        ),
         (SkillScope::User, SkillHost::Codex) => {
             let base = roots.home_dir.join(".codex");
-            (base.clone(), base.join("AGENTS.md"))
+            (base.join("skills"), Some(base.join("AGENTS.md")))
         }
         (SkillScope::User, SkillHost::ClaudeCode) => {
             let base = roots.home_dir.join(".claude");
-            (base.clone(), base.join("CLAUDE.md"))
+            (base.join("skills"), Some(base.join("CLAUDE.md")))
         }
         (SkillScope::User, SkillHost::GeminiCli) => {
             let base = roots.home_dir.join(".gemini");
-            (base.clone(), base.join("GEMINI.md"))
+            (base.join("skills"), Some(base.join("GEMINI.md")))
         }
         (SkillScope::User, SkillHost::OpenCode) => {
             let base = roots.config_dir.join("opencode");
-            (base.clone(), base.join("AGENTS.md"))
+            (base.join("skills"), Some(base.join("AGENTS.md")))
         }
+        (SkillScope::Vault, SkillHost::OpenClaw) => (vault_root.join("skills"), None),
+        (SkillScope::User, SkillHost::OpenClaw) => (roots.home_dir.join(".openclaw/skills"), None),
+        (SkillScope::User, SkillHost::Hermes) => (roots.home_dir.join(".hermes/skills"), None),
+        (SkillScope::Vault, SkillHost::DeepSeekHarness) => (vault_root.join(".dsh/skills"), None),
+        (SkillScope::User, SkillHost::DeepSeekHarness) => {
+            (roots.home_dir.join(".dsh/skills"), None)
+        }
+        (SkillScope::Vault, SkillHost::Pi) => (vault_root.join(".pi/skills"), None),
+        (SkillScope::User, SkillHost::Pi) => (roots.home_dir.join(".pi/agent/skills"), None),
+        (SkillScope::Vault, SkillHost::Hermes) => unreachable!("handled above"),
     };
     Ok(SkillTarget {
         host,
         scope,
-        skills_root: base.join("skills"),
-        legacy_skill_dir: base.join("skills/knowledge-brain"),
+        legacy_skill_dir: skills_root.join("knowledge-brain"),
+        skills_root,
         bridge_file,
     })
 }
@@ -164,6 +187,9 @@ pub fn detect_skill_hosts(root: &Path) -> Result<Vec<DetectedSkillHost>, KbError
     mark(SkillHost::GeminiCli, "GEMINI.md");
     mark(SkillHost::OpenCode, ".opencode");
     mark(SkillHost::OpenCode, "opencode.json");
+    mark(SkillHost::Hermes, ".hermes");
+    mark(SkillHost::DeepSeekHarness, ".dsh");
+    mark(SkillHost::Pi, ".pi");
     if root.join("AGENTS.md").exists() {
         found
             .entry(SkillHost::Codex)
