@@ -61,6 +61,6 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 
 ## Agent 行为边界
 
-安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
+安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。普通笔记遵循 `KB.md` 的用户定义主题目录和命名规则，不触发 `kb-ingest` 或 `kb-save`；只有明确来源入库才触发 `kb-ingest`，只有明确写入 Wiki 或整理进知识库才触发 `kb-save`。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
 
 宿主目录约定依据各项目公开文档：[OpenClaw Skills](https://docs.openclaw.ai/skills)、[Hermes Agent Skills](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/work-with-skills.md)、[DeepSeek Harness Skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) 与 [Pi Skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)。目录适配完成不等于宿主触发行为已经验证；真实加载状态见路线图。

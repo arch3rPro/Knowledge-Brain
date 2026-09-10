@@ -5,6 +5,10 @@ const PROJECT_README: &str = include_str!("../../../README.md");
 const ROADMAP: &str = include_str!("../../../ROADMAP.md");
 const UPDATE_REFERENCE: &str = include_str!("../../../docs/reference/cli-updates.md");
 const RELEASE_GUIDE: &str = include_str!("../../../docs/guides/release-a-cli-version.md");
+const AGENT_OPERATIONS: &str = include_str!("../../../docs/guides/agent-operations.md");
+const VAULT_RULES_TEMPLATE: &str = include_str!("../../../assets/vault-template/KB.md");
+const INGEST_SKILL: &str = include_str!("../../../skills/kb-ingest/SKILL.md");
+const SAVE_SKILL: &str = include_str!("../../../skills/kb-save/SKILL.md");
 
 #[test]
 fn project_readme_covers_the_first_run_contract() {
@@ -140,6 +144,35 @@ fn agent_skill_and_mcp_references_own_their_public_contracts() {
         "confirmation_token",
     ] {
         assert!(mcp.contains(contract), "missing MCP contract: {contract}");
+    }
+}
+
+#[test]
+fn agent_guidance_separates_ordinary_notes_from_managed_writes() {
+    for contract in [
+        "knowledge subject",
+        "task words such as research, tutorial, or notes",
+        "Writing an ordinary note does not save source evidence",
+    ] {
+        assert!(
+            VAULT_RULES_TEMPLATE.contains(contract),
+            "missing {contract}"
+        );
+    }
+
+    for contract in [
+        "写普通笔记",
+        "不使用 `kb-*` 写入 Skill",
+        "对象标识及内容侧重点",
+        "不要把“调研”“整理笔记”“写报告”解释为这一请求",
+        "普通调研或笔记任务不属于这一请求",
+    ] {
+        assert!(AGENT_OPERATIONS.contains(contract), "missing {contract}");
+    }
+
+    for skill in [INGEST_SKILL, SAVE_SKILL] {
+        assert!(skill.contains("does not authorize"));
+        assert!(skill.contains("never supplies that authorization"));
     }
 }
 

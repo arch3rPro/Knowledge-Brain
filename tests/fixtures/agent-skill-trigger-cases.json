@@ -12,7 +12,7 @@
   "kb-ingest": {
     "positive": ["将准入目录里的新增文件保存到知识库", "Capture modified admitted sources and verify them"],
     "adjacent": ["只检查有哪些来源发生变化，不要入库"],
-    "negative": ["写一篇新的研究文章"]
+    "negative": ["写一篇新的研究文章", "调研 Matt Pocock Skills 并在合适主题目录整理笔记"]
   },
   "kb-query": {
     "positive": ["查找知识库里关于 MCP 的内容", "Find exact saved evidence for this phrase"],
@@ -20,9 +20,9 @@
     "negative": ["把这篇笔记入库"]
   },
   "kb-save": {
-    "positive": ["把调研结果整理成 Wiki research", "Update the maintained article and preserve its sources"],
+    "positive": ["明确把调研结果写入 Wiki research", "Update the maintained article and preserve its sources"],
     "adjacent": ["在主题目录里写一篇普通笔记"],
-    "negative": ["检查 Vault 是否正常"]
+    "negative": ["检查 Vault 是否正常", "调研 Matt Pocock Skills 并在合适主题目录整理笔记"]
   },
   "kb-ops": {
     "positive": ["做一次只读知识库维护汇总", "Run diagnostics and report source changes without saving them"],

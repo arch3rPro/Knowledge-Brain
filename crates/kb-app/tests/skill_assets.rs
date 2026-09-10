@@ -141,6 +141,18 @@ fn trigger_evaluation_corpus_covers_every_skill_and_boundary() {
                 .is_some_and(|items| !items.is_empty())
         );
     }
+
+    let ordinary_research =
+        serde_json::Value::String("调研 Matt Pocock Skills 并在合适主题目录整理笔记".to_owned());
+    for name in ["kb-ingest", "kb-save"] {
+        assert!(
+            cases[name]["negative"]
+                .as_array()
+                .unwrap()
+                .contains(&ordinary_research),
+            "{name} must not trigger for ordinary research notes"
+        );
+    }
 }
 
 #[test]
