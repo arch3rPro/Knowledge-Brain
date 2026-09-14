@@ -66,6 +66,13 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
         assert!(!text.contains("Codex"));
         assert!(!text.contains("Claude"));
     }
+    let vault_skill = assets
+        .iter()
+        .find(|asset| asset.path == "kb-vault/SKILL.md")
+        .unwrap();
+    let vault_skill = std::str::from_utf8(vault_skill.bytes).unwrap();
+    assert!(vault_skill.contains("kb vault upgrade --vault"));
+    assert!(vault_skill.contains("confirmation_token"));
     let reference = assets
         .iter()
         .find(|asset| asset.path == "kb-save/references/request-format.md")
@@ -75,6 +82,15 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
             .unwrap()
             .contains("before_sha256")
     );
+    let reference = std::str::from_utf8(reference.bytes).unwrap();
+    assert!(reference.contains("origin: external_research"));
+    assert!(reference.contains("origin: original"));
+    let save_skill = assets
+        .iter()
+        .find(|asset| asset.path == "kb-save/SKILL.md")
+        .unwrap();
+    let save_skill = std::str::from_utf8(save_skill.bytes).unwrap();
+    assert!(save_skill.contains("do not prepare a Wiki save or ingest it automatically"));
 }
 
 #[test]

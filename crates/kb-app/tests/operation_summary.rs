@@ -579,6 +579,8 @@ fn plan_with_changes<const N: usize>(paths: [&str; N]) -> KnowledgePlan {
         changes: paths
             .into_iter()
             .map(|path| KnowledgeChangeRequest {
+                kind: kb_core::KnowledgeChangeKind::Upsert,
+                from_path: None,
                 path: PortableRelativePath::parse(path).unwrap(),
                 before_sha256: None,
                 summary: "Save knowledge.".into(),
@@ -599,6 +601,8 @@ fn knowledge_request(path: &str) -> KnowledgePlanRequest {
     KnowledgePlanRequest {
         schema_version: CURRENT_SCHEMA_VERSION,
         changes: vec![KnowledgeChangeRequest {
+            kind: kb_core::KnowledgeChangeKind::Upsert,
+            from_path: None,
             path: PortableRelativePath::parse(path).unwrap(),
             before_sha256: None,
             summary: "Save knowledge.".into(),

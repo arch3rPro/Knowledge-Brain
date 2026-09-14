@@ -13,6 +13,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 const MARKER: &str = ".kb/runtime/knowledge-pending.json";
 const SOURCE_MARKER: &str = ".kb/runtime/source-pending.json";
+const UPGRADE_MARKER: &str = ".kb/runtime/vault-upgrade-pending.json";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Progress {
@@ -24,7 +25,7 @@ struct Progress {
 struct Effect {
     path: PortableRelativePath,
     before: Option<Vec<u8>>,
-    after_sha256: String,
+    after_sha256: Option<String>,
 }
 
 /// Apply an exact, reviewed knowledge plan and recover interrupted writes.
@@ -59,11 +60,7 @@ fn apply_inner(
 
     let root = &plan.target;
     let _lock = VaultLock::acquire(root, LockMode::Exclusive, "apply knowledge", Some(id))?;
-    if safe_path(root, SOURCE_MARKER)?.exists() {
-        return Err(recovery(
-            "An interrupted source capture needs recovery first.",
-        ));
-    }
+    ensure_no_other_pending(root)?;
     let marker = safe_path(root, MARKER)?;
     let progress_path = directory.join("knowledge-progress.json");
     if marker.exists() {
@@ -127,6 +124,7 @@ fn apply_inner(
         remove_if_present(&progress_path)?;
         remove_if_present(&marker)?;
     }
+    crate::ensure_shared_write_sync_safe(root)?;
     preflight(&plan, &config)?;
     save_writes(paths, root, &config, id, &directory, &plan, fail_after)?;
 
@@ -153,6 +151,20 @@ fn apply_inner(
     remove_if_present(&marker)?;
     remove_if_present(&progress_path)?;
     finish_housekeeping(root, &result_path, result)
+}
+
+fn ensure_no_other_pending(root: &Path) -> Result<(), KbError> {
+    if safe_path(root, SOURCE_MARKER)?.exists() {
+        return Err(recovery(
+            "An interrupted source capture needs recovery first.",
+        ));
+    }
+    if safe_path(root, UPGRADE_MARKER)?.exists() {
+        return Err(recovery(
+            "An interrupted Vault template upgrade needs recovery first.",
+        ));
+    }
+    Ok(())
 }
 
 fn finish_housekeeping(
@@ -193,7 +205,9 @@ fn validate_write_set(plan: &KnowledgePlan) -> Result<(), KbError> {
     let expected_changes = plan
         .changes
         .iter()
-        .map(|change| PortableRelativePath::parse(&format!("Wiki/{}", change.path.as_str())))
+        .flat_map(|change| [Some(&change.path), change.from_path.as_ref()])
+        .flatten()
+        .map(|path| PortableRelativePath::parse(&format!("Wiki/{}", path.as_str())))
         .collect::<Result<BTreeSet<_>, _>>()?;
     let mut actual = BTreeSet::new();
     for write in &plan.writes {
@@ -306,7 +320,9 @@ fn save_writes(
     let outcome = (|| {
         for write in &plan.writes {
             let destination = safe_path(root, write.path.as_str())?;
-            if let Some(parent) = destination.parent() {
+            if !write.delete
+                && let Some(parent) = destination.parent()
+            {
                 fs::create_dir_all(parent)
                     .map_err(|error| io("create destination directory", parent, error))?;
             }
@@ -325,10 +341,13 @@ fn save_writes(
             progress.entries.push(Effect {
                 path: write.path.clone(),
                 before: before.clone(),
-                after_sha256: hash(bytes),
+                after_sha256: (!write.delete).then(|| hash(bytes)),
             });
             write_json(&progress_path, &progress)?;
-            if before.is_some() {
+            if write.delete {
+                fs::remove_file(&destination)
+                    .map_err(|error| io("delete managed knowledge file", &destination, error))?;
+            } else if before.is_some() {
                 crate::atomic_replace(&destination, bytes)?;
             } else {
                 crate::storage::create_new(&destination, bytes)?;
@@ -384,7 +403,8 @@ fn validate_progress(plan: &KnowledgePlan, progress: &Progress) -> Result<(), Kb
         let valid = plan.writes.iter().any(|write| {
             write.path == effect.path
                 && write.before_sha256 == effect.before.as_ref().map(|bytes| hash(bytes))
-                && hash(write.content.as_bytes()) == effect.after_sha256
+                && ((!write.delete && effect.after_sha256 == Some(hash(write.content.as_bytes())))
+                    || (write.delete && effect.after_sha256.is_none()))
         });
         if !valid {
             return Err(recovery(
@@ -407,7 +427,7 @@ fn restore(root: &Path, progress: &Progress, config: &EffectiveConfig) -> Result
         if current == before {
             continue;
         }
-        if current.as_deref() != Some(effect.after_sha256.as_str()) {
+        if current != effect.after_sha256 {
             return Err(recovery(format!(
                 "Preserved independently changed {}.",
                 effect.path.as_str()
@@ -483,6 +503,8 @@ mod tests {
         let request = KnowledgePlanRequest {
             schema_version: CURRENT_SCHEMA_VERSION,
             changes: vec![KnowledgeChangeRequest {
+                kind: kb_core::KnowledgeChangeKind::Upsert,
+                from_path: None,
                 path: PortableRelativePath::parse("articles/recovery.md").unwrap(),
                 before_sha256: None,
                 summary: "Exercise recoverable knowledge saving.".into(),
@@ -612,6 +634,118 @@ mod tests {
             before_log
         );
         assert!(!plan.target.join(MARKER).exists());
+    }
+
+    #[test]
+    fn failure_after_a_delete_restores_the_removed_page() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("vault");
+        let user_paths = paths(temporary.path());
+        init_vault(&InitRequest {
+            target: root.clone(),
+        })
+        .unwrap();
+        let content = format!(
+            "---\ntype: Article\ntitle: Obsolete\nstatus: stable\ngenerated:\n  by: process:test\n  at: {}\nsources:\n  - id: source\n    resource: https://example.com\nkb:\n  managed: true\n---\n\n# Obsolete\n",
+            time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap()
+        );
+        let target = root.join("Wiki/articles/obsolete.md");
+        fs::write(&target, &content).unwrap();
+        let config =
+            load_effective_config(&root, &user_paths, &ConfigOverrides::default()).unwrap();
+        let request: KnowledgePlanRequest = serde_json::from_value(serde_json::json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "kind": "delete",
+                "path": "articles/obsolete.md",
+                "before_sha256": hash(content.as_bytes()),
+                "summary": "Remove obsolete knowledge."
+            }]
+        }))
+        .unwrap();
+        let plan = create_knowledge_plan(
+            &root,
+            &user_paths,
+            &config,
+            request,
+            time::OffsetDateTime::now_utc(),
+        )
+        .unwrap();
+        let delete_position = plan.writes.iter().position(|write| write.delete).unwrap() + 1;
+
+        let error = apply_inner(
+            &user_paths,
+            plan.operation_id,
+            &ConfigOverrides::default(),
+            Some(delete_position),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::IoFailure);
+        assert_eq!(fs::read_to_string(&target).unwrap(), content);
+        assert!(!root.join(MARKER).exists());
+    }
+
+    #[test]
+    fn process_exit_after_a_delete_restores_then_reapplies_the_operation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("vault");
+        let user_paths = paths(temporary.path());
+        init_vault(&InitRequest {
+            target: root.clone(),
+        })
+        .unwrap();
+        let content = format!(
+            "---\ntype: Article\ntitle: Remove after crash\nstatus: stable\ngenerated:\n  by: process:test\n  at: {}\nsources:\n  - id: source\n    resource: https://example.com\nkb:\n  managed: true\n---\n\n# Remove after crash\n",
+            time::OffsetDateTime::now_utc()
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap()
+        );
+        let target = root.join("Wiki/articles/remove-after-crash.md");
+        fs::write(&target, &content).unwrap();
+        let config =
+            load_effective_config(&root, &user_paths, &ConfigOverrides::default()).unwrap();
+        let request: KnowledgePlanRequest = serde_json::from_value(serde_json::json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "kind": "delete",
+                "path": "articles/remove-after-crash.md",
+                "before_sha256": hash(content.as_bytes()),
+                "summary": "Remove obsolete knowledge after recovery."
+            }]
+        }))
+        .unwrap();
+        let plan = create_knowledge_plan(
+            &root,
+            &user_paths,
+            &config,
+            request,
+            time::OffsetDateTime::now_utc(),
+        )
+        .unwrap();
+        let delete_position = plan.writes.iter().position(|write| write.delete).unwrap() + 1;
+
+        crash(
+            temporary.path(),
+            plan.operation_id,
+            &format!("write-{delete_position}"),
+        );
+        assert!(!target.exists());
+
+        apply_knowledge(&user_paths, plan.operation_id, &ConfigOverrides::default()).unwrap();
+
+        assert!(!target.exists());
+        assert!(!root.join(MARKER).exists());
+        let events = crate::operation_events::operation_events(&user_paths, plan.operation_id)
+            .unwrap()
+            .events;
+        assert!(
+            events
+                .iter()
+                .any(|event| event.kind == OperationEventKind::Recovering)
+        );
     }
 
     #[test]

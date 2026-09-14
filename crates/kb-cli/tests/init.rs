@@ -26,6 +26,7 @@ fn init_creates_only_the_minimum_vault() {
         "Wiki/index.md",
         "Wiki/log.md",
         ".kb/config.yml",
+        ".kb/template.yml",
         ".kb/schemas/admission.schema.json",
         ".kb/schemas/config.schema.json",
     ] {
@@ -46,6 +47,10 @@ fn init_creates_only_the_minimum_vault() {
     assert_eq!(config["schema_version"].as_str(), Some("v1.0"));
     assert!(uuid::Uuid::parse_str(config["vault_id"].as_str().unwrap()).is_ok());
     assert_eq!(config["search"]["mode"].as_str(), Some("direct"));
+    let template: serde_yaml_ng::Value =
+        serde_yaml_ng::from_slice(&std::fs::read(vault.join(".kb/template.yml")).unwrap()).unwrap();
+    assert_eq!(template["schema_version"].as_str(), Some("v1.0"));
+    assert_eq!(template["template_version"].as_str(), Some("v1.1"));
 
     let top_level = std::fs::read_dir(&vault)
         .unwrap()

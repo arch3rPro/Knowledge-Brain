@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     UserPaths, register_vault,
     storage::atomic_replace,
-    template::{EMPTY_DIRECTORIES, STATIC_FILES, config_yaml},
+    template::{EMPTY_DIRECTORIES, STATIC_FILES, config_yaml, template_manifest_yaml},
 };
 
 #[derive(Debug, Clone)]
@@ -178,11 +178,15 @@ fn populate_and_validate(stage: &Path, vault_id: Uuid) -> Result<(), KbError> {
         &stage.join(".kb/config.yml"),
         config_yaml(vault_id).as_bytes(),
     )?;
+    atomic_replace(
+        &stage.join(".kb/template.yml"),
+        template_manifest_yaml().as_bytes(),
+    )?;
     validate_stage(stage)
 }
 
 fn validate_stage(stage: &Path) -> Result<(), KbError> {
-    for relative in ["admission.yml", ".kb/config.yml"] {
+    for relative in ["admission.yml", ".kb/config.yml", ".kb/template.yml"] {
         let path = stage.join(relative);
         let bytes = fs::read(&path).map_err(|error| io_error("read", &path, &error))?;
         serde_yaml_ng::from_slice::<serde_yaml_ng::Value>(&bytes)
@@ -296,6 +300,10 @@ fn created_file_names() -> Vec<String> {
     STATIC_FILES
         .iter()
         .map(|(path, _)| (*path).to_owned())
-        .chain(std::iter::once(".kb/config.yml".to_owned()))
+        .chain(
+            [".kb/config.yml", ".kb/template.yml"]
+                .into_iter()
+                .map(str::to_owned),
+        )
         .collect()
 }

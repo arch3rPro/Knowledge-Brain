@@ -36,6 +36,15 @@ pub(crate) fn success(
 
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError> {
+    if value.get("kind").and_then(Value::as_str) == Some("upgrade_vault") {
+        return Ok(render_vault_upgrade(value));
+    }
+    if value.get("git").is_some()
+        && value.get("summary").is_some()
+        && value.get("findings").is_some()
+    {
+        return Ok(render_sync_check(value));
+    }
     if value.get("kind").and_then(Value::as_str) == Some("maintenance") {
         return Ok(render_maintenance(value));
     }
@@ -58,6 +67,147 @@ pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError>
     let mut output = String::new();
     render_value(&mut output, value, 0, full_hashes, false);
     Ok(output.trim_end().to_owned())
+}
+
+fn render_vault_upgrade(value: &Value) -> String {
+    if let Some(changed) = value.get("changed").and_then(Value::as_array) {
+        let version = value
+            .get("template_version")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let mut output = format!(
+            "Vault 模板已升级到 {version}\n已更新 {} 个文件",
+            changed.len()
+        );
+        for path in changed.iter().filter_map(Value::as_str) {
+            let _ = write!(output, "\n- {path}");
+        }
+        return output;
+    }
+
+    let from = value
+        .get("from_template_version")
+        .and_then(Value::as_str)
+        .unwrap_or("未记录");
+    let to = value
+        .get("to_template_version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let writes = value
+        .get("writes")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let conflicts = value
+        .get("conflicts")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let mut output = format!("Vault 模板升级预览\n版本 {from} → {to}");
+    if writes.is_empty() && conflicts.is_empty() {
+        output.push_str("\n\n当前 Vault 模板已经是最新状态，无需写入。");
+        return output;
+    }
+    if !writes.is_empty() {
+        output.push_str("\n\n将更新：");
+        for write in writes {
+            let action = write
+                .get("action")
+                .and_then(Value::as_str)
+                .unwrap_or("update");
+            let path = write
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let _ = write!(output, "\n- {action}: {path}");
+        }
+        if let Some(diff) = value.get("diff").and_then(Value::as_str) {
+            let _ = write!(output, "\n\n差异：\n{diff}");
+        }
+    }
+    if !conflicts.is_empty() {
+        output.push_str("\n\n冲突（未修改 Vault）：");
+        for conflict in conflicts {
+            let path = conflict
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let reason = conflict
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let _ = write!(output, "\n- {path}: {reason}");
+            if let Some(action) = conflict.get("next_action").and_then(Value::as_str) {
+                let _ = write!(output, "\n  处理：{action}");
+            }
+        }
+        return output;
+    }
+    if let Some(operation_id) = value.get("confirmation_token").and_then(Value::as_str) {
+        let _ = write!(
+            output,
+            "\n\n确认后执行：kb vault upgrade --confirm {operation_id}"
+        );
+    }
+    output
+}
+
+fn render_sync_check(value: &Value) -> String {
+    let git = match value.pointer("/git/state").and_then(Value::as_str) {
+        Some("checked") => "Git 已检查",
+        Some("not_repository") => "非 Git 仓库",
+        Some("unavailable") => "Git 不可用",
+        Some("failed") => "Git 检查失败",
+        _ => "Git 状态未知",
+    };
+    let errors = value
+        .pointer("/summary/errors")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let warnings = value
+        .pointer("/summary/warnings")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let information = value
+        .pointer("/summary/information")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let id = value.get("vault_id").and_then(Value::as_str).map_or_else(
+        || "unknown".into(),
+        |id| id.chars().take(8).collect::<String>(),
+    );
+    let mut output = format!(
+        "同步检查\nVault {id} · {git}\n错误 {errors} · 警告 {warnings} · 提示 {information}"
+    );
+    let findings = value
+        .get("findings")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if findings.is_empty() {
+        output.push_str("\n\n未发现同步兼容问题。");
+        return output;
+    }
+    for finding in findings {
+        let level = match finding.get("level").and_then(Value::as_str) {
+            Some("error") => "错误",
+            Some("warning") => "警告",
+            _ => "提示",
+        };
+        let path = finding
+            .get("path")
+            .and_then(Value::as_str)
+            .map_or_else(String::new, |path| format!(" {path}"));
+        let message = finding
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let _ = write!(output, "\n\n{level}{path} {message}");
+        if let Some(action) = finding.get("next_action").and_then(Value::as_str) {
+            let _ = write!(output, "\n处理：{action}");
+        }
+    }
+    output
 }
 
 #[allow(clippy::too_many_lines)]

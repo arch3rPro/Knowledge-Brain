@@ -95,7 +95,9 @@ pub fn summary_for_knowledge_plan(plan: &KnowledgePlan) -> OperationSummary {
         &plan.target,
         plan.changes
             .iter()
-            .map(|change| format!("Wiki/{}", change.path.as_str()))
+            .flat_map(|change| [Some(&change.path), change.from_path.as_ref()])
+            .flatten()
+            .map(|path| format!("Wiki/{}", path.as_str()))
             .collect(),
         "Save knowledge",
     )

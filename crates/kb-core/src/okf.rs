@@ -21,6 +21,14 @@ pub enum OkfDocumentKind {
     Log,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KnowledgeOrigin {
+    /// Knowledge derived from external evidence saved through source admission.
+    ExternalResearch,
+    /// User-authored knowledge that does not claim an external evidence basis.
+    Original,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MarkdownLink {
     pub destination: String,
@@ -114,6 +122,27 @@ pub fn validate_okf(document: &ParsedOkfDocument, now: OffsetDateTime) -> Vec<Ok
         (&a.path, a.line, a.severity, &a.code).cmp(&(&b.path, b.line, b.severity, &b.code))
     });
     findings
+}
+
+#[must_use]
+/// Return the supported provenance declaration for a managed concept.
+///
+/// Missing or unsupported declarations return `None`; [`validate_okf`] reports
+/// unsupported values as findings.
+pub fn knowledge_origin(document: &ParsedOkfDocument) -> Option<KnowledgeOrigin> {
+    let value = document
+        .frontmatter
+        .as_ref()
+        .and_then(Value::as_mapping)
+        .and_then(|mapping| mapping_value(mapping, "kb"))
+        .and_then(Value::as_mapping)
+        .and_then(|mapping| mapping_value(mapping, "origin"))
+        .and_then(Value::as_str)?;
+    match value {
+        "external_research" => Some(KnowledgeOrigin::ExternalResearch),
+        "original" => Some(KnowledgeOrigin::Original),
+        _ => None,
+    }
 }
 
 fn document_kind(path: &PortableRelativePath) -> OkfDocumentKind {
@@ -565,6 +594,21 @@ fn validate_managed(
     mapping: &Mapping,
     findings: &mut Vec<OkfFinding>,
 ) {
+    let origin = mapping_value(mapping, "kb")
+        .and_then(Value::as_mapping)
+        .and_then(|kb| mapping_value(kb, "origin"));
+    if origin.is_some()
+        && !origin
+            .is_some_and(|value| matches!(value.as_str(), Some("external_research" | "original")))
+    {
+        findings.push(field_finding(
+            document,
+            "origin",
+            "managed_origin_invalid",
+            "kb.origin must be external_research or original when present.",
+            "Use external_research for derived research, original for user-authored knowledge, or omit the field for legacy content.",
+        ));
+    }
     require_nonempty_string(
         document,
         mapping,
@@ -605,7 +649,9 @@ fn validate_managed(
         ));
     }
     let sources = mapping_value(mapping, "sources").and_then(Value::as_sequence);
-    if sources.is_none_or(Vec::is_empty) {
+    if sources.is_none_or(Vec::is_empty)
+        && knowledge_origin(document) != Some(KnowledgeOrigin::Original)
+    {
         findings.push(field_finding(
             document,
             "sources",

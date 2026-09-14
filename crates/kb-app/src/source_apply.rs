@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, fs, path::Path};
 const MARKER: &str = ".kb/runtime/source-pending.json";
 const KNOWLEDGE_MARKER: &str = ".kb/runtime/knowledge-pending.json";
+const UPGRADE_MARKER: &str = ".kb/runtime/vault-upgrade-pending.json";
 #[derive(Debug, Serialize, Deserialize)]
 struct Progress {
     operation_id: OperationId,
@@ -58,8 +59,17 @@ pub(crate) fn ensure_no_pending(root: &Path) -> Result<(), KbError> {
     if safe_path(root, MARKER)?.exists() {
         return Err(recovery("An interrupted source capture needs recovery."));
     }
+    ensure_no_other_pending(root)
+}
+
+fn ensure_no_other_pending(root: &Path) -> Result<(), KbError> {
     if safe_path(root, KNOWLEDGE_MARKER)?.exists() {
         return Err(recovery("An interrupted knowledge save needs recovery."));
+    }
+    if safe_path(root, UPGRADE_MARKER)?.exists() {
+        return Err(recovery(
+            "An interrupted Vault template upgrade needs recovery.",
+        ));
     }
     Ok(())
 }
@@ -86,11 +96,7 @@ fn apply_inner(
     safe_path(root, ".kb/runtime")?;
     let _lock = VaultLock::acquire(root, LockMode::Exclusive, "apply source capture", Some(id))?;
     let marker = safe_path(root, MARKER)?;
-    if safe_path(root, KNOWLEDGE_MARKER)?.exists() {
-        return Err(recovery(
-            "An interrupted knowledge save needs recovery first.",
-        ));
-    }
+    ensure_no_other_pending(root)?;
     let progress_path = directory.join("source-progress.json");
     if marker.exists() {
         let pending: OperationId = read_json(&marker)?;
@@ -135,6 +141,7 @@ fn apply_inner(
             fs::remove_file(&marker).map_err(|e| io("remove recovery marker", &marker, e))?;
         }
     }
+    crate::ensure_shared_write_sync_safe(root)?;
     preflight(&plan, paths, overrides, &config)?;
     let outputs = prepare_outputs(&plan, &config)?;
     save_outputs(paths, root, &config, id, &directory, outputs, fail_after)?;
@@ -731,6 +738,19 @@ mod tests {
                 event_count
             );
         }
+    }
+
+    #[test]
+    fn pending_vault_upgrade_blocks_source_apply() {
+        let temporary = tempfile::tempdir().unwrap();
+        let (user, plan) = setup(temporary.path());
+        write_json(&plan.target.join(UPGRADE_MARKER), &OperationId::new()).unwrap();
+
+        let error =
+            apply_capture(&user, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::VaultNeedsRecovery);
+        assert!(!plan.target.join(MARKER).exists());
     }
     #[test]
     fn completed_replay_preserves_existing_search_caches() {

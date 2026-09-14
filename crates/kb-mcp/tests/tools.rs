@@ -123,6 +123,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         query_tool["inputSchema"]["properties"]["match_mode"],
         json!({"type":"string","enum":["relevant","exact"],"default":"relevant"})
     );
+    assert_knowledge_change_schema(&listed);
 
     let exact = call(
         &mut server,
@@ -161,6 +162,28 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         &json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
     );
     assert_eq!(denied["error"]["code"], -32602);
+}
+
+fn assert_knowledge_change_schema(listed: &Value) {
+    let knowledge_tool = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "kb_plan_knowledge")
+        .unwrap();
+    let change =
+        &knowledge_tool["inputSchema"]["properties"]["request"]["properties"]["changes"]["items"];
+    assert_eq!(
+        change["properties"]["kind"],
+        json!({"type":"string","enum":["upsert","delete","move"],"default":"upsert"})
+    );
+    assert!(change["properties"]["from_path"].is_object());
+    assert!(
+        !change["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("content"))
+    );
 }
 
 #[test]

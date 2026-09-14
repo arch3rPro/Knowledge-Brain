@@ -1,6 +1,6 @@
 ---
 name: kb-vault
-description: Manage a Knowledge-Brain Vault when the user asks to initialize, adopt, register, locate, rebind, or unregister one. Do not use for writing notes, admission rules, ingestion, or search.
+description: Manage a Knowledge-Brain Vault when the user asks to initialize, adopt, upgrade its product template, register, locate, rebind, or unregister one. Do not use for updating the CLI, writing notes, admission rules, ingestion, or search.
 license: MIT
 compatibility: Requires the portable Knowledge-Brain kb CLI on PATH; MCP is optional.
 ---
@@ -17,9 +17,10 @@ compatibility: Requires the portable Knowledge-Brain kb CLI on PATH; MCP is opti
 
 - New empty target: run `kb init <target> --json`, then verify with `kb status` and `kb doctor`.
 - Existing non-empty directory: run `kb adopt <target> --json`; show its change summary and apply only after one explicit confirmation.
+- Existing Vault after a CLI update: run `kb vault upgrade --vault <path-or-id> --json`. Show the exact managed files and conflicts. Only when `confirmation_token` is present and the user confirms, run `kb vault upgrade --confirm <token> --vault <path-or-id> --json`. Never treat `kb update` as Vault template authorization.
 - Registration or lookup: use `kb vault list|register|rebind|unregister` and `kb paths`; never edit the registry directly.
 
-Initialization does not create Git, theme directories, admission entries, MCP settings, or Skills. Never clear a directory to make initialization pass.
+Initialization and template upgrades do not create or modify Git, theme directories, admission entries, ordinary notes, Wiki content, Obsidian settings, MCP settings, or Skills. Never clear a directory to make initialization pass, and never overwrite a reported upgrade conflict.
 
 ## Complete
 

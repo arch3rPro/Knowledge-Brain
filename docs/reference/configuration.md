@@ -15,6 +15,8 @@
 
 `schema_version` 在每个存在的 YAML 配置文件中都是必填项。`vault_id` 只能出现在 `.kb/config.yml`，不能由用户层、本机层或 `kb config set` 覆盖。
 
+`.kb/template.yml` 不是配置层。它记录创建或最近升级该 Vault 时采用的产品模板版本及受管理边界，供 `kb vault upgrade` 判断已知基线和冲突；不要用 `kb config set` 编辑它。模板版本升级不会改变主题分类、准入清单或普通笔记，完整规则见[命令参考](commands.md#注册与路径)。
+
 ## 可配置字段
 
 | 键 | 类型 | 默认值 | 环境变量 |

@@ -931,6 +931,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "time",
+ "unicode-normalization",
  "uuid",
  "yaml-edit",
  "zip",

@@ -191,6 +191,137 @@ fn malformed_request_uses_the_json_error_contract() {
     assert_eq!(response["error"]["code"], "invalid_config");
 }
 
+#[test]
+fn duplicate_title_is_rejected_before_the_cli_creates_an_operation() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let vault_text = vault.to_str().unwrap();
+    run(base, &["init", vault_text, "--json"]);
+    fs::write(
+        vault.join("Wiki/articles/existing.md"),
+        "---\ntype: Article\ntitle: Shared title\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com/source\nkb:\n  managed: true\n---\n\n# Existing heading\n",
+    )
+    .unwrap();
+    let request_path = base.join("duplicate.json");
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "path": "articles/new.md",
+                "before_sha256": null,
+                "summary": "Add a conflicting article.",
+                "content": "---\ntype: Article\ntitle: shared TITLE\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com/source\nkb:\n  managed: true\n---\n\n# New heading\n"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let output = command(base)
+        .args([
+            "plan",
+            "create",
+            request_path.to_str().unwrap(),
+            "--vault",
+            vault_text,
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["error"]["code"], "invalid_config");
+    assert_eq!(
+        response["error"]["details"]["finding_code"],
+        "duplicate_title"
+    );
+    assert_eq!(
+        response["error"]["details"]["paths"],
+        json!(["articles/existing.md", "articles/new.md"])
+    );
+    assert!(!base.join("state/operations").exists());
+}
+
+#[test]
+fn cli_distinguishes_external_research_from_original_knowledge() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let vault_text = vault.to_str().unwrap();
+    run(base, &["init", vault_text, "--json"]);
+
+    let original_request = base.join("original.json");
+    fs::write(
+        &original_request,
+        serde_json::to_vec_pretty(&json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "path": "articles/original.md",
+                "before_sha256": null,
+                "summary": "Save an original decision.",
+                "content": "---\ntype: Article\ntitle: Original decision\nstatus: stable\ngenerated:\n  by: human:user\n  at: 2026-09-07T03:00:00Z\nkb:\n  managed: true\n  origin: original\n---\n\n# Original decision\n"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let original = run(
+        base,
+        &[
+            "plan",
+            "create",
+            original_request.to_str().unwrap(),
+            "--vault",
+            vault_text,
+            "--json",
+        ],
+    );
+    assert_eq!(original["data"]["kind"], "save_knowledge");
+
+    let external_request = base.join("external.json");
+    fs::write(
+        &external_request,
+        serde_json::to_vec_pretty(&json!({
+            "schema_version": "v1.0",
+            "changes": [{
+                "path": "research/external.md",
+                "before_sha256": null,
+                "summary": "Save external research without admitted evidence.",
+                "content": "---\ntype: Research\ntitle: External research\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: web\n    resource: https://example.com/source\nkb:\n  managed: true\n  origin: external_research\n---\n\n# External research\n"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let output = command(base)
+        .args([
+            "plan",
+            "create",
+            external_request.to_str().unwrap(),
+            "--vault",
+            vault_text,
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(output.stderr.is_empty());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        response["error"]["details"]["finding_code"],
+        "source_admission_required"
+    );
+    assert_eq!(
+        fs::read_dir(base.join("state/operations")).unwrap().count(),
+        1
+    );
+}
+
 fn run(base: &Path, arguments: &[&str]) -> Value {
     run_from(base, base, arguments)
 }

@@ -109,9 +109,10 @@ pub fn vault_status(
 pub(crate) fn pending_operations(user_paths: &UserPaths, root: &Path) -> usize {
     let source_pending = usize::from(root.join(".kb/runtime/source-pending.json").exists());
     let knowledge_pending = usize::from(root.join(".kb/runtime/knowledge-pending.json").exists());
+    let upgrade_pending = usize::from(root.join(".kb/runtime/vault-upgrade-pending.json").exists());
     let operations = user_paths.state_dir.join("operations");
     let Ok(entries) = fs::read_dir(operations) else {
-        return source_pending + knowledge_pending;
+        return source_pending + knowledge_pending + upgrade_pending;
     };
     entries
         .filter_map(Result::ok)
@@ -126,6 +127,7 @@ pub(crate) fn pending_operations(user_paths: &UserPaths, root: &Path) -> usize {
         .count()
         + source_pending
         + knowledge_pending
+        + upgrade_pending
 }
 
 fn cache_status(root: &Path) -> Result<CacheStatus, KbError> {

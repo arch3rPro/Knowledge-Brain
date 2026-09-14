@@ -216,6 +216,9 @@ fn collect(
     for relative in ["admission.yml", "KB.md", ".kb/config.yml"] {
         paths.push(PortableRelativePath::parse(relative)?);
     }
+    if root.join(".kb/template.yml").is_file() {
+        paths.push(PortableRelativePath::parse(".kb/template.yml")?);
+    }
     directories.sort();
     directories.dedup();
     paths.sort();
@@ -596,8 +599,10 @@ fn validate_backup_scope(
             || in_tree("Wiki")
             || admission_roots.iter().any(|root| in_tree(root.as_str()))
     } else {
-        matches!(value, "admission.yml" | "KB.md" | ".kb/config.yml")
-            || value.starts_with(".kb/schemas/")
+        matches!(
+            value,
+            "admission.yml" | "KB.md" | ".kb/config.yml" | ".kb/template.yml"
+        ) || value.starts_with(".kb/schemas/")
             || value.starts_with("Wiki/")
             || admission_roots
                 .iter()

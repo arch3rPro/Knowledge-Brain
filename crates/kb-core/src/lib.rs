@@ -38,13 +38,14 @@ pub use config::{
 };
 pub use error::{ErrorCode, KbError};
 pub use okf::{
-    MarkdownLink, OkfDocumentKind, OkfFinding, OkfSeverity, OkfSourceResource, ParsedOkfDocument,
-    parse_okf, validate_okf,
+    KnowledgeOrigin, MarkdownLink, OkfDocumentKind, OkfFinding, OkfSeverity, OkfSourceResource,
+    ParsedOkfDocument, knowledge_origin, parse_okf, validate_okf,
 };
 pub use operation::{
-    AdoptionPlan, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest, KnowledgePlanResult,
-    KnowledgeWrite, ObservedEntry, ObservedKind, OperationEvent, OperationEventKind,
-    OperationEventLog, OperationEventReport, OperationId, OperationKind, PlannedFile,
+    AdoptionPlan, KnowledgeChangeKind, KnowledgeChangeRequest, KnowledgePlan, KnowledgePlanRequest,
+    KnowledgePlanResult, KnowledgeWrite, ObservedEntry, ObservedKind, OperationEvent,
+    OperationEventKind, OperationEventLog, OperationEventReport, OperationId, OperationKind,
+    PlannedFile,
 };
 pub use path::{
     PortabilityCollision, PortableRelativePath, detect_portability_collisions, find_vault_root,

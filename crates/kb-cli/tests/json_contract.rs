@@ -120,6 +120,12 @@ fn version_and_capabilities_are_explicit_contracts() {
             .unwrap()
             .contains(&serde_json::Value::String("mcp".to_owned()))
     );
+    assert!(
+        capabilities["data"]["commands"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::Value::String("sync".to_owned()))
+    );
 }
 
 #[test]

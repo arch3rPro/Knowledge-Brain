@@ -12,10 +12,12 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Explicit admission** — `admission.yml` 明确指定允许进入知识处理范围的一级主题目录。
 - **Structured Wiki** — 来源、阶段性研究和可复用文章分别保存在固定的三层 `Wiki/` 结构中。
 - **Reviewable changes** — 采用已有目录等多文件操作先生成计划，再由用户明确执行。
+- **Reviewable Vault upgrades** — CLI 更新后可单独预览模板变化，保留个人规则、分类、笔记、Git 与 Obsidian 设置。
 - **Traceable sources** — 保留原始文件副本和精确版本，来源变更不覆盖旧证据。
 - **Layered search** — 默认直接查询真实文件；可选 BM25F 提供字段加权、中文检索和可解释评分。
 - **Verified backups** — 生成带逐文件 SHA-256 清单的标准 ZIP，并只向空目录恢复。
 - **Portable format** — Vault 路径和文件名按 Windows、macOS 与 Linux 的共同规则校验。
+- **External sync compatibility** — Git、Obsidian Git 和目录同步工具可同步 Vault；设备路径和本机索引保持独立。
 - **Tool-independent core** — CLI、MCP、HTTP 与未来的 WebUI 和 GUI 共用同一应用层。
 - **Agent-ready interfaces** — 内置跨宿主 Agent Skill，并提供固定 Vault、默认只读的 MCP stdio 与 Streamable HTTP 入口。
 - **Offline by default** — 基础操作不依赖 LLM、Node.js、Python、数据库、云账号或常驻服务。
@@ -38,6 +40,7 @@ My-Knowledge/
 │   └── log.md                   # 知识变更记录
 └── .kb/
     ├── config.yml               # Vault 身份和共享配置
+    ├── template.yml             # 产品模板版本和受管理边界
     ├── schemas/                 # 配置格式定义
     ├── cache/                   # 可重建缓存
     └── runtime/                 # 运行状态
@@ -148,8 +151,10 @@ kb apply <operation-id> --json
 | `kb backup` | 创建、校验和恢复标准 ZIP 备份 |
 | `kb config` | 查看、校验和修改配置或准入清单 |
 | `kb vault` | 管理本机 Vault 注册和路径绑定 |
+| `kb vault upgrade` | 预览并确认升级产品管理的 Vault 模板 |
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
 | `kb doctor` | 运行独立诊断 |
+| `kb sync check` | 只读检查 Git、Obsidian 和跨设备同步兼容问题 |
 | `kb capabilities` | 查询当前二进制公开的能力 |
 | `kb skills` | 检测、安装、检查或安全卸载可移植 Agent Skill |
 | `kb mcp` | 为一个固定 Vault 启动 MCP stdio 或 Streamable HTTP 服务 |
@@ -210,6 +215,7 @@ Windows PowerShell：
 - [来源格式](docs/reference/sources.md)
 - [搜索规则](docs/reference/search.md)
 - [备份、校验与恢复](docs/reference/backup.md)
+- [Git、Obsidian 与外部同步](docs/reference/synchronization.md)
 - [知识计划与安全保存](docs/reference/knowledge-plans.md)
 - [Portable Agent Skill](docs/reference/agent-skill.md)
 - [MCP](docs/reference/mcp.md)

@@ -1,4 +1,5 @@
 use kb_core::KbError;
+use unicode_normalization::UnicodeNormalization;
 
 const START: &str = "<!-- kb:managed:start -->";
 const END: &str = "<!-- kb:managed:end -->";
@@ -13,7 +14,25 @@ pub(crate) struct LogEntry {
     pub path: String,
     pub title: String,
     pub summary: String,
-    pub creation: bool,
+    pub action: LogAction,
+    pub from_path: Option<String>,
+}
+
+pub(crate) enum LogAction {
+    Creation,
+    Update,
+    Deletion,
+    Move,
+}
+
+pub(crate) fn normalize_title(title: &str) -> String {
+    title
+        .nfc()
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 pub(crate) fn render_index(
@@ -36,13 +55,31 @@ pub(crate) fn render_log(
     let lines = entries
         .iter()
         .map(|entry| {
-            format!(
-                "- **{}**: [{}]({}) — {}",
-                if entry.creation { "Creation" } else { "Update" },
-                escape_label(&entry.title),
-                entry.path,
-                entry.summary
-            )
+            let action = match entry.action {
+                LogAction::Creation => "Creation",
+                LogAction::Update => "Update",
+                LogAction::Deletion => "Deletion",
+                LogAction::Move => "Move",
+            };
+            let movement = entry
+                .from_path
+                .as_ref()
+                .map_or_else(String::new, |path| format!(" (from {path})"));
+            if matches!(entry.action, LogAction::Deletion) {
+                format!(
+                    "- **{action}**: {} (`{}`) — {}",
+                    escape_label(&entry.title),
+                    entry.path,
+                    entry.summary
+                )
+            } else {
+                format!(
+                    "- **{action}**: [{}]({}){movement} — {}",
+                    escape_label(&entry.title),
+                    entry.path,
+                    entry.summary
+                )
+            }
         })
         .collect::<Vec<_>>()
         .join("\n");

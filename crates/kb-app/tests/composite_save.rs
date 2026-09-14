@@ -206,6 +206,8 @@ fn knowledge_request() -> KnowledgePlanRequest {
     KnowledgePlanRequest {
         schema_version: CURRENT_SCHEMA_VERSION,
         changes: vec![KnowledgeChangeRequest {
+            kind: kb_core::KnowledgeChangeKind::Upsert,
+            from_path: None,
             path: PortableRelativePath::parse("articles/composite.md").unwrap(),
             before_sha256: None,
             summary: "Save composite knowledge.".into(),

@@ -128,6 +128,13 @@ pub(crate) fn search(
     Ok(rank(scope, query, limit, &index))
 }
 
+pub(crate) fn validate_current_index(root: &Path, config: &EffectiveConfig) -> Result<(), KbError> {
+    let path = safe_path(root, ".kb/cache/bm25.json")?;
+    let index = read_index(&path)?;
+    validate_current(root, SearchScope::Wiki, config, &index)?;
+    validate_current(root, SearchScope::Sources, config, &index)
+}
+
 fn read_index(path: &Path) -> Result<Index, KbError> {
     let bytes = fs::read(path).map_err(|_| unavailable("BM25F index is missing."))?;
     let index: Index =

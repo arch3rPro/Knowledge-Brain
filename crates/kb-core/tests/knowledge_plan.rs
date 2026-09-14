@@ -4,6 +4,8 @@ use kb_core::{
 
 fn change(path: &str) -> KnowledgeChangeRequest {
     KnowledgeChangeRequest {
+        kind: kb_core::KnowledgeChangeKind::Upsert,
+        from_path: None,
         path: PortableRelativePath::parse(path).unwrap(),
         before_sha256: None,
         summary: "Add a reusable article.".into(),
@@ -90,4 +92,60 @@ fn request_enforces_schema_count_and_content_size() {
     let json = r#"{"schema_version":"v1.1","changes":[]}"#;
     let newer: KnowledgePlanRequest = serde_json::from_str(json).unwrap();
     assert!(newer.validate(10, 1024).is_err());
+}
+
+#[test]
+fn request_validates_explicit_delete_and_move_shapes() {
+    let delete: KnowledgePlanRequest = serde_json::from_value(serde_json::json!({
+        "schema_version": "v1.0",
+        "changes": [{
+            "kind": "delete",
+            "path": "articles/old.md",
+            "before_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "summary": "Delete old knowledge."
+        }]
+    }))
+    .unwrap();
+    delete.validate(10, 1024).unwrap();
+
+    let move_request: KnowledgePlanRequest = serde_json::from_value(serde_json::json!({
+        "schema_version": "v1.0",
+        "changes": [{
+            "kind": "move",
+            "from_path": "research/old.md",
+            "path": "articles/new.md",
+            "before_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "summary": "Move the concept.",
+            "content": "---\ntype: Article\n---\n"
+        }]
+    }))
+    .unwrap();
+    move_request.validate(10, 1024).unwrap();
+
+    let mut missing_source = move_request.clone();
+    missing_source.changes[0].from_path = None;
+    assert!(missing_source.validate(10, 1024).is_err());
+
+    let mut delete_with_content = delete;
+    delete_with_content.changes[0].content = "not deletion".into();
+    assert!(delete_with_content.validate(10, 1024).is_err());
+}
+
+#[test]
+fn legacy_upsert_json_keeps_its_wire_shape() {
+    let request: KnowledgePlanRequest = serde_json::from_value(serde_json::json!({
+        "schema_version": "v1.0",
+        "changes": [{
+            "path": "articles/current.md",
+            "before_sha256": null,
+            "summary": "Create current knowledge.",
+            "content": "---\ntype: Article\n---\n"
+        }]
+    }))
+    .unwrap();
+
+    let serialized = serde_json::to_value(request).unwrap();
+
+    assert!(serialized["changes"][0].get("kind").is_none());
+    assert!(serialized["changes"][0].get("from_path").is_none());
 }

@@ -13,6 +13,8 @@ First distinguish the request from ordinary content creation. “Research”, �
 
 Resolve the Vault, read `KB.md`, and construct the structured request described in [references/request-format.md](references/request-format.md). Read that reference only when preparing a save.
 
+Classify the knowledge before preparing it. Material derived from websites, repositories, papers, or other external sources is `external_research`; it must cite at least one exact `kb-source://` version already saved from an enabled admission directory. If that evidence is absent, do not prepare a Wiki save or ingest it automatically—explain that source saving requires an explicit request. User-authored views, decisions, and other content that does not claim an external evidence basis is `original`; do not fabricate a source for it. Treat mixed content as external research when external material supports its claims.
+
 Run MCP `kb_knowledge_save` or `kb knowledge save <request.json> --vault <path-or-id> --json`. Check target paths, source URIs, `before_sha256`, managed index/log changes, conflicts, and `change_summary`. Keep the confirmation token internal.
 
 ## Save and verify

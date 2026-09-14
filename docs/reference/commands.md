@@ -68,6 +68,14 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 
 `lint` 检查实际 Wiki Markdown、OKF frontmatter、受管理文档、链接和来源引用，不写入知识或缓存。默认模式返回完整报告并退出 0；`--strict` 在报告含任何发现时退出非零。字段、finding code 和限制见 [Wiki lint 参考](lint.md)。
 
+## 外部同步
+
+```text
+kb sync check [--vault <PATH_OR_ID>] [--json]
+```
+
+`sync check` 只读取 Vault 和可用的 Git 状态，不执行同步或修改仓库。Git 是推荐但可选的同步来源，Obsidian Git 等客户端与命令行 Git 使用相同规则。跨设备路径、共享与本机文件范围、推荐 Git 配置和冲突处理见[外部同步兼容参考](synchronization.md)。
+
 ## 配置与准入
 
 ```text
@@ -93,10 +101,15 @@ kb vault list [--json]
 kb vault register <PATH> [--json]
 kb vault rebind <VAULT_ID> <PATH> [--json]
 kb vault unregister <VAULT_ID> [--json]
+kb vault upgrade [--confirm <TOKEN>] [--vault <PATH_OR_ID>] [--json]
 kb paths [--vault <PATH_OR_ID>] [--json]
 ```
 
 移动 Vault 后，旧登记不会自动猜测新位置。使用 `rebind` 核对新位置内的 `vault_id` 后更新本机注册表。`unregister` 不删除 Vault 数据。
+
+`vault upgrade` 只升级产品管理的 Vault 模板，不下载或替换 CLI；CLI 自身更新使用 `kb update`。默认调用返回受影响路径、完整文本差异、冲突和明确不触及的内容，并保持 Vault 不变；无冲突时使用返回的 token 执行 `--confirm <TOKEN>`，应用刚才预览的同一组变更。目标文件在预览后变化会返回 `plan_stale`。
+
+当前模板记录在 `.kb/template.yml`，与 `.kb/config.yml` 中的数据 schema 分开。升级可以创建缺失的产品 schema、识别 v0.1.0–v0.1.2 及之后登记的已知旧基线，并只替换 `KB.md` 的 `kb:rules` 标记区块。无标记且偏离已知基线的旧 `KB.md`、被修改的产品 schema 或未知模板清单会作为冲突保留，不会被覆盖。`admission.yml`、主题目录、普通笔记、Wiki 内容、`.git` 和 `.obsidian` 不属于升级写入范围；命令不执行任何 Git 操作。中断时重试同一个 token 会先恢复本次升级已经写入的文件，再重新应用。
 
 ## 状态与诊断
 

@@ -66,6 +66,12 @@ fn create_collects_exact_portable_scope_and_marks_compact_backups() {
         complete_manifest
             .files
             .iter()
+            .any(|file| file.path.as_str() == ".kb/template.yml")
+    );
+    assert!(
+        complete_manifest
+            .files
+            .iter()
             .any(|file| file.path.as_str().contains("evidence"))
     );
     assert!(
@@ -205,6 +211,7 @@ fn restore_publishes_only_verified_bytes_into_an_empty_target() {
         b"portable bytes"
     );
     assert!(target.join("Disabled").is_dir());
+    assert!(target.join(".kb/template.yml").is_file());
     assert!(!target.join("manifest.json").exists());
     assert!(!target.join(".kb/cache").exists());
 

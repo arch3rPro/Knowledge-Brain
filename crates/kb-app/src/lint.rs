@@ -3,17 +3,19 @@ use std::{
     path::Path,
 };
 
-use kb_core::{
-    CURRENT_SCHEMA_VERSION, EffectiveConfig, KbError, OkfDocumentKind, OkfFinding, OkfSeverity,
-    PortableRelativePath, SchemaVersion, detect_portability_collisions, parse_okf, validate_okf,
-};
-use serde::Serialize;
-use time::OffsetDateTime;
-
 use crate::{
+    managed_markdown::normalize_title,
     source_io::{Budget, list_files_allowing_collisions, safe_path},
     source_record,
 };
+use kb_core::{
+    CURRENT_SCHEMA_VERSION, EffectiveConfig, KbError, KnowledgeOrigin, OkfDocumentKind, OkfFinding,
+    OkfSeverity, PortableRelativePath, SchemaVersion, detect_portability_collisions,
+    knowledge_origin, parse_okf, validate_okf,
+};
+use serde::Serialize;
+use serde_yaml_ng::Value;
+use time::OffsetDateTime;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LintReport {
@@ -37,6 +39,7 @@ pub fn lint(
     let paths = wiki_markdown_paths(root, &mut budget)?;
     let mut findings = portability_findings(&paths)?;
     let mut documents = BTreeMap::new();
+    let mut titles: BTreeMap<(&str, String), (String, Vec<PortableRelativePath>)> = BTreeMap::new();
 
     for path in &paths {
         let bytes = budget.read(&safe_path(root, path.as_str())?)?;
@@ -55,8 +58,44 @@ pub fn lint(
             }
         };
         let document = parse_okf(path.clone(), &text);
+        if document.kind == OkfDocumentKind::Concept
+            && !path.as_str().starts_with("Wiki/external-sources/records/")
+            && let Some(title) = concept_title(&document)
+        {
+            let normalized = normalize_title(&title);
+            if !normalized.is_empty() {
+                let partition = if path.as_str().starts_with("Wiki/research/") {
+                    "research"
+                } else {
+                    "articles"
+                };
+                titles
+                    .entry((partition, normalized))
+                    .or_insert_with(|| (title.clone(), Vec::new()))
+                    .1
+                    .push(path.clone());
+            }
+        }
         findings.extend(validate_okf(&document, now));
         documents.insert(path.clone(), document);
+    }
+
+    for (_, (title, paths)) in titles.into_iter().filter(|(_, (_, paths))| paths.len() > 1) {
+        let joined = paths
+            .iter()
+            .map(PortableRelativePath::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        for path in paths {
+            findings.push(new_finding(
+                &path,
+                OkfSeverity::Error,
+                "duplicate_title",
+                None,
+                format!("Wiki title {title:?} is shared by: {joined}."),
+                "Give every Wiki concept a distinct, subject-specific title.",
+            ));
+        }
     }
 
     let source_versions = collect_source_versions(&documents, &mut findings);
@@ -72,6 +111,50 @@ pub fn lint(
         checked_files: paths.len(),
         findings,
     })
+}
+
+fn concept_title(document: &kb_core::ParsedOkfDocument) -> Option<String> {
+    if document.managed {
+        return document
+            .frontmatter
+            .as_ref()
+            .and_then(Value::as_mapping)
+            .and_then(|mapping| mapping.get(Value::String("title".to_owned())))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+    }
+    level_one_title(&document.body)
+}
+
+fn level_one_title(body: &str) -> Option<String> {
+    let mut fence: Option<(char, usize)> = None;
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        let marker = trimmed.chars().next().unwrap_or(' ');
+        let count = trimmed
+            .chars()
+            .take_while(|character| *character == marker)
+            .count();
+        if matches!(marker, '`' | '~') && count >= 3 {
+            if let Some((open, width)) = fence {
+                if marker == open && count >= width && trimmed[count..].trim().is_empty() {
+                    fence = None;
+                }
+            } else {
+                fence = Some((marker, count));
+            }
+            continue;
+        }
+        if fence.is_none()
+            && let Some(title) = trimmed.strip_prefix("# ")
+        {
+            let title = title.trim().trim_end_matches('#').trim();
+            if !title.is_empty() {
+                return Some(title.to_owned());
+            }
+        }
+    }
+    None
 }
 
 fn wiki_markdown_paths(
@@ -297,6 +380,21 @@ fn validate_source_resources(
     findings: &mut Vec<OkfFinding>,
 ) {
     for (path, document) in documents {
+        if knowledge_origin(document) == Some(KnowledgeOrigin::ExternalResearch)
+            && !document
+                .sources
+                .iter()
+                .any(|source| source.resource.starts_with("kb-source://"))
+        {
+            findings.push(new_finding(
+                path,
+                OkfSeverity::Error,
+                "source_admission_required",
+                None,
+                "External research has no admitted exact source version.",
+                "Save the source from an enabled admission directory and reference its exact kb-source URI.",
+            ));
+        }
         for source in &document.sources {
             if source.resource.starts_with("kb-source://") {
                 let exact_shape =

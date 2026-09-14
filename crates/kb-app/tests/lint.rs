@@ -204,6 +204,101 @@ fn lint_reports_portable_collisions_when_the_filesystem_can_store_them() {
 }
 
 #[test]
+fn lint_reports_each_concept_with_a_duplicate_title() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/research/alpha.md"),
+        "---\ntype: Research\n---\n\n# Shared subject\n\nFirst.\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/research/beta.md"),
+        "---\ntype: Research\n---\n\n# Shared subject\n\nSecond.\n",
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+    let duplicates = report
+        .findings
+        .iter()
+        .filter(|finding| finding.code == "duplicate_title")
+        .collect::<Vec<_>>();
+
+    assert_eq!(duplicates.len(), 2);
+    assert_eq!(duplicates[0].path.as_str(), "Wiki/research/alpha.md");
+    assert_eq!(duplicates[1].path.as_str(), "Wiki/research/beta.md");
+    assert!(
+        duplicates
+            .iter()
+            .all(|finding| finding.message.contains("Shared subject"))
+    );
+}
+
+#[test]
+fn lint_allows_the_same_title_in_different_index_partitions() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/research/alpha.md"),
+        "---\ntype: Research\n---\n\n# Shared subject\n",
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/beta.md"),
+        "---\ntype: Article\n---\n\n# Shared subject\n",
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert!(!codes(&report).contains(&"duplicate_title"));
+}
+
+#[test]
+fn lint_uses_managed_frontmatter_titles_for_duplicate_detection() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/articles/alpha.md"),
+        managed_concept("Shared title", "First heading"),
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/beta.md"),
+        managed_concept(" shared   TITLE ", "Second heading"),
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.code == "duplicate_title")
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn lint_reports_external_research_without_an_exact_saved_source() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/research/external.md"),
+        managed_concept("External research", "External research")
+            .replace("type: Article", "type: Research")
+            .replace(
+                "  managed: true",
+                "  managed: true\n  origin: external_research",
+            ),
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert!(codes(&report).contains(&"source_admission_required"));
+}
+
+#[test]
 fn source_record_current_version_must_appear_in_history() {
     let (_temporary, vault, config) = setup();
     let old = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -218,6 +313,12 @@ fn source_record_current_version_must_appear_in_history() {
     let report = lint(&vault, &config, now()).unwrap();
 
     assert!(codes(&report).contains(&"source_identity_invalid"));
+}
+
+fn managed_concept(title: &str, heading: &str) -> String {
+    format!(
+        "---\ntype: Article\ntitle: {title}\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com/source\nkb:\n  managed: true\n---\n\n# {heading}\n"
+    )
 }
 
 fn write_source_record(vault: &Path, old: &str, current: &str) -> PathBuf {

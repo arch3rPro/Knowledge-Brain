@@ -19,7 +19,7 @@ kb backup restore <PATH.zip> --target <EMPTY_DIRECTORY> [--json]
 - `admission.yml`、`KB.md`；
 - `Wiki/`，包括来源记录和不可修改的原始来源对象；
 - `admission.yml` 列出的全部一级主题目录，包括 `enabled: false` 的目录；
-- `.kb/config.yml` 和 `.kb/schemas/`；
+- `.kb/config.yml`、存在时的 `.kb/template.yml` 和 `.kb/schemas/`；
 - 上述范围中的空目录、隐藏文件和未进入来源处理规则的普通文件。
 
 备份不会套用来源的 `include/exclude` glob，因为备份目标是保存整个获准主题目录，不只是当前可提取文件。它始终排除 `.git`、`.kb/config.local.yml`、`.kb/cache/`、`.kb/runtime/`、用户级注册表、操作计划及其他本机状态。

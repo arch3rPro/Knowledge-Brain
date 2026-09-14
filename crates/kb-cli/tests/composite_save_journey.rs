@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
 #[test]
@@ -145,6 +146,65 @@ fn human_save_preview_shows_only_the_change_summary() {
     assert!(!text.contains("confirmation_token"), "{text}");
     assert!(!text.contains("operation_id"), "{text}");
     assert!(!text.contains("preview:"), "{text}");
+}
+
+#[test]
+fn knowledge_save_moves_and_deletes_managed_pages_through_the_normal_cli_flow() {
+    let temporary = tempfile::tempdir().unwrap();
+    let base = temporary.path();
+    let vault = base.join("vault");
+    let vault_text = vault.to_str().unwrap();
+    run(base, &["init", vault_text, "--json"]);
+    let old = "---\ntype: Research\ntitle: Old title\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-08T00:00:00Z\nsources:\n  - id: source\n    resource: https://example.com\nkb:\n  managed: true\n---\n\n# Old title\n";
+    let obsolete = old.replace("Old title", "Obsolete");
+    fs::write(vault.join("Wiki/research/old.md"), old).unwrap();
+    fs::write(vault.join("Wiki/articles/obsolete.md"), &obsolete).unwrap();
+    let request = base.join("move-delete.json");
+    fs::write(
+        &request,
+        serde_json::to_vec(&json!({
+            "schema_version": "v1.0",
+            "changes": [
+                {
+                    "kind": "move",
+                    "from_path": "research/old.md",
+                    "path": "research/new.md",
+                    "before_sha256": hex::encode(Sha256::digest(old.as_bytes())),
+                    "summary": "Rename the research page.",
+                    "content": old.replace("Old title", "New title")
+                },
+                {
+                    "kind": "delete",
+                    "path": "articles/obsolete.md",
+                    "before_sha256": hex::encode(Sha256::digest(obsolete.as_bytes())),
+                    "summary": "Remove obsolete knowledge."
+                }
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let applied = run(
+        base,
+        &[
+            "knowledge",
+            "save",
+            request.to_str().unwrap(),
+            "--yes",
+            "--vault",
+            vault_text,
+            "--json",
+        ],
+    );
+
+    assert_eq!(applied["data"]["phase"], "applied");
+    assert!(!vault.join("Wiki/research/old.md").exists());
+    assert!(vault.join("Wiki/research/new.md").is_file());
+    assert!(!vault.join("Wiki/articles/obsolete.md").exists());
+    let log = fs::read_to_string(vault.join("Wiki/log.md")).unwrap();
+    assert!(log.contains("**Move**"));
+    assert!(log.contains("**Deletion**"));
 }
 
 fn knowledge_request() -> Value {

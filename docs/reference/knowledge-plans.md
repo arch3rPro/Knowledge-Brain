@@ -21,6 +21,7 @@ kb apply <OPERATION_ID> [--json]
   "schema_version": "v1.0",
   "changes": [
     {
+      "kind": "upsert",
       "path": "articles/local-first.md",
       "before_sha256": null,
       "summary": "Add a reusable explanation of local-first storage.",
@@ -33,12 +34,16 @@ kb apply <OPERATION_ID> [--json]
 字段规则：
 
 - `schema_version` 当前必须是 `v1.0`。
-- `changes` 至少一项，不超过配置的单次文件数限制，path 不得重复。
+- `changes` 至少一项，不超过配置的单次文件数限制，所有来源路径和目标路径不得重复。
+- `kind` 支持 `upsert`、`delete` 和 `move`；省略时为兼容既有请求的 `upsert`。
 - `path` 相对于 `Wiki/`，只接受 `research/**/*.md` 或 `articles/**/*.md`。保留名 `index.md`、`log.md` 在大小写不敏感的文件系统上同样禁止。
-- 新建文件使用 `before_sha256: null`；替换文件使用读取原始字节得到的 64 位小写 SHA-256。Stage 3B 不支持删除或移动。
+- 新建使用 `before_sha256: null`；替换使用读取原始字节得到的 64 位小写 SHA-256，并提供完整 `content`。
+- 删除使用 `kind: "delete"` 和旧文件完整 SHA-256，不提供 `content`。移动使用 `kind: "move"`、`from_path`、目标 `path`、来源完整 SHA-256 和目标完整 `content`；目标必须不存在。删除和移动只处理受管理 concept，空内容不会被解释为删除。
 - `summary` 必须是非空单行文本，作为人类可读日志条目。
 - `content` 是完整 UTF-8 Markdown，不是 patch。它必须显式包含 `kb.managed: true`，通过 Producer Profile，并且不能已经达到 `stale_after`。
 - `sources[].resource` 中的 `kb-source://` 引用必须指向 Vault 已保存的精确来源版本。
+- 新内容使用 `kb.origin` 明确来源类型。`external_research` 至少需要一个已存在的精确 `kb-source://` 版本；普通 URL 不满足准入要求。`original` 表示不声称外部证据基础的用户原创内容，允许省略 `sources`。未声明 `origin` 保留给已有兼容内容，继续要求至少一个 source。
+- 保存后的完整 `research` 或 `articles` 分区内不得出现重复 `title`。比较会统一 Unicode、连续空白和大小写；冲突返回 `invalid_config`，并在 `details` 中提供 `finding_code: duplicate_title`、分区和全部冲突路径。两个分区之间允许同名。
 
 请求不能直接写 `Wiki/index.md`、`Wiki/log.md`、来源记录、原始对象、配置或运行目录。
 
@@ -63,7 +68,7 @@ kb apply <OPERATION_ID> [--json]
 
 ## index 与 log
 
-应用层根据计划执行后的全部受管理 research/article 文档生成 `Wiki/index.md` 的受管理区域，并根据本次请求生成 `Wiki/log.md` 的日期条目。两个文件都只替换以下标记之间的内容：
+应用层根据计划执行后的全部受管理 research/article 文档生成 `Wiki/index.md` 的受管理区域，并根据本次请求生成 `Wiki/log.md` 的日期条目。日志明确区分 Creation、Update、Deletion 和 Move；移动记录旧路径和目标链接。两个文件都只替换以下标记之间的内容：
 
 ```markdown
 <!-- kb:managed:start -->
@@ -84,4 +89,4 @@ kb apply <OPERATION_ID> [--json]
 
 ## 当前边界
 
-Stage 3B 不调用 LLM，不从自然语言推断目标，不支持删除、移动或任意来源记录修改，也不承诺断电级持久性。MCP、HTTP、WebUI 和 GUI 都必须把结构化请求交给同一个应用层，不得重写上述规则；当前只有 HTTP 适配器已实现。
+Stage 3B 不调用 LLM，不从自然语言推断目标，不支持任意来源记录修改，也不承诺断电级持久性。MCP、HTTP、WebUI 和 GUI 都必须把结构化请求交给同一个应用层，不得重写上述规则。

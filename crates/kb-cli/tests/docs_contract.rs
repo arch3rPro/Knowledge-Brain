@@ -9,6 +9,7 @@ const AGENT_OPERATIONS: &str = include_str!("../../../docs/guides/agent-operatio
 const VAULT_RULES_TEMPLATE: &str = include_str!("../../../assets/vault-template/KB.md");
 const INGEST_SKILL: &str = include_str!("../../../skills/kb-ingest/SKILL.md");
 const SAVE_SKILL: &str = include_str!("../../../skills/kb-save/SKILL.md");
+const SYNC_REFERENCE: &str = include_str!("../../../docs/reference/synchronization.md");
 
 #[test]
 fn project_readme_covers_the_first_run_contract() {
@@ -91,6 +92,7 @@ fn command_reference_names_every_real_top_level_command() {
         "config",
         "status",
         "maintain",
+        "sync",
         "doctor",
         "vault",
         "paths",
@@ -106,6 +108,39 @@ fn command_reference_names_every_real_top_level_command() {
             "{command}"
         );
     }
+}
+
+#[test]
+fn synchronization_reference_owns_the_external_sync_contract() {
+    for contract in [
+        "kb sync check",
+        "Obsidian Git",
+        "vault_id",
+        ".kb/config.local.yml",
+        ".kb/cache/",
+        ".gitattributes",
+        "sync_conflict",
+    ] {
+        assert!(SYNC_REFERENCE.contains(contract), "missing {contract}");
+    }
+    assert!(COMMAND_REFERENCE.contains("synchronization.md"));
+    assert!(PROJECT_README.contains("docs/reference/synchronization.md"));
+}
+
+#[test]
+fn vault_upgrade_is_separate_from_cli_update_and_preserves_user_content() {
+    for contract in [
+        "kb vault upgrade",
+        ".kb/template.yml",
+        "kb:rules",
+        "admission.yml",
+        ".obsidian",
+        "plan_stale",
+    ] {
+        assert!(COMMAND_REFERENCE.contains(contract), "missing {contract}");
+    }
+    assert!(UPDATE_REFERENCE.contains("kb vault upgrade"));
+    assert!(AGENT_OPERATIONS.contains("kb vault upgrade"));
 }
 
 #[test]
@@ -166,6 +201,9 @@ fn agent_guidance_separates_ordinary_notes_from_managed_writes() {
         "对象标识及内容侧重点",
         "不要把“调研”“整理笔记”“写报告”解释为这一请求",
         "普通调研或笔记任务不属于这一请求",
+        "kb.origin: external_research",
+        "kb.origin: original",
+        "不能自动调用来源入库",
     ] {
         assert!(AGENT_OPERATIONS.contains(contract), "missing {contract}");
     }

@@ -49,6 +49,7 @@ pub fn capabilities() -> Capabilities {
             "config",
             "status",
             "doctor",
+            "sync",
             "vault",
             "paths",
             "version",

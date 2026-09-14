@@ -9,7 +9,7 @@ use kb_core::{
     PortableRelativePath,
 };
 use sha2::{Digest, Sha256};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::OffsetDateTime;
 
 fn setup() -> (
     tempfile::TempDir,
@@ -32,13 +32,15 @@ fn setup() -> (
     let request = KnowledgePlanRequest {
         schema_version: CURRENT_SCHEMA_VERSION,
         changes: vec![KnowledgeChangeRequest {
+            kind: kb_core::KnowledgeChangeKind::Upsert,
+            from_path: None,
             path: PortableRelativePath::parse("articles/saved.md").unwrap(),
             before_sha256: None,
             summary: "Save the managed article.".into(),
             content: "---\ntype: Article\ntitle: Saved\nstatus: stable\ngenerated:\n  by: process:test\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com\nkb:\n  managed: true\n---\n\n# Saved\nDurable content.\n".into(),
         }],
     };
-    let now = OffsetDateTime::parse("2026-09-07T12:00:00+08:00", &Rfc3339).unwrap();
+    let now = OffsetDateTime::now_utc();
     let plan = create_knowledge_plan(&vault, &paths, &config, request, now).unwrap();
     (temporary, vault, paths, plan)
 }
@@ -91,6 +93,22 @@ fn source_and_knowledge_pending_states_are_mutually_exclusive() {
     let (_temporary, vault, paths, plan) = setup();
     fs::write(
         vault.join(".kb/runtime/source-pending.json"),
+        serde_json::to_vec(&plan.operation_id).unwrap(),
+    )
+    .unwrap();
+
+    let error =
+        apply_knowledge(&paths, plan.operation_id, &ConfigOverrides::default()).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::VaultNeedsRecovery);
+    assert!(!vault.join("Wiki/articles/saved.md").exists());
+}
+
+#[test]
+fn pending_vault_upgrade_blocks_knowledge_apply() {
+    let (_temporary, vault, paths, plan) = setup();
+    fs::write(
+        vault.join(".kb/runtime/vault-upgrade-pending.json"),
         serde_json::to_vec(&plan.operation_id).unwrap(),
     )
     .unwrap();

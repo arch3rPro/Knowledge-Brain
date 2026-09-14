@@ -38,3 +38,5 @@
    ```
 
 目录选择、配置优先级和失败语义见[配置参考](../reference/configuration.md)；完整参数见[命令参考](../reference/commands.md)。
+
+以后升级 CLI 后，可先运行 `kb vault upgrade --vault ./knowledge` 查看 Vault 模板差异。该命令默认不写入；确认预览时按输出使用 `--confirm`。它不会改动个人分类、准入清单、笔记、Wiki 正文、Git 或 Obsidian 设置。

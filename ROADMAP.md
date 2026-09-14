@@ -78,7 +78,7 @@
 
 ### Stage 3B — 知识计划与安全保存
 
-**Status:** implemented（定向本地测试）。`kb plan create` 接收结构化 research/article 请求并生成不改 Vault 的可审阅计划；现有 `operation show` 和 `apply` 完成查看、旧状态复核、受管理 index/log 派生、整批保存、重复执行和中断恢复。来源保存与知识保存的恢复状态互斥，所有入口复用 `kb-app` 的 typed request/report。
+**Status:** implemented（定向本地测试）。`kb plan create` 接收结构化 research/article 请求并生成不改 Vault 的可审阅计划；现有 `operation show` 和 `apply` 完成查看、旧状态复核、受管理 index/log 派生、整批保存、重复执行和中断恢复。请求支持创建、替换、删除与移动；计划按最终 Wiki 状态拒绝同一索引分区的重复标题，不产生可确认 operation。新内容可声明外部调研或用户原创；外部调研必须引用已保存的精确来源，原创内容无需伪造来源。来源保存与知识保存的恢复状态互斥，所有入口复用 `kb-app` 的 typed request/report。
 
 本阶段验证了 core 请求边界、应用层计划与保存、进程在 pending/每个文件/完成凭据处退出后的恢复、独立编辑保护、陈旧/过期/被修改计划、来源版本消失、缓存失效 warning，以及真实 CLI 的 init → plan → show → apply → query → strict lint → 换目录重开流程。三平台 CI 已完成 workspace 回归与 release CLI 旅程；真实断电测试仍未执行。
 
@@ -153,6 +153,7 @@ macOS 上另使用非 Git 测试 Vault 和真实 `kb serve` 进程验证了回�
 - 显式 schema 迁移路径分类（implemented；生产目录为空）
 - Windows、macOS 和 Linux 发布产物
 - 安装包、签名和升级流程
+- Vault 产品模板的可预览升级与冲突保护（implemented，定向本地测试）
 
 Embedding 和 rerank 保持 future，除非独立设计证明它们能带来足够收益且不成为知识库运行前提。
 

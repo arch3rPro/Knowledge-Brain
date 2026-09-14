@@ -1,6 +1,6 @@
 {
   "kb-vault": {
-    "positive": ["在这个空目录初始化知识库", "Adopt my existing notes folder as a Vault"],
+    "positive": ["在这个空目录初始化知识库", "Adopt my existing notes folder as a Vault", "更新 CLI 后预览并升级这个旧 Vault 的产品模板"],
     "adjacent": ["把 Research 目录加入准入清单"],
     "negative": ["搜索已经保存的 SearXNG 笔记"]
   },
@@ -20,7 +20,7 @@
     "negative": ["把这篇笔记入库"]
   },
   "kb-save": {
-    "positive": ["明确把调研结果写入 Wiki research", "Update the maintained article and preserve its sources"],
+    "positive": ["把已经保存了精确来源的调研结果写入 Wiki research", "Save my original decision as a maintained article without fabricating a source"],
     "adjacent": ["在主题目录里写一篇普通笔记"],
     "negative": ["检查 Vault 是否正常", "调研 Matt Pocock Skills 并在合适主题目录整理笔记"]
   },

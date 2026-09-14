@@ -147,11 +147,29 @@ pub enum OperationKind {
     ManageSkill,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+/// The explicit effect of one managed Wiki change.
+pub enum KnowledgeChangeKind {
+    /// Create a page or replace the reviewed version of an existing page.
+    #[default]
+    Upsert,
+    /// Remove the reviewed version of an existing managed page.
+    Delete,
+    /// Move a managed page and provide its complete destination content.
+    Move,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnowledgeChangeRequest {
+    #[serde(default, skip_serializing_if = "knowledge_change_is_upsert")]
+    pub kind: KnowledgeChangeKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_path: Option<PortableRelativePath>,
     pub path: PortableRelativePath,
     pub before_sha256: Option<String>,
     pub summary: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub content: String,
 }
 
@@ -166,8 +184,9 @@ impl KnowledgePlanRequest {
     ///
     /// # Errors
     ///
-    /// Rejects incompatible schemas, unsafe targets, duplicate paths, malformed
-    /// original hashes, multiline summaries, and configured count or size excesses.
+    /// Rejects incompatible schemas, invalid action shapes, unsafe or overlapping
+    /// source and destination paths, malformed original hashes, multiline
+    /// summaries, and configured count or size excesses.
     pub fn validate(&self, max_changes: u64, max_file_bytes: u64) -> Result<(), crate::KbError> {
         if self.schema_version != crate::CURRENT_SCHEMA_VERSION {
             return Err(crate::KbError::invalid_config(
@@ -190,6 +209,14 @@ impl KnowledgePlanRequest {
                     format!("duplicate path {}", change.path.as_str()),
                 ));
             }
+            if let Some(from_path) = &change.from_path
+                && !paths.insert(from_path.clone())
+            {
+                return Err(crate::KbError::invalid_config(
+                    "knowledge request changes",
+                    format!("duplicate path {}", from_path.as_str()),
+                ));
+            }
         }
         Ok(())
     }
@@ -199,18 +226,51 @@ fn validate_knowledge_change(
     change: &KnowledgeChangeRequest,
     max_file_bytes: u64,
 ) -> Result<(), crate::KbError> {
-    let path = change.path.as_str();
-    let in_layer = path.starts_with("research/") || path.starts_with("articles/");
-    let is_markdown = std::path::Path::new(path)
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
-    let file_name = path.rsplit('/').next().unwrap_or_default();
-    let reserved =
-        file_name.eq_ignore_ascii_case("index.md") || file_name.eq_ignore_ascii_case("log.md");
-    if !in_layer || !is_markdown || reserved {
+    validate_knowledge_path(&change.path)?;
+    if let Some(from_path) = &change.from_path {
+        validate_knowledge_path(from_path)?;
+    }
+    match change.kind {
+        KnowledgeChangeKind::Upsert if change.from_path.is_some() => {
+            return Err(crate::KbError::invalid_config(
+                "knowledge request from_path",
+                "from_path is only valid for move",
+            ));
+        }
+        KnowledgeChangeKind::Delete if change.from_path.is_some() || !change.content.is_empty() => {
+            return Err(crate::KbError::invalid_config(
+                "knowledge request delete",
+                "delete accepts path, before_sha256, and summary without content or from_path",
+            ));
+        }
+        KnowledgeChangeKind::Move
+            if change.from_path.as_ref() == Some(&change.path)
+                || change.from_path.is_none()
+                || change.content.is_empty() =>
+        {
+            return Err(crate::KbError::invalid_config(
+                "knowledge request move",
+                "move requires a distinct from_path, destination path, and complete content",
+            ));
+        }
+        _ => {}
+    }
+    if matches!(
+        change.kind,
+        KnowledgeChangeKind::Delete | KnowledgeChangeKind::Move
+    ) && change.before_sha256.is_none()
+    {
         return Err(crate::KbError::invalid_config(
-            "knowledge request path",
-            "target must be a non-reserved Markdown path below research/ or articles/",
+            "knowledge request before_sha256",
+            "delete and move require the current source hash",
+        ));
+    }
+    if !matches!(change.kind, KnowledgeChangeKind::Delete)
+        && (change.content.is_empty() || change.content.len() as u64 > max_file_bytes)
+    {
+        return Err(crate::KbError::invalid_config(
+            "knowledge request content",
+            format!("content must be 1..={max_file_bytes} bytes"),
         ));
     }
     if change.before_sha256.as_deref().is_some_and(|digest| {
@@ -230,10 +290,22 @@ fn validate_knowledge_change(
             "summary must be non-empty and contain one line",
         ));
     }
-    if change.content.is_empty() || change.content.len() as u64 > max_file_bytes {
+    Ok(())
+}
+
+fn validate_knowledge_path(path: &PortableRelativePath) -> Result<(), crate::KbError> {
+    let path = path.as_str();
+    let in_layer = path.starts_with("research/") || path.starts_with("articles/");
+    let is_markdown = std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"));
+    let file_name = path.rsplit('/').next().unwrap_or_default();
+    let reserved =
+        file_name.eq_ignore_ascii_case("index.md") || file_name.eq_ignore_ascii_case("log.md");
+    if !in_layer || !is_markdown || reserved {
         return Err(crate::KbError::invalid_config(
-            "knowledge request content",
-            format!("content must be 1..={max_file_bytes} bytes"),
+            "knowledge request path",
+            "target must be a non-reserved Markdown path below research/ or articles/",
         ));
     }
     Ok(())
@@ -243,7 +315,19 @@ fn validate_knowledge_change(
 pub struct KnowledgeWrite {
     pub path: PortableRelativePath,
     pub before_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub delete: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub content: String,
+}
+
+fn knowledge_change_is_upsert(kind: &KnowledgeChangeKind) -> bool {
+    *kind == KnowledgeChangeKind::Upsert
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

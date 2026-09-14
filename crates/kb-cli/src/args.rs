@@ -142,6 +142,11 @@ enum Commands {
         #[command(flatten)]
         context: VaultContext,
     },
+    /// Inspect compatibility with external Git and directory synchronization.
+    Sync {
+        #[command(subcommand)]
+        command: SyncCommands,
+    },
     /// Search Wiki Markdown or captured sources.
     Query {
         query: String,
@@ -296,6 +301,15 @@ enum UpdateCommands {
     Check {
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SyncCommands {
+    /// Check sync-related conflicts and portability without changing files.
+    Check {
+        #[command(flatten)]
+        context: VaultContext,
     },
 }
 
@@ -491,6 +505,14 @@ enum VaultCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Preview or confirm updates to product-managed Vault template files.
+    Upgrade {
+        /// Apply the exact preview identified by this confirmation token.
+        #[arg(long)]
+        confirm: Option<OperationId>,
+        #[command(flatten)]
+        context: VaultContext,
+    },
 }
 
 #[derive(Subcommand)]
@@ -649,6 +671,16 @@ impl Cli {
             Commands::Review { context } => review_command(context),
             Commands::Maintain { context } => ParsedCommand::App {
                 request: Ok(AppRequest::Maintenance {
+                    vault: context.vault,
+                }),
+                json: context.json,
+                fail_on_findings: false,
+                full_hashes: false,
+            },
+            Commands::Sync {
+                command: SyncCommands::Check { context },
+            } => ParsedCommand::App {
+                request: Ok(AppRequest::SyncCheck {
                     vault: context.vault,
                 }),
                 json: context.json,
@@ -1228,6 +1260,13 @@ fn vault_command(command: VaultCommands) -> ParsedCommand {
         VaultCommands::Unregister { vault_id, json } => {
             (VaultRequest::Unregister { vault_id }, json)
         }
+        VaultCommands::Upgrade { confirm, context } => (
+            VaultRequest::Upgrade {
+                vault: context.vault,
+                confirm,
+            },
+            context.json,
+        ),
     };
     ParsedCommand::App {
         request: Ok(AppRequest::Vault(request)),

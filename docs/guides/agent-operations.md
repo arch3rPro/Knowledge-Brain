@@ -59,6 +59,14 @@ kb skills status --host <HOST> --scope vault --vault "<VAULT_PATH_OR_ID>" --json
 
 已有非空目录使用 `kb adopt`。采用流程先生成可审阅计划，确认后再执行 `kb apply`，详见[采用已有目录](adopt-an-existing-directory.md)。
 
+CLI 更新后，如用户要求让已有 Vault 适配新版本，先运行：
+
+```text
+kb vault upgrade --vault "<VAULT>" --json
+```
+
+这只生成模板升级预览。向用户展示实际文件变化或冲突；用户确认无冲突的预览后，使用返回的完整 token 执行 `kb vault upgrade --confirm <TOKEN> --vault "<VAULT>" --json`。不要把 `kb update`（更新 CLI）和 `kb vault upgrade`（更新 Vault 产品模板）合并，也不要借模板升级修改 `admission.yml`、主题目录、普通笔记、Wiki 正文、Git 或 Obsidian 设置。
+
 ## 主题目录与准入配置
 
 `admission.yml` 是准入清单：只有已启用的一级主题目录属于来源处理范围。准入不等于入库，也不会复制目录内容。
@@ -124,6 +132,12 @@ kb source verify --vault "<VAULT>" --json
 ### 整理 Wiki 知识
 
 只有用户明确要求写入 Wiki 或整理进知识库时，才构造知识保存请求并调用；普通调研或笔记任务不属于这一请求：
+
+准备请求前必须区分内容来源：
+
+- 基于网站、代码仓库、论文或其他外部材料形成的内容，在受管理 frontmatter 中声明 `kb.origin: external_research`，并至少引用一个已经保存的精确 `kb-source://` 版本。普通 URL 不等于已准入证据；精确来源不存在时停止 Wiki 保存，说明需要用户另行明确要求保存来源，不能自动调用来源入库。
+- 用户原创观点、决策或不声称外部依据的内容声明 `kb.origin: original`，可以不写 `sources`，也不能为了通过校验伪造来源。
+- 新建的 Agent 内容不得通过省略 `kb.origin` 回避分类；未声明只用于尚未完成来源分类的旧受管理文档。
 
 ```text
 kb knowledge save <REQUEST_JSON> --vault "<VAULT>" --json

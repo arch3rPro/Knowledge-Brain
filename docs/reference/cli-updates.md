@@ -13,6 +13,8 @@ kb update [--json]
 
 JSON 响应包含 `current`、`latest`、`update_available` 和 `status`。没有更高版本时，`status` 为 `checked`，安装内容不变。
 
+CLI 更新不会自动改写任何 Vault。更新完成后，用户可以对每个 Vault 分别运行 `kb vault upgrade --vault <PATH_OR_ID>` 查看产品模板变化；该命令仍需单独确认，并保留用户内容和冲突。Vault 模板升级规则见[命令参考](commands.md#注册与路径)。
+
 ## 支持的安装来源
 
 自更新只适用于 Knowledge-Brain GitHub Releases 发布的官方二进制。官方构建内嵌目标平台和 Minisign public key，并在 `kb version --json` 的 `distribution` 字段中报告 `official_release: true`。

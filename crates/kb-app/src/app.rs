@@ -109,6 +109,9 @@ pub enum AppRequest {
     Doctor {
         vault: Option<String>,
     },
+    SyncCheck {
+        vault: Option<String>,
+    },
     Vault(VaultRequest),
     Paths {
         vault: Option<String>,
@@ -222,9 +225,20 @@ pub enum AdmissionRequest {
 #[derive(Debug, Clone)]
 pub enum VaultRequest {
     List,
-    Register { path: PathBuf },
-    Rebind { vault_id: Uuid, path: PathBuf },
-    Unregister { vault_id: Uuid },
+    Register {
+        path: PathBuf,
+    },
+    Rebind {
+        vault_id: Uuid,
+        path: PathBuf,
+    },
+    Unregister {
+        vault_id: Uuid,
+    },
+    Upgrade {
+        vault: Option<String>,
+        confirm: Option<OperationId>,
+    },
 }
 
 /// Execute one application request independently of CLI, GUI, or web adapters.
@@ -305,6 +319,14 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
         AppRequest::Doctor { vault } => {
             let root = select_doctor_root(context, vault)?;
             to_value(doctor(&root, context.user_paths()?, &context.overrides())?)
+        }
+        AppRequest::SyncCheck { vault } => {
+            let selected = select_vault(context, vault)?;
+            to_value(crate::check_sync(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?)
         }
         AppRequest::Vault(request) => run_vault(request, context),
         AppRequest::Paths { vault } => run_paths(context, vault),
@@ -813,6 +835,9 @@ fn run_config(request: ConfigRequest, context: &AppContext) -> Result<Value, KbE
             )?;
             if write {
                 crate::source_apply::ensure_no_pending(&selected.root)?;
+                if target == ConfigTarget::Vault {
+                    crate::ensure_shared_write_sync_safe(&selected.root)?;
+                }
             }
             to_value(config_set(
                 &selected.root,
@@ -844,6 +869,9 @@ fn run_config(request: ConfigRequest, context: &AppContext) -> Result<Value, KbE
             )?;
             if write {
                 crate::source_apply::ensure_no_pending(&selected.root)?;
+                if target == ConfigTarget::Vault {
+                    crate::ensure_shared_write_sync_safe(&selected.root)?;
+                }
             }
             to_value(config_unset(
                 &selected.root,
@@ -883,6 +911,7 @@ fn run_admission(root: &std::path::Path, request: AdmissionRequest) -> Result<Va
             let _lock = VaultLock::acquire(root, mode, "config admission change", None)?;
             if write {
                 crate::source_apply::ensure_no_pending(root)?;
+                crate::ensure_shared_write_sync_safe(root)?;
             }
             to_value(admission_change(root, &action, write)?)
         }
@@ -899,7 +928,62 @@ fn run_vault(request: VaultRequest, context: &AppContext) -> Result<Value, KbErr
             unregister_vault(paths, vault_id)?;
             Ok(json!({ "vault_id": vault_id, "unregistered": true }))
         }
+        VaultRequest::Upgrade { vault, confirm } => {
+            let selected = select_vault(context, vault)?;
+            ensure_mutation_allowed(&selected.root)?;
+            if let Some(operation_id) = confirm {
+                let plan = crate::inspect_vault_upgrade_plan(paths, operation_id)?;
+                if plan.vault_id != selected.vault_id {
+                    return Err(KbError::new(
+                        ErrorCode::AuthDenied,
+                        "Vault upgrade preview does not belong to the selected Vault.",
+                        false,
+                        "Use the Vault that created this preview.",
+                    ));
+                }
+                return to_value(crate::apply_vault_upgrade(paths, operation_id)?);
+            }
+            let _lock = VaultLock::acquire(
+                &selected.root,
+                LockMode::Shared,
+                "preview Vault upgrade",
+                None,
+            )?;
+            vault_upgrade_preview_value(crate::create_vault_upgrade_plan(&selected.root, paths)?)
+        }
     }
+}
+
+fn vault_upgrade_preview_value(plan: crate::VaultUpgradePlan) -> Result<Value, KbError> {
+    let mut value = to_value(plan)?;
+    let confirmation_token = if value
+        .get("writes")
+        .and_then(Value::as_array)
+        .is_some_and(|writes| !writes.is_empty())
+        && value
+            .get("conflicts")
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty)
+    {
+        value.get("operation_id").cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    value
+        .as_object_mut()
+        .ok_or_else(|| KbError::invalid_config("Vault upgrade preview", "expected object"))?
+        .insert("confirmation_token".into(), confirmation_token);
+    for write in value
+        .get_mut("writes")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(write) = write.as_object_mut() {
+            write.remove("content");
+        }
+    }
+    Ok(value)
 }
 
 fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbError> {

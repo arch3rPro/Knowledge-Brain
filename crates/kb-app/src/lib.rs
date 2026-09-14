@@ -49,9 +49,11 @@ mod registry;
 mod schema;
 mod status;
 mod storage;
+mod sync;
 mod template;
 mod user_dirs;
 mod vault;
+mod vault_upgrade;
 
 pub use adopt::{apply_operation, create_adoption_plan};
 pub use app::{
@@ -87,5 +89,13 @@ pub use status::{
     vault_status,
 };
 pub use storage::atomic_replace;
+pub use sync::{
+    GitInspection, GitInspectionState, SyncFinding, SyncFindingLevel, SyncReport, SyncSummary,
+    blocking_sync_findings, check_sync, ensure_shared_write_sync_safe,
+};
 pub use user_dirs::UserPaths;
 pub use vault::{ResolvedVault, VaultSelection, resolve_vault};
+pub use vault_upgrade::{
+    VaultUpgradeAction, VaultUpgradeConflict, VaultUpgradePlan, VaultUpgradeResult,
+    VaultUpgradeWrite, apply_vault_upgrade, create_vault_upgrade_plan, inspect_vault_upgrade_plan,
+};

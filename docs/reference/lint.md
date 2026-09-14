@@ -52,7 +52,7 @@ kb:
   managed: true
 ```
 
-受管理 concept 还需要非空 `title`、显式合法 `status`、带 `by` 和 `at` 的 `generated`，以及至少一个带唯一 `id` 和 `resource` 的 source。`verified` 仍是可选字段；`stable` 不代表已经验证。可选 `kb.supersedes` 只保存从当前 concept 指向旧 concept 的单向关系。
+受管理 concept 还需要非空 `title`、显式合法 `status`，以及带 `by` 和 `at` 的 `generated`。`kb.origin: external_research` 要求至少一个已保存的精确 `kb-source://` 版本；`kb.origin: original` 允许省略 sources；未声明 origin 的兼容内容仍需要至少一个带唯一 `id` 和 `resource` 的 source。`verified` 仍是可选字段；`stable` 不代表已经验证。可选 `kb.supersedes` 只保存从当前 concept 指向旧 concept 的单向关系。
 
 Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 
@@ -91,6 +91,8 @@ Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 | `managed_generated_timestamp_required` | error | 受管理 concept 缺少合法 generated.at。 |
 | `managed_sources_required` | error | 受管理 concept 没有 source。 |
 | `managed_source_id_required` | error | 受管理 source 缺少非空 ID。 |
+| `managed_origin_invalid` | error | `kb.origin` 不是 `external_research` 或 `original`。 |
+| `source_admission_required` | error | 外部调研没有引用已保存的精确来源版本。 |
 | `supersedes_entry_invalid` | error | kb.supersedes 不是字符串列表。 |
 | `supersedes_self` | error | concept 指定自己为被替代目标。 |
 | `supersedes_invalid_target` | error | 被替代目标不是现存 concept。 |
@@ -99,6 +101,7 @@ Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 | `broken_link` | warning | concept 的本地 Markdown 目标不存在。 |
 | `index_drift` | warning | index 中列出的本地目标不存在。 |
 | `orphan_concept` | warning | research/article 没有入站 Wiki 引用。 |
+| `duplicate_title` | error | 同一 research 或 articles 分区存在规范化后相同的标题。 |
 | `portable_path_collision` | error | 路径在大小写或 Unicode 可移植规则下冲突。 |
 | `source_record_invalid` | error | 来源记录的 `kb.source` 无法解析。 |
 | `source_identity_invalid` | error | 来源身份、历史或记录路径不一致。 |

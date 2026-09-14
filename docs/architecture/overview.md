@@ -24,7 +24,7 @@ CLI / HTTP / future GUI / future WebUI / future MCP
 
 ## 数据边界
 
-Vault 内的持久内容包括根级 `admission.yml`、`KB.md`、固定三层 `Wiki/` 和 `.kb/config.yml`。`.kb/cache/` 可以重建；`.kb/runtime/` 不存知识，但未完成操作的恢复标记必须保留到恢复完成。
+Vault 内的持久内容包括根级 `admission.yml`、`KB.md`、固定三层 `Wiki/`、`.kb/config.yml` 和 `.kb/template.yml`。后者只记录产品模板版本及受管理边界，不是用户配置层。`.kb/cache/` 可以重建；`.kb/runtime/` 不存知识，但未完成操作的恢复标记必须保留到恢复完成。
 
 用户级目录由操作系统规范解析，也可用 `KB_CONFIG_DIR`、`KB_STATE_DIR`、`KB_CACHE_DIR` 显式覆盖：
 
@@ -72,3 +72,7 @@ CLI 和未来应用入口消费同一个 `LintReport`。文档规则和 CLI 的 
 ## 备份边界
 
 备份只迁移 Vault 共享内容，不携带本机配置、缓存、恢复状态或注册表。`kb-app` 统一收集准入目录、生成和验证逐文件清单，并把已完整复核的 ZIP 暂存恢复到空目标；入口适配器不自行解压。完整契约见[备份参考](../reference/backup.md)。
+
+## 外部同步边界
+
+Git 是推荐但可选的外部同步来源。`kb-app` 统一生成只读同步检查报告，不拥有远程仓库或 Git 写操作；每台设备按共享 `vault_id` 保存自己的绝对路径绑定。共享、本机和 Obsidian 文件边界见[外部同步兼容参考](../reference/synchronization.md)。

@@ -20,6 +20,7 @@ pub enum ErrorCode {
     BackupVerificationFailed,
     RestoreFailed,
     IndexStale,
+    SyncConflict,
     CapabilityUnavailable,
     AuthDenied,
     VaultNotFound,

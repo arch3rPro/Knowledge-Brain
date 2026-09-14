@@ -153,12 +153,14 @@ impl McpServer {
                                     "items":{
                                         "type":"object",
                                         "properties":{
+                                            "kind":{"type":"string","enum":["upsert","delete","move"],"default":"upsert"},
+                                            "from_path":{"type":"string"},
                                             "path":{"type":"string"},
                                             "before_sha256":{"type":["string","null"]},
                                             "summary":{"type":"string"},
                                             "content":{"type":"string"}
                                         },
-                                        "required":["path","before_sha256","summary","content"],
+                                        "required":["path","before_sha256","summary"],
                                         "additionalProperties":false
                                     }
                                 }
@@ -187,12 +189,14 @@ impl McpServer {
                                     "items":{
                                         "type":"object",
                                         "properties":{
+                                            "kind":{"type":"string","enum":["upsert","delete","move"],"default":"upsert"},
+                                            "from_path":{"type":"string"},
                                             "path":{"type":"string"},
                                             "before_sha256":{"type":["string","null"]},
                                             "summary":{"type":"string"},
                                             "content":{"type":"string"}
                                         },
-                                        "required":["path","before_sha256","summary","content"],
+                                        "required":["path","before_sha256","summary"],
                                         "additionalProperties":false
                                     }
                                 }

@@ -55,6 +55,22 @@ fn managed_profile_requires_explicit_provenance_fields() {
 }
 
 #[test]
+fn managed_original_content_may_omit_external_sources() {
+    let original = parse(
+        "Wiki/articles/original.md",
+        "---\ntype: Article\ntitle: My view\nstatus: stable\ngenerated:\n  by: human:user\n  at: 2026-09-07T03:00:00Z\nkb:\n  managed: true\n  origin: original\n---\n\n# My view\n",
+    );
+
+    assert!(validate_okf(&original, now()).is_empty());
+
+    let invalid = parse(
+        "Wiki/articles/invalid-origin.md",
+        "---\ntype: Article\ntitle: Invalid\nstatus: stable\ngenerated:\n  by: human:user\n  at: 2026-09-07T03:00:00Z\nsources:\n  - id: source\n    resource: https://example.com\nkb:\n  managed: true\n  origin: guessed\n---\n\n# Invalid\n",
+    );
+    assert!(codes(&invalid).contains(&"managed_origin_invalid".to_owned()));
+}
+
+#[test]
 fn present_optional_families_are_validated_without_equating_stable_and_verified() {
     let document = parse(
         "Wiki/articles/lifecycle.md",
