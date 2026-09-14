@@ -19,6 +19,11 @@
     "adjacent": ["调研网上最新 MCP 规范"],
     "negative": ["把这篇笔记入库"]
   },
+  "kb-note": {
+    "positive": ["调研 Matt Pocock Skills 并在合适主题目录整理笔记", "Update my existing SearXNG research note with the latest findings"],
+    "adjacent": ["把这篇调研笔记整理进 Wiki research"],
+    "negative": ["将准入目录里的新增文件保存下来", "只查询已有知识"]
+  },
   "kb-save": {
     "positive": ["把已经保存了精确来源的调研结果写入 Wiki research", "Save my original decision as a maintained article without fabricating a source"],
     "adjacent": ["在主题目录里写一篇普通笔记"],

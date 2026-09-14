@@ -2,7 +2,7 @@ use kb_app::{SKILL_NAMES, legacy_skill_assets, skill_assets};
 use std::{collections::BTreeSet, fs, path::Path};
 
 #[test]
-fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
+fn embedded_skills_are_the_nine_canonical_task_scoped_sources() {
     assert_eq!(
         SKILL_NAMES,
         [
@@ -10,6 +10,7 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
             "kb-config",
             "kb-ingest",
             "kb-query",
+            "kb-note",
             "kb-save",
             "kb-ops",
             "kb-backup",
@@ -25,6 +26,10 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
             "kb-config/SKILL.md",
             "kb-ingest/SKILL.md",
             "kb-query/SKILL.md",
+            "kb-note/SKILL.md",
+            "kb-note/references/writing-standard.md",
+            "kb-note/assets/research-note.md",
+            "kb-note/assets/evergreen-note.md",
             "kb-save/SKILL.md",
             "kb-save/references/request-format.md",
             "kb-ops/SKILL.md",
@@ -32,13 +37,14 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
             "kb-connect/SKILL.md",
         ]
     );
-    assert_eq!(assets.len(), 9);
+    assert_eq!(assets.len(), 13);
 
     let expected_actions = [
         ("kb-vault", "kb vault list|register|rebind|unregister"),
         ("kb-config", "kb config show --sources"),
         ("kb-ingest", "kb source save --vault"),
         ("kb-query", "This Skill is read-only"),
+        ("kb-note", "ordinary Markdown note"),
         ("kb-save", "kb knowledge save <request.json>"),
         ("kb-ops", "kb maintain --vault"),
         ("kb-backup", "kb backup verify"),
@@ -91,6 +97,32 @@ fn embedded_skills_are_the_eight_canonical_task_scoped_sources() {
         .unwrap();
     let save_skill = std::str::from_utf8(save_skill.bytes).unwrap();
     assert!(save_skill.contains("do not prepare a Wiki save or ingest it automatically"));
+
+    let note_skill = assets
+        .iter()
+        .find(|asset| asset.path == "kb-note/SKILL.md")
+        .unwrap();
+    let note_skill = std::str::from_utf8(note_skill.bytes).unwrap();
+    for contract in [
+        "kb paths --vault",
+        "kb capabilities --json",
+        "kb config admission list",
+        "kb query",
+        "does not authorize",
+    ] {
+        assert!(note_skill.contains(contract), "kb-note: missing {contract}");
+    }
+
+    for path in [
+        "kb-note/references/writing-standard.md",
+        "kb-note/assets/research-note.md",
+        "kb-note/assets/evergreen-note.md",
+    ] {
+        assert!(
+            assets.iter().any(|asset| asset.path == path),
+            "missing {path}"
+        );
+    }
 }
 
 #[test]
@@ -107,7 +139,7 @@ fn embedded_assets_are_byte_identical_to_their_named_canonical_sources() {
 }
 
 #[test]
-fn published_skill_tree_contains_exactly_the_eight_discoverable_skills() {
+fn published_skill_tree_contains_exactly_the_nine_discoverable_skills() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
     let published = fs::read_dir(root)
         .unwrap()
@@ -160,6 +192,13 @@ fn trigger_evaluation_corpus_covers_every_skill_and_boundary() {
 
     let ordinary_research =
         serde_json::Value::String("调研 Matt Pocock Skills 并在合适主题目录整理笔记".to_owned());
+    assert!(
+        cases["kb-note"]["positive"]
+            .as_array()
+            .unwrap()
+            .contains(&ordinary_research),
+        "kb-note must trigger for ordinary research notes"
+    );
     for name in ["kb-ingest", "kb-save"] {
         assert!(
             cases[name]["negative"]

@@ -9,6 +9,7 @@ const AGENT_OPERATIONS: &str = include_str!("../../../docs/guides/agent-operatio
 const VAULT_RULES_TEMPLATE: &str = include_str!("../../../assets/vault-template/KB.md");
 const INGEST_SKILL: &str = include_str!("../../../skills/kb-ingest/SKILL.md");
 const SAVE_SKILL: &str = include_str!("../../../skills/kb-save/SKILL.md");
+const NOTE_SKILL: &str = include_str!("../../../skills/kb-note/SKILL.md");
 const SYNC_REFERENCE: &str = include_str!("../../../docs/reference/synchronization.md");
 
 #[test]
@@ -197,7 +198,8 @@ fn agent_guidance_separates_ordinary_notes_from_managed_writes() {
 
     for contract in [
         "写普通笔记",
-        "不使用 `kb-*` 写入 Skill",
+        "宿主已安装 `kb-note`",
+        "不调用来源保存、知识保存或 `apply`",
         "对象标识及内容侧重点",
         "不要把“调研”“整理笔记”“写报告”解释为这一请求",
         "普通调研或笔记任务不属于这一请求",
@@ -212,6 +214,37 @@ fn agent_guidance_separates_ordinary_notes_from_managed_writes() {
         assert!(skill.contains("does not authorize"));
         assert!(skill.contains("never supplies that authorization"));
     }
+
+    for contract in [
+        "ordinary Markdown note",
+        "kb paths --vault",
+        "kb capabilities --json",
+        "kb config admission list",
+        "kb query",
+        "references/writing-standard.md",
+        "assets/research-note.md",
+        "assets/evergreen-note.md",
+        "does not authorize source ingestion or a managed Wiki save",
+    ] {
+        assert!(NOTE_SKILL.contains(contract), "missing {contract}");
+    }
+}
+
+#[test]
+fn admission_reference_states_recursive_scope_without_prescribing_structure() {
+    let configuration = include_str!("../../../docs/reference/configuration.md");
+    for contract in ["递归", "内部子目录", "`include/exclude`", "不要求平铺"] {
+        assert!(configuration.contains(contract), "missing {contract}");
+    }
+
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .args(["config", "admission", "add", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("recursively"));
 }
 
 #[test]

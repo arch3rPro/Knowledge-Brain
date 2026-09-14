@@ -11,11 +11,12 @@ pub struct SkillAsset {
 static ASSETS: OnceLock<Vec<SkillAsset>> = OnceLock::new();
 static LEGACY_ASSETS: OnceLock<Vec<SkillAsset>> = OnceLock::new();
 
-pub const SKILL_NAMES: [&str; 8] = [
+pub const SKILL_NAMES: [&str; 9] = [
     "kb-vault",
     "kb-config",
     "kb-ingest",
     "kb-query",
+    "kb-note",
     "kb-save",
     "kb-ops",
     "kb-backup",
@@ -41,6 +42,22 @@ pub fn skill_assets() -> &'static [SkillAsset] {
             (
                 "kb-query/SKILL.md",
                 include_bytes!("../../../skills/kb-query/SKILL.md").as_slice(),
+            ),
+            (
+                "kb-note/SKILL.md",
+                include_bytes!("../../../skills/kb-note/SKILL.md").as_slice(),
+            ),
+            (
+                "kb-note/references/writing-standard.md",
+                include_bytes!("../../../skills/kb-note/references/writing-standard.md").as_slice(),
+            ),
+            (
+                "kb-note/assets/research-note.md",
+                include_bytes!("../../../skills/kb-note/assets/research-note.md").as_slice(),
+            ),
+            (
+                "kb-note/assets/evergreen-note.md",
+                include_bytes!("../../../skills/kb-note/assets/evergreen-note.md").as_slice(),
             ),
             (
                 "kb-save/SKILL.md",

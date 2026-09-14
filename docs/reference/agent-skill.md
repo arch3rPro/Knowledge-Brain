@@ -1,6 +1,6 @@
 # Portable Agent Skills
 
-Knowledge-Brain 发布八个可独立选择的可移植 `kb-*` Skills：`kb-vault`、`kb-config`、`kb-ingest`、`kb-query`、`kb-save`、`kb-ops`、`kb-backup` 与 `kb-connect`。它们使用统一的 MCP 或 CLI 契约，并明确区分“生成计划”和“执行计划”。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
+Knowledge-Brain 发布九个可独立选择的可移植 `kb-*` Skills：`kb-vault`、`kb-config`、`kb-ingest`、`kb-query`、`kb-note`、`kb-save`、`kb-ops`、`kb-backup` 与 `kb-connect`。操作型 Skill 使用统一的 MCP 或 CLI 契约，并明确区分“生成计划”和“执行计划”；`kb-note` 使用宿主文件能力编写普通 Markdown，不调用受管理写入。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
 
 有两种安装方式：`kb skills` 创建可审阅、可执行的受管理 suite；`npx skills add` 从本项目的顶层 `skills/` 目录安装外部副本。两者互不接管文件。
 
@@ -35,7 +35,7 @@ User 范围使用操作系统用户目录或配置目录：Codex 为 `.codex/ski
 
 Hermes 的 Vault 范围不会被伪装成普通目录安装：Hermes 只在受信任的 Git checkout 中启用项目 Skill，而 Knowledge-Brain Vault 不要求 Git，因此 `--host hermes --scope vault` 返回明确的不支持结果并提示使用 User 范围。新增宿主使用其原生 Skill 目录，不创建无官方含义的桥接文件。
 
-`copy` 复制八项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到八项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
+`copy` 复制九项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到九项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
 
 ## 外部安装
 
@@ -61,6 +61,6 @@ kb skills status --host gemini-cli --scope vault --vault ./my-knowledge --json
 
 ## Agent 行为边界
 
-安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`、选择对应 CLI 或 MCP 入口，并以持久化结果作为完成证据。普通笔记遵循 `KB.md` 的用户定义主题目录和命名规则，不触发 `kb-ingest` 或 `kb-save`；只有明确来源入库才触发 `kb-ingest`，只有明确写入 Wiki 或整理进知识库才触发 `kb-save`。`kb-save` 还要求新内容声明外部调研或用户原创：外部调研缺少已保存的精确来源时停止准备，不能自行调用来源入库；原创内容不能伪造来源。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
+安装后的 Skill 按任务分别要求 Agent 解析 Vault、读取 `KB.md`，并以持久化结果作为完成证据。`kb-note` 负责普通调研文档和主题笔记的目录选择、稳定命名、证据表达及按需模板，不触发 `kb-ingest` 或 `kb-save`；只有明确来源入库才触发 `kb-ingest`，只有明确写入 Wiki 或整理进知识库才触发 `kb-save`。`kb-save` 还要求新内容声明外部调研或用户原创：外部调研缺少已保存的精确来源时停止准备，不能自行调用来源入库；原创内容不能伪造来源。各 Skill 的 `description` 同时声明正向意图和相邻边界；仓库维护中英文正向、相邻和反向请求语料用于真实宿主触发评估。计划创建响应保留各自既有根字段并增加 `operation_summary`；创建计划不等于授权执行。响应字段和确认边界见[命令参考](commands.md#vault-创建与采用)。
 
 宿主目录约定依据各项目公开文档：[OpenClaw Skills](https://docs.openclaw.ai/skills)、[Hermes Agent Skills](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/work-with-skills.md)、[DeepSeek Harness Skills](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/skills.md) 与 [Pi Skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)。目录适配完成不等于宿主触发行为已经验证；真实加载状态见路线图。

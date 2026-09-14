@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "kb-app"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "atomic-write-file",
  "directories",
@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "kb-cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "kb-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "pulldown-cmark",
  "serde",
@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "kb-mcp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "kb-app",
  "kb-core",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "kb-protocol"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "kb-core",
  "serde",
@@ -999,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "kb-server"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "axum",
  "kb-app",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "kb-update"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "flate2",
  "hex",

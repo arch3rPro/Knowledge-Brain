@@ -46,6 +46,7 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
         "kb-config",
         "kb-ingest",
         "kb-query",
+        "kb-note",
         "kb-save",
         "kb-ops",
         "kb-backup",
@@ -64,11 +65,17 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
             .unwrap(),
         include_str!("../../../skills/kb-save/references/request-format.md")
     );
+    assert_eq!(
+        fs::read_to_string(vault.join(".agents/skills/kb-note/assets/research-note.md")).unwrap(),
+        include_str!("../../../skills/kb-note/assets/research-note.md")
+    );
     assert!(temp.path().join("state/skill-installations/vault").exists());
     let bridge = fs::read_to_string(vault.join("AGENTS.md")).unwrap();
     assert!(bridge.starts_with(original));
     assert_eq!(bridge.matches("<!-- knowledge-brain:start -->").count(), 1);
-    assert!(bridge.contains("matching `kb-*` Skill"));
+    assert!(bridge.contains("use the installed `kb-note` Skill"));
+    assert!(bridge.contains("Use `kb-ingest` only"));
+    assert!(bridge.contains("`kb-save` only for explicitly requested managed Wiki changes"));
     assert!(!bridge.contains("installed `knowledge-brain` Skill"));
 
     let status = kb_app::run(

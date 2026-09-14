@@ -38,7 +38,7 @@
 
 ## `admission.yml`
 
-`admission.yml` 是准入清单，不是待办队列。只有这里启用的一级目录才会进入 `kb review` 的来源读取范围。
+`admission.yml` 是准入清单，不是待办队列。只有这里启用的一级目录才会进入 `kb review` 的来源读取范围。准入项只能指向 Vault 根目录下的一级目录，但读取会根据该项的 `include/exclude` 规则递归检查内部子目录；内部结构由用户决定，不要求平铺，也没有固定的主题层级。
 
 ```yaml
 schema_version: "v1.0"
@@ -62,7 +62,7 @@ directories:
 - 未写 `include` 时默认包含 Markdown、文本、HTML、EPUB、DOCX 和 PDF；未写 `exclude` 时默认排除 `.git` 与 `.kb`。PDF 当前只保存原始对象和元数据。
 - `kb config admission remove` 只删除准入记录，不删除对应目录。
 - 停用、移除或排除来源不会删除已保存的副本，也不会伪造“来源已删除”的变更。
-- glob 相对主题根匹配，区分大小写；`**` 匹配任意层级。排除规则优先，隐藏文件默认跳过，`.git` 与 `.kb` 始终跳过。
+- glob 相对主题根匹配，区分大小写；`**` 匹配任意层级。排除规则优先，隐藏文件默认跳过，`.git` 与 `.kb` 始终跳过。递归读取仍受文件数量、单文件大小、总读取量和路径安全限制约束。
 
 准入目录不能从其他配置层隐式增加。高级 `include/exclude` 当前通过人工编辑 YAML 配置，再用 `kb config validate` 校验。
 

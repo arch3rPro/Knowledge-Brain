@@ -570,7 +570,7 @@ enum AdmissionCommands {
         #[command(flatten)]
         context: VaultContext,
     },
-    /// Add an enabled top-level directory by stable ID.
+    /// Add an enabled top-level directory; matching contents are scanned recursively.
     Add {
         id: String,
         path: String,

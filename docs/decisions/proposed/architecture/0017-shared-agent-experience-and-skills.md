@@ -12,7 +12,7 @@ CLI, MCP, HTTP and future Agent hosts expose the same Vault operations through d
 
 `kb-app` remains the source of operation, query, diagnostic and error facts. Its adapter responses add an operation summary without changing existing root fields. Human renderers use 12-character Hash displays while machine protocols retain canonical identities. A shared `match_mode` separates relevant search from exact literal search, and shared diagnostics/error codes distinguish Vault state from machine runtime state and backup verification from restore failure.
 
-Knowledge-Brain distributes eight task-scoped `kb-*` Skills instead of a visible root Skill. `kb skills install` owns its recorded suite, bridge blocks and migration from an unmodified legacy Skill. `npx skills add` distributes the same Skill content through an external installer; it owns its installation files. Neither installer silently overwrites or removes the other's files.
+Knowledge-Brain distributes task-scoped `kb-*` Skills instead of a visible root Skill. `kb skills install` owns its recorded suite, bridge blocks and migration from an unmodified legacy Skill. `npx skills add` distributes the same Skill content through an external installer; it owns its installation files. Neither installer silently overwrites or removes the other's files.
 
 ## Alternatives considered
 
