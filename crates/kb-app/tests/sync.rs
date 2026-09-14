@@ -103,8 +103,11 @@ fn non_git_vault_is_valid_and_git_is_optional() {
     assert!(!report.summary.writes_blocked);
 }
 
+// Windows cannot create this fixture because `CON` is a reserved device name.
+// The platform-independent parser rule is covered in kb-core/tests/path_rules.rs.
+#[cfg(not(windows))]
 #[test]
-fn common_check_reports_cross_platform_unsafe_shared_paths() {
+fn common_check_reports_windows_reserved_shared_paths() {
     let temporary = tempfile::tempdir().unwrap();
     let vault = temporary.path().join("vault");
     init_vault(&InitRequest {
