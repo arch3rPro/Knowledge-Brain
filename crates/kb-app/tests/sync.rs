@@ -114,7 +114,7 @@ fn fetched_upstream_commits_block_shared_writes_until_the_vault_is_updated() {
     let temporary = tempfile::tempdir().unwrap();
     let remote = temporary.path().join("remote.git");
     fs::create_dir(&remote).unwrap();
-    git(&remote, &["init", "--bare"]);
+    git(&remote, &["init", "--bare", "--initial-branch=main"]);
 
     let vault = temporary.path().join("vault");
     init_vault(&InitRequest {
@@ -153,11 +153,15 @@ fn fetched_upstream_commits_block_shared_writes_until_the_vault_is_updated() {
     )
     .unwrap();
 
-    assert!(report.findings.iter().any(|finding| {
-        finding.code == "git_branch_behind"
-            && finding.level == kb_app::SyncFindingLevel::Error
-            && finding.blocks_writes
-    }));
+    assert!(
+        report.findings.iter().any(|finding| {
+            finding.code == "git_branch_behind"
+                && finding.level == kb_app::SyncFindingLevel::Error
+                && finding.blocks_writes
+        }),
+        "{:#?}",
+        report.findings
+    );
     let error = ensure_shared_write_sync_safe(&vault).unwrap_err();
     assert_eq!(error.code, kb_core::ErrorCode::SyncConflict);
 
