@@ -76,6 +76,24 @@ cargo install --path crates/kb-cli --locked
 
 源码或 Cargo 安装不会被 `kb update` 替换，仍由 Cargo 或源码工作区更新。
 
+## 升级
+
+使用官方 Release 可执行文件安装时，在 Vault 目录中运行：
+
+```bash
+kb update
+```
+
+命令会先列出 CLI、Vault 模板、已有受管理 Skills 和索引的待更新内容、跳过项与冲突；确认一次后才执行。完成后可用 `kb version` 和 `kb update status` 查看版本与最终状态。Cargo、源码或第三方包管理器安装的 CLI 仍通过原安装方式升级。
+
+需要交给 AI Agent 时，将下面整句话中的路径替换为 Vault 路径并直接发送：
+
+```markdown
+请在 Knowledge-Brain Vault `<VAULT_PATH>` 中将 Knowledge-Brain 更新到最新正式版本。使用系统 PATH 中的 `kb`，先向我列出 CLI、Vault 模板、已有受管理 Skills 和索引的全部待更新内容、跳过项与冲突，未经我确认不要执行；确认后完成更新，并报告 `kb version` 和 `kb update status` 的最终结果。不要修改主题目录、`admission.yml`、普通笔记、Wiki 正文、Git 或 Obsidian 配置。
+```
+
+从 v0.1.3 升级需要完成一次 CLI 替换后再次运行 `kb update`；具体步骤与更新边界见 [CLI 更新参考](docs/reference/cli-updates.md)。
+
 ## 快速开始
 
 ### AI Agent（推荐）
