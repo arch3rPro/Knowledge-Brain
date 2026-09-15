@@ -1,7 +1,7 @@
-use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode};
+use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode, UpdateSelection};
 use kb_core::{
     ErrorCode, KbError, KnowledgePlanRequest, OperationId, SearchMatchMode, SearchRequest,
-    SearchScope,
+    SearchScope, UpdateConfirmationToken,
 };
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Deserialize;
@@ -217,12 +217,39 @@ impl McpServer {
                 &operation_schema(),
                 true,
             ),
+            tool(
+                "kb_update_plan",
+                "Create a complete reviewable update plan for this server's fixed Vault. This does not apply it.",
+                &object_schema(vec![], &[]),
+                true,
+            ),
+            tool(
+                "kb_update_status",
+                "Read the latest durable update state, or one update operation by ID.",
+                &json!({
+                    "type":"object",
+                    "properties":{"operation_id":{"type":"string","format":"uuid"}},
+                    "additionalProperties":false
+                }),
+                true,
+            ),
         ];
         if self.allow_write {
             tools.push(tool(
                 "kb_apply_operation",
                 "Apply one explicitly approved operation owned by the fixed Vault.",
                 &operation_schema(),
+                false,
+            ));
+            tools.push(tool(
+                "kb_update_confirm",
+                "Apply exactly the previously reviewed update plan identified by its confirmation token.",
+                &json!({
+                    "type":"object",
+                    "properties":{"confirmation_token":{"type":"string","pattern":"^[0-9a-f]{64}$"}},
+                    "required":["confirmation_token"],
+                    "additionalProperties":false
+                }),
                 false,
             ));
         }
@@ -233,7 +260,11 @@ impl McpServer {
         let Ok(call) = serde_json::from_value::<ToolCall>(params) else {
             return protocol_error(id, -32602, "Invalid tools/call parameters.");
         };
-        if call.name == "kb_apply_operation" && !self.allow_write {
+        if matches!(
+            call.name.as_str(),
+            "kb_apply_operation" | "kb_update_confirm"
+        ) && !self.allow_write
+        {
             return protocol_error(id, -32602, "Tool is unavailable without --allow-write.");
         }
         let request = match self.app_request(&call.name, call.arguments) {
@@ -314,6 +345,26 @@ impl McpServer {
                     })
                 })
             }),
+            "kb_update_plan" => empty(&arguments).map(|()| {
+                AppRequest::Update(Box::new(kb_app::UpdateRequest::Prepare(UpdateSelection {
+                    vault: Some(self.vault_selector.clone()),
+                    excluded_vaults: Vec::new(),
+                    persist: true,
+                })))
+            }),
+            "kb_update_status" => decode::<UpdateStatusArguments>(arguments).and_then(|args| {
+                let operation_id = args
+                    .operation_id
+                    .as_deref()
+                    .map(parse_operation_id)
+                    .transpose()?;
+                Ok(AppRequest::Update(Box::new(
+                    kb_app::UpdateRequest::StatusForVault {
+                        vault: self.vault_selector.clone(),
+                        operation_id,
+                    },
+                )))
+            }),
             "kb_apply_operation" if self.allow_write => decode::<OperationArguments>(arguments)
                 .and_then(|args| {
                     parse_operation_id(&args.operation_id).map(|operation_id| {
@@ -322,6 +373,18 @@ impl McpServer {
                             operation_id,
                         }
                     })
+                }),
+            "kb_update_confirm" if self.allow_write => decode::<UpdateConfirmArguments>(arguments)
+                .and_then(|args| {
+                    args.confirmation_token
+                        .parse::<UpdateConfirmationToken>()
+                        .map(|token| {
+                            AppRequest::Update(Box::new(kb_app::UpdateRequest::ConfirmForVault {
+                                vault: self.vault_selector.clone(),
+                                token,
+                            }))
+                        })
+                        .map_err(|error| error.to_string())
                 }),
             _ => Err(format!("Unknown MCP tool: {name}")),
         }
@@ -353,6 +416,14 @@ fn requires_write_authorization(request: &AppRequest) -> bool {
             mode: SaveMode::Confirm(_) | SaveMode::ApplyImmediately,
             ..
         }
+    ) || matches!(
+        request,
+        AppRequest::Update(update)
+            if matches!(
+                update.as_ref(),
+                kb_app::UpdateRequest::Confirm { .. }
+                    | kb_app::UpdateRequest::ConfirmForVault { .. }
+            )
     )
 }
 
@@ -433,6 +504,18 @@ fn parse_save_mode(apply: bool, confirmation_token: Option<String>) -> Result<Sa
 #[serde(deny_unknown_fields)]
 struct OperationArguments {
     operation_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateStatusArguments {
+    operation_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateConfirmArguments {
+    confirmation_token: String,
 }
 
 fn decode<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, String> {

@@ -241,6 +241,7 @@ fn prepare_persists_once_and_returns_existing_nonterminal_operation() {
     let runtime = UpdateRuntime {
         identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
         executable: std::env::current_exe().unwrap(),
+        executable_managed: true,
     };
     let roots = AgentRoots::new(temp.path().join("home"), temp.path().join("agent-config"));
 
@@ -289,6 +290,7 @@ fn check_does_not_persist_a_local_plan() {
     let runtime = UpdateRuntime {
         identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
         executable: std::env::current_exe().unwrap(),
+        executable_managed: true,
     };
 
     let outcome = plan_update(

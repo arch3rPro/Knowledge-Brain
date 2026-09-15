@@ -15,6 +15,9 @@ use tokio::{
     task::JoinHandle,
 };
 
+const OLD_KB: &str = include_str!("../../../assets/vault-template-history/v1.1/KB.md");
+const OLD_MANIFEST: &str = include_str!("../../../assets/vault-template-history/v1.1/template.yml");
+
 struct RunningServer {
     address: SocketAddr,
     task: JoinHandle<()>,
@@ -46,6 +49,11 @@ fn context(base: &Path) -> AppContext {
         ]),
         base.to_path_buf(),
     )
+    .with_update_runtime(kb_app::UpdateRuntime {
+        identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
+        executable: std::env::current_exe().unwrap(),
+        executable_managed: false,
+    })
 }
 
 async fn start(
@@ -231,6 +239,58 @@ async fn authenticated_write_survives_the_http_request() {
         std::fs::read_to_string(saved)
             .unwrap()
             .contains("modern-http-persisted")
+    );
+}
+
+#[tokio::test]
+async fn update_plan_and_confirmation_work_over_streamable_http() {
+    let server = start(Some("secret"), true, vec![]).await;
+    std::fs::write(server.vault.join("KB.md"), OLD_KB).unwrap();
+    std::fs::write(server.vault.join(".kb/template.yml"), OLD_MANIFEST).unwrap();
+    let plan = body(
+        1,
+        "tools/call",
+        json!({"name":"kb_update_plan","arguments":{}}),
+    );
+    let (status, _, response) = request(
+        &server,
+        "POST",
+        "Authorization: Bearer secret\r\nMcp-Name: kb_update_plan\r\n",
+        &plan,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let planned = sse_json(&response);
+    let token = planned["result"]["structuredContent"]["data"]["confirmation_token"]
+        .as_str()
+        .unwrap();
+
+    let confirm = body(
+        2,
+        "tools/call",
+        json!({
+            "name":"kb_update_confirm",
+            "arguments":{"confirmation_token":token}
+        }),
+    );
+    let (status, _, response) = request(
+        &server,
+        "POST",
+        "Authorization: Bearer secret\r\nMcp-Name: kb_update_confirm\r\n",
+        &confirm,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let applied = sse_json(&response);
+    assert_eq!(applied["result"]["isError"], false);
+    assert_eq!(
+        applied["result"]["structuredContent"]["data"]["execution_state"],
+        "completed_with_skips"
+    );
+    assert!(
+        std::fs::read_to_string(server.vault.join(".kb/template.yml"))
+            .unwrap()
+            .contains("template_version: v1.2")
     );
 }
 

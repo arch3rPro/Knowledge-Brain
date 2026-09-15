@@ -136,10 +136,18 @@ pub enum UpdateRequest {
     Confirm {
         token: kb_core::UpdateConfirmationToken,
     },
+    ConfirmForVault {
+        vault: String,
+        token: kb_core::UpdateConfirmationToken,
+    },
     Cancel {
         operation_id: OperationId,
     },
     Status {
+        operation_id: Option<OperationId>,
+    },
+    StatusForVault {
+        vault: String,
         operation_id: Option<OperationId>,
     },
     PlanTarget(Box<crate::TargetPlanRequest>),
@@ -379,7 +387,36 @@ fn run_update_request(request: UpdateRequest, context: &AppContext) -> Result<Va
                 None => to_value(store.latest()?),
             }
         }
+        UpdateRequest::StatusForVault {
+            vault,
+            operation_id,
+        } => {
+            let selected = select_vault(context, Some(vault))?;
+            let store = crate::UpdateStore::new(context.user_paths()?);
+            let operation = match operation_id {
+                Some(operation_id) => Some(store.load(operation_id)?),
+                None => store.latest()?,
+            };
+            match operation {
+                Some(operation) => {
+                    ensure_update_owned_by_vault(&operation, selected.vault_id)?;
+                    to_value(operation)
+                }
+                None => Ok(Value::Null),
+            }
+        }
         UpdateRequest::Confirm { token } => to_value(confirm_update(context, &token)?),
+        UpdateRequest::ConfirmForVault { vault, token } => {
+            let selected = select_vault(context, Some(vault))?;
+            let store = crate::UpdateStore::new(context.user_paths()?);
+            let latest = store.latest()?.ok_or_else(no_prepared_update)?;
+            ensure_update_owned_by_vault(&latest, selected.vault_id)?;
+            to_value(confirm_update_operation(
+                context,
+                latest.operation_id,
+                &token,
+            )?)
+        }
         UpdateRequest::Cancel { operation_id } => {
             let store = crate::UpdateStore::new(context.user_paths()?);
             store.remove_cancelled(operation_id)?;
@@ -403,16 +440,19 @@ pub fn confirm_update(
     context: &AppContext,
     token: &kb_core::UpdateConfirmationToken,
 ) -> Result<kb_core::UpdateOperation, KbError> {
+    let latest = crate::UpdateStore::new(context.user_paths()?)
+        .latest()?
+        .ok_or_else(no_prepared_update)?;
+    confirm_update_operation(context, latest.operation_id, token)
+}
+
+fn confirm_update_operation(
+    context: &AppContext,
+    operation_id: OperationId,
+    token: &kb_core::UpdateConfirmationToken,
+) -> Result<kb_core::UpdateOperation, KbError> {
     let store = crate::UpdateStore::new(context.user_paths()?);
-    let latest = store.latest()?.ok_or_else(|| {
-        KbError::new(
-            ErrorCode::OperationNotFound,
-            "No prepared update is available to confirm.",
-            false,
-            "Run kb update and review the complete plan first.",
-        )
-    })?;
-    let confirmed = store.confirm(latest.operation_id, token)?;
+    let confirmed = store.confirm(operation_id, token)?;
     if confirmed.components.iter().any(|component| {
         component.kind == kb_core::UpdateComponentKind::Executable
             && component.state == kb_core::UpdateComponentState::Pending
@@ -420,6 +460,30 @@ pub fn confirm_update(
         return Ok(confirmed);
     }
     resume_update(context, confirmed.operation_id)
+}
+
+fn no_prepared_update() -> KbError {
+    KbError::new(
+        ErrorCode::OperationNotFound,
+        "No prepared update is available to confirm.",
+        false,
+        "Run kb update and review the complete plan first.",
+    )
+}
+
+fn ensure_update_owned_by_vault(
+    operation: &kb_core::UpdateOperation,
+    vault_id: Uuid,
+) -> Result<(), KbError> {
+    if operation.scope.vaults == [vault_id] {
+        return Ok(());
+    }
+    Err(KbError::new(
+        ErrorCode::AuthDenied,
+        "The update operation is not owned exclusively by this fixed Vault.",
+        false,
+        "Create and confirm an update plan through this Vault's own adapter.",
+    ))
 }
 
 /// Resume a confirmed update from its durable component receipts.

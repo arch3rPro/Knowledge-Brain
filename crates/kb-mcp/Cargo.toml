@@ -13,8 +13,8 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+kb-update = { path = "../kb-update" }
 tempfile = "3"
 
 [lints]
 workspace = true
-

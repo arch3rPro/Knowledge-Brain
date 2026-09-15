@@ -9,6 +9,9 @@ use tokio::{
     task::JoinHandle,
 };
 
+const OLD_KB: &str = include_str!("../../../assets/vault-template-history/v1.1/KB.md");
+const OLD_MANIFEST: &str = include_str!("../../../assets/vault-template-history/v1.1/template.yml");
+
 struct RunningServer {
     address: SocketAddr,
     task: JoinHandle<()>,
@@ -35,7 +38,11 @@ fn context(base: &Path) -> AppContext {
             base.join("cache").display().to_string(),
         ),
     ]);
-    AppContext::new(environment, base.to_path_buf())
+    AppContext::new(environment, base.to_path_buf()).with_update_runtime(kb_app::UpdateRuntime {
+        identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
+        executable: std::env::current_exe().unwrap(),
+        executable_managed: false,
+    })
 }
 
 fn initialize(context: &AppContext, vault: &Path) -> Value {
@@ -172,6 +179,114 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     let (status, response) = request(&server, "POST", "/query", None, &oversized).await;
     assert_eq!(status, 400);
     assert_eq!(response["error"]["code"], "invalid_config");
+}
+
+#[tokio::test]
+async fn update_routes_bind_the_fixed_vault_and_gate_exact_confirmation() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    let initialized = initialize(&context, &vault);
+    fs::write(vault.join("KB.md"), OLD_KB).unwrap();
+    fs::write(vault.join(".kb/template.yml"), OLD_MANIFEST).unwrap();
+    let vault_id = initialized["vault_id"].as_str().unwrap();
+    let read_only = start(context.clone(), &vault, None, false).await;
+
+    let (status, response) = request(
+        &read_only,
+        "POST",
+        "/update/plan",
+        None,
+        r#"{"vault":"another-vault"}"#,
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(response["error"]["code"], "invalid_config");
+
+    let (status, preview) = request(&read_only, "POST", "/update/plan", None, "{}").await;
+    assert_eq!(status, 200, "{preview}");
+    assert_eq!(
+        preview["data"]["plan"]["scope"]["vaults"],
+        json!([vault_id])
+    );
+    let token = preview["data"]["confirmation_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let operation_id = preview["data"]["plan"]["operation_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(fs::read_to_string(vault.join("KB.md")).unwrap(), OLD_KB);
+
+    let body = json!({"confirmation_token":token}).to_string();
+    let (status, denied) = request(&read_only, "POST", "/update/confirm", None, &body).await;
+    assert_eq!(status, 403);
+    assert_eq!(denied["error"]["code"], "auth_denied");
+
+    let writable = start(context.clone(), &vault, Some("secret"), true).await;
+    let (status, malformed) = request(
+        &writable,
+        "POST",
+        "/update/confirm",
+        Some("secret"),
+        &json!({"confirmation_token":token,"vault":vault}).to_string(),
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(malformed["error"]["code"], "invalid_config");
+
+    let (status, applied) =
+        request(&writable, "POST", "/update/confirm", Some("secret"), &body).await;
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["data"]["execution_state"], "completed_with_skips");
+
+    let status_path = format!("/update/status/{operation_id}");
+    let (status, exact) = request(&writable, "GET", &status_path, Some("secret"), "").await;
+    assert_eq!(status, 200);
+    assert_eq!(exact["data"], applied["data"]);
+    let (status, latest) = request(&writable, "GET", "/update/status", Some("secret"), "").await;
+    assert_eq!(status, 200);
+    assert_eq!(latest["data"], applied["data"]);
+
+    let other = temporary.path().join("other-vault");
+    initialize(&context, &other);
+    fs::write(other.join("KB.md"), OLD_KB).unwrap();
+    fs::write(other.join(".kb/template.yml"), OLD_MANIFEST).unwrap();
+    let foreign = kb_app::run(
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::Prepare(
+            kb_app::UpdateSelection {
+                vault: Some(other.display().to_string()),
+                excluded_vaults: Vec::new(),
+                persist: true,
+            },
+        ))),
+        &context,
+    )
+    .unwrap();
+    let foreign_id = foreign["plan"]["operation_id"].as_str().unwrap();
+    let foreign_token = foreign["confirmation_token"].as_str().unwrap();
+    let (status, hidden) = request(
+        &writable,
+        "GET",
+        &format!("/update/status/{foreign_id}"),
+        Some("secret"),
+        "",
+    )
+    .await;
+    assert_eq!(status, 403);
+    assert_eq!(hidden["error"]["code"], "auth_denied");
+    let (status, denied) = request(
+        &writable,
+        "POST",
+        "/update/confirm",
+        Some("secret"),
+        &json!({"confirmation_token":foreign_token}).to_string(),
+    )
+    .await;
+    assert_eq!(status, 403);
+    assert_eq!(denied["error"]["code"], "auth_denied");
+    assert_eq!(fs::read_to_string(other.join("KB.md")).unwrap(), OLD_KB);
 }
 
 #[tokio::test]

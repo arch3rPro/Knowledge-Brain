@@ -25,6 +25,8 @@ use crate::{
 pub struct UpdateRuntime {
     pub identity: kb_update::BuildIdentity,
     pub executable: PathBuf,
+    /// Whether this caller can replace the currently running executable.
+    pub executable_managed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -326,12 +328,25 @@ pub fn plan_update(
     persist: bool,
 ) -> Result<UpdatePlanningOutcome, KbError> {
     let store = UpdateStore::new(user_paths);
+    let scope = resolve_update_scope(user_paths, current_dir, environment, selection)?;
     if let Some(operation) = store.latest()? {
         if !operation.execution_state.is_terminal() {
-            return Ok(UpdatePlanningOutcome::Existing { operation });
+            let requested_vaults = scope
+                .vaults
+                .iter()
+                .map(|vault| vault.vault_id)
+                .collect::<Vec<_>>();
+            if operation.scope.mode == scope.mode && operation.scope.vaults == requested_vaults {
+                return Ok(UpdatePlanningOutcome::Existing { operation });
+            }
+            return Err(KbError::new(
+                ErrorCode::WriteBusy,
+                "A different update preview is already waiting for confirmation.",
+                false,
+                "Inspect or cancel the existing update preview before selecting another Vault scope.",
+            ));
         }
     }
-    let scope = resolve_update_scope(user_paths, current_dir, environment, selection)?;
     let current_digest = fs::read(&runtime.executable)
         .map(|bytes| digest(&bytes))
         .map_err(|error| io_error("read current executable", &runtime.executable, &error))?;
@@ -345,7 +360,7 @@ pub fn plan_update(
     )?;
     request.executable_before_sha256 = Some(current_digest.clone());
     request.executable_after_sha256 = Some(current_digest);
-    request.executable_managed = runtime.identity.can_update();
+    request.executable_managed = runtime.identity.can_update() && runtime.executable_managed;
     request.environment = target_environment(environment);
 
     let mut attached_stage = None;

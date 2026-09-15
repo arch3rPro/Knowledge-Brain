@@ -13,9 +13,10 @@ use axum::{
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
-use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode};
+use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode, UpdateSelection};
 use kb_core::{
     ErrorCode, KbError, KnowledgePlanRequest, OperationEventReport, OperationId, SearchRequest,
+    UpdateConfirmationToken,
 };
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Deserialize;
@@ -205,6 +206,10 @@ fn router(state: ServerState) -> Router {
             get(operation_event_stream),
         )
         .route("/operations/{operation_id}/apply", post(apply))
+        .route("/update/plan", post(update_plan))
+        .route("/update/status", get(update_status_latest))
+        .route("/update/status/{operation_id}", get(update_status))
+        .route("/update/confirm", post(update_confirm))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(DefaultBodyLimit::max(MAX_JSON_BODY_BYTES))
@@ -242,6 +247,115 @@ async fn status(State(state): State<ServerState>, headers: HeaderMap) -> Respons
         },
     )
     .await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdatePlanBody {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateConfirmBody {
+    confirmation_token: String,
+}
+
+async fn update_plan(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    request: Result<Json<UpdatePlanBody>, JsonRejection>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    if let Err(error) = json_request(request) {
+        return failure_with_status(StatusCode::BAD_REQUEST, error);
+    }
+    match call(
+        &state,
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::Prepare(UpdateSelection {
+            vault: Some(selected(&state)),
+            excluded_vaults: Vec::new(),
+            persist: true,
+        }))),
+    )
+    .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
+}
+
+async fn update_status_latest(State(state): State<ServerState>, headers: HeaderMap) -> Response {
+    run_authenticated(
+        &state,
+        &headers,
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::StatusForVault {
+            vault: selected(&state),
+            operation_id: None,
+        })),
+    )
+    .await
+}
+
+async fn update_status(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    RoutePath(operation_id): RoutePath<String>,
+) -> Response {
+    let operation_id = match parse_operation_id(&operation_id) {
+        Ok(operation_id) => operation_id,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    run_authenticated(
+        &state,
+        &headers,
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::StatusForVault {
+            vault: selected(&state),
+            operation_id: Some(operation_id),
+        })),
+    )
+    .await
+}
+
+async fn update_confirm(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    request: Result<Json<UpdateConfirmBody>, JsonRejection>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    if !state.policy.allow_write() {
+        return failure_with_status(
+            StatusCode::FORBIDDEN,
+            auth_error(
+                "HTTP update confirmation is disabled; restart with --allow-write and a token file.",
+            ),
+        );
+    }
+    let request = match json_request(request) {
+        Ok(request) => request,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    let confirmation_token = match request
+        .confirmation_token
+        .parse::<UpdateConfirmationToken>()
+    {
+        Ok(token) => token,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    match call(
+        &state,
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::ConfirmForVault {
+            vault: selected(&state),
+            token: confirmation_token,
+        })),
+    )
+    .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
 }
 
 async fn maintenance(State(state): State<ServerState>, headers: HeaderMap) -> Response {

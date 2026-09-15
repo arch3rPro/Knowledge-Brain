@@ -64,6 +64,7 @@ fn prepare(
         &UpdateRuntime {
             identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
             executable: std::env::current_exe().unwrap(),
+            executable_managed: true,
         },
         paths,
         &AgentRoots::new(temp.path().join("home"), temp.path().join("agent-config")),

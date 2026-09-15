@@ -3,6 +3,9 @@ use kb_mcp::McpServer;
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fs, path::Path};
 
+const OLD_KB: &str = include_str!("../../../assets/vault-template-history/v1.1/KB.md");
+const OLD_MANIFEST: &str = include_str!("../../../assets/vault-template-history/v1.1/template.yml");
+
 #[test]
 fn operation_show_preserves_plan_and_result_roots_with_additive_summary() {
     let temp = tempfile::tempdir().unwrap();
@@ -110,6 +113,8 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
             "kb_plan_knowledge",
             "kb_knowledge_save",
             "kb_operation_show",
+            "kb_update_plan",
+            "kb_update_status",
         ]
     );
     assert!(!names.contains(&"kb_apply_operation"));
@@ -299,6 +304,65 @@ fn source_save_prepares_read_only_and_confirms_only_with_write_access() {
     assert_eq!(verified["checks"][0]["status"], "pass");
 }
 
+#[test]
+fn update_tools_plan_only_the_fixed_vault_and_require_write_access_to_confirm() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized = kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    fs::write(vault.join("KB.md"), OLD_KB).unwrap();
+    fs::write(vault.join(".kb/template.yml"), OLD_MANIFEST).unwrap();
+    let vault_id = initialized["vault_id"].as_str().unwrap().to_owned();
+    let mut read_only = McpServer::new(context.clone(), vault_id.clone(), false);
+
+    let invalid = call(
+        &mut read_only,
+        1,
+        "kb_update_plan",
+        &json!({"vault":"another-vault"}),
+    );
+    assert_eq!(invalid["error"]["code"], -32602);
+
+    let preview = call(&mut read_only, 2, "kb_update_plan", &json!({}));
+    assert_eq!(preview["result"]["isError"], false);
+    let data = &preview["result"]["structuredContent"]["data"];
+    assert_eq!(data["plan"]["scope"]["vaults"], json!([vault_id]));
+    let token = data["confirmation_token"].as_str().unwrap().to_owned();
+    assert_eq!(fs::read_to_string(vault.join("KB.md")).unwrap(), OLD_KB);
+
+    let denied = call(
+        &mut read_only,
+        3,
+        "kb_update_confirm",
+        &json!({"confirmation_token":token}),
+    );
+    assert_eq!(denied["error"]["code"], -32602);
+
+    let mut writable = McpServer::new(context, vault_id, true);
+    let applied = call(
+        &mut writable,
+        4,
+        "kb_update_confirm",
+        &json!({"confirmation_token":token}),
+    );
+    assert_eq!(applied["result"]["isError"], false);
+    assert_eq!(
+        applied["result"]["structuredContent"]["data"]["execution_state"],
+        "completed_with_skips"
+    );
+    assert!(
+        fs::read_to_string(vault.join(".kb/template.yml"))
+            .unwrap()
+            .contains("template_version: v1.2")
+    );
+}
+
 fn call(server: &mut McpServer, id: u64, name: &str, arguments: &Value) -> Value {
     server
         .handle(&json!({
@@ -338,4 +402,9 @@ fn context(base: &Path) -> AppContext {
         ]),
         base.to_path_buf(),
     )
+    .with_update_runtime(kb_app::UpdateRuntime {
+        identity: kb_update::BuildIdentity::development(env!("CARGO_PKG_VERSION")).unwrap(),
+        executable: std::env::current_exe().unwrap(),
+        executable_managed: false,
+    })
 }

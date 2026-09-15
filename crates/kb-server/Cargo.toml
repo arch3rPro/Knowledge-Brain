@@ -17,6 +17,7 @@ tokio.workspace = true
 tokio-stream.workspace = true
 
 [dev-dependencies]
+kb-update = { path = "../kb-update" }
 tempfile = "3"
 
 [lints]

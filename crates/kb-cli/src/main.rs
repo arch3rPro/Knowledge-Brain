@@ -290,6 +290,7 @@ fn prepare_update(
     let context = context.clone().with_update_runtime(kb_app::UpdateRuntime {
         identity,
         executable,
+        executable_managed: true,
     });
     let selection = kb_app::UpdateSelection {
         vault: command.vault.clone(),
@@ -631,6 +632,7 @@ async fn run_mcp(command: args::McpCommand, context: AppContext) -> Result<(), K
         .as_str()
         .ok_or_else(|| KbError::invalid_config("selected Vault", "missing root"))?
         .to_owned();
+    let context = adapter_update_context(context)?;
     let server = kb_mcp::McpServer::new(context, fixed_vault, command.allow_write);
     if command.transport == args::McpTransport::Stdio {
         let mut server = server;
@@ -699,6 +701,7 @@ async fn run_server(command: args::ServeCommand, context: AppContext) -> Result<
         .as_str()
         .ok_or_else(|| KbError::invalid_config("selected Vault", "missing vault_id"))?
         .to_owned();
+    let context = adapter_update_context(context)?;
     let listener = tokio::net::TcpListener::bind(command.bind)
         .await
         .map_err(|error| {
@@ -745,6 +748,19 @@ async fn run_server(command: args::ServeCommand, context: AppContext) -> Result<
         ));
     }
     Ok(())
+}
+
+fn adapter_update_context(context: AppContext) -> Result<AppContext, KbError> {
+    let executable = std::env::current_exe().map_err(|error| {
+        KbError::io_failure("locate current executable", "process", error.to_string())
+    })?;
+    Ok(context.with_update_runtime(kb_app::UpdateRuntime {
+        identity: compiled_identity()?,
+        executable,
+        // A long-running MCP/HTTP process cannot safely replace itself. It can
+        // still use a verified target binary to plan and apply managed assets.
+        executable_managed: false,
+    }))
 }
 
 #[cfg(test)]
