@@ -12,10 +12,8 @@ use crate::{
     LockMode, UserPaths, VaultLock, ensure_shared_write_sync_safe,
     operation::{operation_directory, read_json, write_json},
     source_io::safe_path,
-    template::{
-        ADMISSION_SCHEMA_JSON, CONFIG_SCHEMA_JSON, KB_MD, LEGACY_KB_MD_V1_0, RELEASED_KB_MD_V0_1_X,
-        VAULT_TEMPLATE_VERSION, managed_rules, template_manifest_yaml,
-    },
+    template::VAULT_TEMPLATE_VERSION,
+    template_state::plan_template_update,
     vault::read_vault_identity,
 };
 
@@ -58,6 +56,18 @@ pub struct VaultUpgradePlan {
     pub writes: Vec<VaultUpgradeWrite>,
     pub diff: String,
     pub conflicts: Vec<VaultUpgradeConflict>,
+    #[serde(default)]
+    pub planned: Vec<PortableRelativePath>,
+    #[serde(default)]
+    pub changed: Vec<PortableRelativePath>,
+    #[serde(default)]
+    pub unchanged: Vec<PortableRelativePath>,
+    #[serde(default)]
+    pub stale: Vec<PortableRelativePath>,
+    #[serde(default)]
+    pub skipped: Vec<PortableRelativePath>,
+    #[serde(default)]
+    pub failed: Vec<PortableRelativePath>,
     pub untouched: Vec<String>,
 }
 
@@ -68,8 +78,16 @@ pub struct VaultUpgradeResult {
     pub operation_id: OperationId,
     pub vault_id: Uuid,
     pub target: std::path::PathBuf,
+    /// Compatibility alias retained for v0.1.3 clients.
     pub template_version: SchemaVersion,
+    pub from_template_version: Option<SchemaVersion>,
+    pub to_template_version: SchemaVersion,
+    pub planned: Vec<PortableRelativePath>,
     pub changed: Vec<PortableRelativePath>,
+    pub unchanged: Vec<PortableRelativePath>,
+    pub stale: Vec<PortableRelativePath>,
+    pub skipped: Vec<PortableRelativePath>,
+    pub failed: Vec<PortableRelativePath>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,12 +101,6 @@ struct Effect {
     path: PortableRelativePath,
     before: Option<Vec<u8>>,
     after_sha256: String,
-}
-
-#[derive(Deserialize)]
-struct ManifestIdentity {
-    schema_version: SchemaVersion,
-    template_version: SchemaVersion,
 }
 
 /// Create a reviewable plan for product-managed Vault template files.
@@ -105,59 +117,42 @@ pub fn create_vault_upgrade_plan(
     paths: &UserPaths,
 ) -> Result<VaultUpgradePlan, KbError> {
     let identity = read_vault_identity(root)?;
-    let manifest_path = safe_path(root, ".kb/template.yml")?;
-    let (from_template_version, manifest_conflict) = match read_manifest_version(&manifest_path) {
-        Ok(version) => (version, None),
-        Err(error) if error.code == ErrorCode::InvalidConfig => (
-            None,
-            Some(conflict(
-                ".kb/template.yml",
-                "Template metadata cannot be parsed or uses an unsupported manifest schema.",
-                "Restore .kb/template.yml from a known backup or remove only this metadata file, then create a new preview.",
-            )?),
-        ),
-        Err(error) => return Err(error),
-    };
-    if from_template_version.is_some_and(|version| version > VAULT_TEMPLATE_VERSION) {
-        return Err(KbError::new(
-            ErrorCode::SchemaTooNew,
-            "Vault template metadata is newer than this Knowledge-Brain build.",
-            false,
-            "Upgrade Knowledge-Brain before changing the Vault template.",
-        ));
-    }
-
-    let mut writes = Vec::new();
-    let mut conflicts = Vec::new();
-    conflicts.extend(manifest_conflict);
-    plan_rules(root, &mut writes, &mut conflicts)?;
-    plan_whole_file(
-        root,
-        ".kb/schemas/admission.schema.json",
-        ADMISSION_SCHEMA_JSON,
-        &mut writes,
-        &mut conflicts,
-    )?;
-    plan_whole_file(
-        root,
-        ".kb/schemas/config.schema.json",
-        CONFIG_SCHEMA_JSON,
-        &mut writes,
-        &mut conflicts,
-    )?;
-    if conflicts
+    let template_plan = plan_template_update(root)?;
+    let writes = template_plan
+        .writes
         .iter()
-        .all(|conflict| conflict.path.as_str() != ".kb/template.yml")
-    {
-        plan_manifest(root, &mut writes, &mut conflicts)?;
-    }
-    if !conflicts.is_empty() {
-        writes.clear();
-    }
-    writes.sort_by(|left, right| left.path.cmp(&right.path));
-    conflicts.sort_by(|left, right| left.path.cmp(&right.path));
+        .map(|write| VaultUpgradeWrite {
+            path: write.path.clone(),
+            action: if write.before_sha256.is_some() {
+                VaultUpgradeAction::Update
+            } else {
+                VaultUpgradeAction::Create
+            },
+            before_sha256: write.before_sha256.clone(),
+            after_sha256: write.after_sha256.clone(),
+            content: write.content.clone(),
+        })
+        .collect::<Vec<_>>();
+    let conflicts = template_plan
+        .conflicts
+        .iter()
+        .map(|item| {
+            let path = item.path.as_ref().ok_or_else(|| {
+                KbError::invalid_config("template conflict", "managed path is missing")
+            })?;
+            let path = path.to_str().ok_or_else(|| {
+                KbError::invalid_config("template conflict", "managed path is not UTF-8")
+            })?;
+            Ok(VaultUpgradeConflict {
+                path: PortableRelativePath::parse(path)?,
+                reason: item.reason.clone(),
+                next_action: item.next_action.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, KbError>>()?;
     let diff = render_diff(root, &writes)?;
 
+    let planned = writes.iter().map(|write| write.path.clone()).collect();
     let plan = VaultUpgradePlan {
         kind: "upgrade_vault".into(),
         schema_version: CURRENT_SCHEMA_VERSION,
@@ -168,11 +163,17 @@ pub fn create_vault_upgrade_plan(
         created_at: OffsetDateTime::now_utc()
             .format(&Rfc3339)
             .map_err(|error| KbError::invalid_config("upgrade time", error.to_string()))?,
-        from_template_version,
-        to_template_version: VAULT_TEMPLATE_VERSION,
+        from_template_version: template_plan.from_template_version,
+        to_template_version: template_plan.to_template_version,
         writes,
         diff,
         conflicts,
+        planned,
+        changed: Vec::new(),
+        unchanged: template_plan.unchanged,
+        stale: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
         untouched: vec![
             "admission.yml and topic directories".into(),
             "ordinary notes and managed Wiki content".into(),
@@ -238,7 +239,14 @@ pub fn apply_vault_upgrade(
         vault_id: plan.vault_id,
         target: plan.target.clone(),
         template_version: plan.to_template_version,
+        from_template_version: plan.from_template_version,
+        to_template_version: plan.to_template_version,
+        planned: plan.planned.clone(),
         changed: plan.writes.iter().map(|write| write.path.clone()).collect(),
+        unchanged: plan.unchanged.clone(),
+        stale: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
     };
     write_json(&result_path, &result)?;
     #[cfg(test)]
@@ -261,131 +269,6 @@ pub fn inspect_vault_upgrade_plan(
     let plan: VaultUpgradePlan = read_json(&directory.join("upgrade-plan.json"))?;
     validate_plan(&directory, operation_id, &plan)?;
     Ok(plan)
-}
-
-fn plan_rules(
-    root: &Path,
-    writes: &mut Vec<VaultUpgradeWrite>,
-    conflicts: &mut Vec<VaultUpgradeConflict>,
-) -> Result<(), KbError> {
-    let path = safe_path(root, "KB.md")?;
-    let current = read_optional(&path)?;
-    let next = match current.as_deref() {
-        None => Some(KB_MD.to_owned()),
-        Some(value) if text_equal(value, KB_MD) => None,
-        Some(value)
-            if [LEGACY_KB_MD_V1_0, RELEASED_KB_MD_V0_1_X]
-                .iter()
-                .any(|baseline| text_equal(value, baseline)) =>
-        {
-            Some(KB_MD.to_owned())
-        }
-        Some(value) if managed_rules(value).is_some() => {
-            let expected = managed_rules(KB_MD).unwrap_or_default();
-            (managed_rules(value) != Some(expected)).then(|| replace_rules(value, expected))
-        }
-        Some(_) => {
-            conflicts.push(conflict(
-                "KB.md",
-                "The unmarked rules file differs from every known product baseline.",
-                "Preserve your rules and manually add the kb:rules markers around the product-owned block.",
-            )?);
-            None
-        }
-    };
-    if let Some(content) = next {
-        writes.push(write_for("KB.md", current.as_deref(), content)?);
-    }
-    Ok(())
-}
-
-fn plan_whole_file(
-    root: &Path,
-    relative: &str,
-    target: &str,
-    writes: &mut Vec<VaultUpgradeWrite>,
-    conflicts: &mut Vec<VaultUpgradeConflict>,
-) -> Result<(), KbError> {
-    let current = read_optional(&safe_path(root, relative)?)?;
-    match current.as_deref() {
-        None => writes.push(write_for(relative, None, target.to_owned())?),
-        Some(value) if text_equal(value, target) => {}
-        Some(_) => conflicts.push(conflict(
-            relative,
-            "The product-managed schema differs from the known baseline.",
-            "Restore this schema from the installed Knowledge-Brain version, then create a new preview.",
-        )?),
-    }
-    Ok(())
-}
-
-fn plan_manifest(
-    root: &Path,
-    writes: &mut Vec<VaultUpgradeWrite>,
-    conflicts: &mut Vec<VaultUpgradeConflict>,
-) -> Result<(), KbError> {
-    let relative = ".kb/template.yml";
-    let current = read_optional(&safe_path(root, relative)?)?;
-    let target = template_manifest_yaml();
-    match current.as_deref() {
-        None => writes.push(write_for(relative, None, target)?),
-        Some(value) if text_equal(value, &target) => {}
-        Some(_) => conflicts.push(conflict(
-            relative,
-            "Template metadata differs from every known product baseline.",
-            "Restore a known .kb/template.yml baseline or merge the documented template metadata manually, then create a new preview.",
-        )?),
-    }
-    Ok(())
-}
-
-fn write_for(
-    path: &str,
-    before: Option<&str>,
-    content: String,
-) -> Result<VaultUpgradeWrite, KbError> {
-    Ok(VaultUpgradeWrite {
-        path: PortableRelativePath::parse(path)?,
-        action: if before.is_some() {
-            VaultUpgradeAction::Update
-        } else {
-            VaultUpgradeAction::Create
-        },
-        before_sha256: before.map(|value| hash(value.as_bytes())),
-        after_sha256: hash(content.as_bytes()),
-        content,
-    })
-}
-
-fn conflict(path: &str, reason: &str, next_action: &str) -> Result<VaultUpgradeConflict, KbError> {
-    Ok(VaultUpgradeConflict {
-        path: PortableRelativePath::parse(path)?,
-        reason: reason.into(),
-        next_action: next_action.into(),
-    })
-}
-
-fn read_manifest_version(path: &Path) -> Result<Option<SchemaVersion>, KbError> {
-    let Some(content) = read_optional(path)? else {
-        return Ok(None);
-    };
-    let manifest: ManifestIdentity = serde_yaml_ng::from_str(&content)
-        .map_err(|error| KbError::invalid_config(path.display().to_string(), error.to_string()))?;
-    if manifest.schema_version != CURRENT_SCHEMA_VERSION {
-        return Err(KbError::invalid_config(
-            path.display().to_string(),
-            "unsupported manifest schema_version",
-        ));
-    }
-    Ok(Some(manifest.template_version))
-}
-
-fn replace_rules(original: &str, rules: &str) -> String {
-    const START: &str = "<!-- kb:rules:start -->";
-    const END: &str = "<!-- kb:rules:end -->";
-    let start = original.find(START).unwrap_or_default() + START.len();
-    let end = original[start..].find(END).unwrap_or_default() + start;
-    format!("{}{}{}", &original[..start], rules, &original[end..])
 }
 
 fn read_optional(path: &Path) -> Result<Option<String>, KbError> {
@@ -427,10 +310,6 @@ fn render_diff(root: &Path, writes: &[VaultUpgradeWrite]) -> Result<String, KbEr
     Ok(output)
 }
 
-fn text_equal(left: &str, right: &str) -> bool {
-    left.replace("\r\n", "\n") == right.replace("\r\n", "\n")
-}
-
 fn save_upgrade_plan(paths: &UserPaths, plan: &VaultUpgradePlan) -> Result<(), KbError> {
     let directory = operation_directory(paths, plan.operation_id);
     fs::create_dir_all(&directory).map_err(|error| {
@@ -464,6 +343,16 @@ fn validate_plan(
         || plan.to_template_version != VAULT_TEMPLATE_VERSION
         || plan.app_version != env!("CARGO_PKG_VERSION")
         || !plan.target.is_absolute()
+        || plan.planned
+            != plan
+                .writes
+                .iter()
+                .map(|write| write.path.clone())
+                .collect::<Vec<_>>()
+        || !plan.changed.is_empty()
+        || !plan.stale.is_empty()
+        || !plan.skipped.is_empty()
+        || !plan.failed.is_empty()
         || plan.writes.iter().any(|write| {
             !allowed.contains(&write.path.as_str())
                 || write.after_sha256 != hash(write.content.as_bytes())
@@ -655,7 +544,10 @@ fn crash_for_test(point: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{InitRequest, init_vault};
+    use crate::{
+        InitRequest, init_vault,
+        template::{KB_MD, LEGACY_KB_MD_V1_0},
+    };
 
     fn paths(base: &Path) -> UserPaths {
         UserPaths::new(base.join("config"), base.join("state"), base.join("cache"))

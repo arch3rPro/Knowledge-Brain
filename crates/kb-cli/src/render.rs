@@ -70,7 +70,9 @@ pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError>
 }
 
 fn render_vault_upgrade(value: &Value) -> String {
-    if let Some(changed) = value.get("changed").and_then(Value::as_array) {
+    if value.get("writes").is_none()
+        && let Some(changed) = value.get("changed").and_then(Value::as_array)
+    {
         let version = value
             .get("template_version")
             .and_then(Value::as_str)

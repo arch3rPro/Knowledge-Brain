@@ -33,7 +33,7 @@ fn legacy_default_vault_is_previewed_then_upgraded_without_touching_user_content
     let plan = create_vault_upgrade_plan(&vault, &paths).unwrap();
 
     assert_eq!(plan.from_template_version, None);
-    assert_eq!(plan.to_template_version, SchemaVersion::new(1, 1));
+    assert_eq!(plan.to_template_version, SchemaVersion::new(1, 2));
     assert!(plan.conflicts.is_empty());
     assert!(plan.diff.contains("+++ KB.md"));
     assert!(plan.diff.contains("+<!-- kb:rules:start -->"));
@@ -47,6 +47,11 @@ fn legacy_default_vault_is_previewed_then_upgraded_without_touching_user_content
             .iter()
             .any(|write| write.path.as_str() == ".kb/template.yml")
     );
+    assert_eq!(plan.planned.len(), plan.writes.len());
+    assert!(plan.changed.is_empty());
+    assert!(plan.stale.is_empty());
+    assert!(plan.skipped.is_empty());
+    assert!(plan.failed.is_empty());
     assert_eq!(
         fs::read_to_string(vault.join("KB.md")).unwrap(),
         RELEASED_KB
@@ -55,7 +60,14 @@ fn legacy_default_vault_is_previewed_then_upgraded_without_touching_user_content
 
     let result = apply_vault_upgrade(&paths, plan.operation_id).unwrap();
 
-    assert_eq!(result.template_version, SchemaVersion::new(1, 1));
+    assert_eq!(result.template_version, SchemaVersion::new(1, 2));
+    assert_eq!(result.from_template_version, None);
+    assert_eq!(result.to_template_version, SchemaVersion::new(1, 2));
+    assert_eq!(result.planned, result.changed);
+    assert_eq!(result.unchanged.len(), 2);
+    assert!(result.stale.is_empty());
+    assert!(result.skipped.is_empty());
+    assert!(result.failed.is_empty());
     assert!(
         fs::read_to_string(vault.join("KB.md"))
             .unwrap()
@@ -142,7 +154,7 @@ fn legacy_windows_line_endings_are_a_known_baseline() {
 }
 
 #[test]
-fn marked_rules_update_preserves_user_content_outside_the_managed_region() {
+fn modified_marked_rules_are_preserved_as_a_conflict() {
     let (_temporary, vault, paths) = setup();
     let changed = fs::read_to_string(vault.join("KB.md")).unwrap().replace(
         "- Use `kb capabilities` to discover available behavior.",
@@ -151,12 +163,11 @@ fn marked_rules_update_preserves_user_content_outside_the_managed_region() {
     fs::write(vault.join("KB.md"), changed).unwrap();
 
     let plan = create_vault_upgrade_plan(&vault, &paths).unwrap();
-    assert!(plan.conflicts.is_empty());
-    apply_vault_upgrade(&paths, plan.operation_id).unwrap();
+    assert_eq!(plan.conflicts.len(), 1);
+    assert!(plan.writes.is_empty());
 
     let updated = fs::read_to_string(vault.join("KB.md")).unwrap();
-    assert!(updated.contains("- Use `kb capabilities` to discover available behavior."));
-    assert!(!updated.contains("stale product rule"));
+    assert!(updated.contains("stale product rule"));
     assert!(updated.contains("# Personal rules\n\nKeep this paragraph."));
 }
 
@@ -182,7 +193,7 @@ fn newer_template_metadata_requires_a_newer_cli() {
     let (_temporary, vault, paths) = setup();
     let manifest = fs::read_to_string(vault.join(".kb/template.yml"))
         .unwrap()
-        .replace("template_version: v1.1", "template_version: v2.0");
+        .replace("template_version: v1.2", "template_version: v2.0");
     fs::write(vault.join(".kb/template.yml"), manifest).unwrap();
 
     let error = create_vault_upgrade_plan(&vault, &paths).unwrap_err();

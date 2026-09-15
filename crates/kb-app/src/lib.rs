@@ -51,6 +51,7 @@ mod status;
 mod storage;
 mod sync;
 mod template;
+mod template_state;
 mod user_dirs;
 mod vault;
 mod vault_upgrade;
@@ -92,6 +93,10 @@ pub use storage::atomic_replace;
 pub use sync::{
     GitInspection, GitInspectionState, SyncFinding, SyncFindingLevel, SyncReport, SyncSummary,
     blocking_sync_findings, check_sync, ensure_shared_write_sync_safe,
+};
+pub use template_state::{
+    TemplateCompatibility, TemplateInspection, TemplateUpdatePlan, TemplateUpdateResult,
+    TemplateWrite, apply_template_update, inspect_template, plan_template_update,
 };
 pub use user_dirs::UserPaths;
 pub use vault::{ResolvedVault, VaultSelection, resolve_vault};
