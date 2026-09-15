@@ -60,12 +60,16 @@ kb mcp --transport streamable-http \
 | `kb_knowledge_save` | 准备知识保存，或提交已确认的准备结果 |
 | `kb_plan_knowledge` | 从结构化请求创建 research/article 计划 |
 | `kb_operation_show` | 查看属于固定 Vault 的计划或结果 |
+| `kb_update_plan` | 为固定 Vault 创建完整更新预览，不执行变更 |
+| `kb_update_status` | 查看最新或指定的固定 Vault 更新状态 |
 
-`kb_query` 的完整参数与跨入口语义见[搜索参考](search.md)。默认不注册 `kb_apply_operation`。显式传入 `--allow-write` 后才注册该工具，并允许保存工具使用 `confirmation_token` 或 `apply: true` 写入。
+`kb_query` 的完整参数与跨入口语义见[搜索参考](search.md)。默认不注册 `kb_apply_operation` 或 `kb_update_confirm`。显式传入 `--allow-write` 后才注册这两个工具，并允许保存工具使用 `confirmation_token` 或 `apply: true` 写入。`kb_update_confirm` 只接受 `{ "confirmation_token": "..." }`。
 
 ## 确认与返回值
 
 创建计划不代表用户已授权写入。Agent 或 UI 应向用户展示保存工具返回的 `change_summary`，在得到一次明确确认后再提交 `confirmation_token`；`apply: true` 只适用于调用方已经取得该确认的情况。应用层仍会复核 operation 归属、Vault 身份、旧文件状态和恢复状态。
+
+更新工具遵循同一规则：先调用 `kb_update_plan`，展示每个组件、冲突、跳过项和不触及范围，再在一次明确确认后调用 `kb_update_confirm`。固定 Vault 服务不能查询或确认其他 Vault 或多 Vault 更新操作。服务进程的可执行文件由本机 CLI 或服务管理方式更新；适配器只协调其固定 Vault 的受管理组件。完整语义见[更新参考](cli-updates.md)。
 
 成功和业务失败使用 MCP tool result。`structuredContent` 保留 `schema_version: v1.0` 信封，`isError` 区分业务失败；参数错误、隐藏工具、版本不支持和未知 JSON-RPC 方法使用协议错误。客户端应读取结构化字段，不解析显示文本。
 

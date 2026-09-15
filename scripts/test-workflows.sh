@@ -43,6 +43,7 @@ require_text .github/workflows/native-build.yml "fail-fast: false"
 require_text .github/workflows/native-build.yml "fromJSON(inputs.targets_json)"
 require_text .github/workflows/native-build.yml 'install -m 755 release-stage/kb "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}"'
 require_text .github/workflows/native-build.yml 'Copy-Item release-stage/kb.exe "dist/knowledge-brain-v${{ inputs.expected_version }}-${{ matrix.target }}.exe"'
+require_text .github/workflows/native-build.yml "cargo test -p kb-cli --test release_update_journey"
 reject_text .github/workflows/native-build.yml "Build native verification binary"
 reject_text .github/workflows/native-build.yml "attestations: write"
 reject_text .github/workflows/native-build.yml "id-token: write"

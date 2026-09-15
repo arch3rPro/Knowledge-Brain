@@ -49,7 +49,7 @@ fn project_readme_covers_the_first_run_contract() {
 
 #[test]
 fn release_and_update_documents_own_their_workflows() {
-    for command in ["kb update check", "kb update"] {
+    for command in ["kb update check", "kb update --confirm", "kb update status"] {
         assert!(COMMAND_REFERENCE.contains(command), "missing {command}");
         assert!(UPDATE_REFERENCE.contains(command), "missing {command}");
     }
@@ -59,6 +59,11 @@ fn release_and_update_documents_own_their_workflows() {
         "Cargo",
         "Minisign",
         "public key",
+        "一次 `Apply this exact update plan? [y/N]`",
+        "HTTP_PROXY",
+        "completed_with_skips",
+        "v0.1.3",
+        "外部安装的 Skills",
     ] {
         assert!(UPDATE_REFERENCE.contains(contract), "missing {contract}");
     }
@@ -129,7 +134,7 @@ fn synchronization_reference_owns_the_external_sync_contract() {
 }
 
 #[test]
-fn vault_upgrade_is_separate_from_cli_update_and_preserves_user_content() {
+fn vault_upgrade_remains_compatible_and_unified_update_preserves_user_content() {
     for contract in [
         "kb vault upgrade",
         ".kb/template.yml",
@@ -140,8 +145,9 @@ fn vault_upgrade_is_separate_from_cli_update_and_preserves_user_content() {
     ] {
         assert!(COMMAND_REFERENCE.contains(contract), "missing {contract}");
     }
-    assert!(UPDATE_REFERENCE.contains("kb vault upgrade"));
-    assert!(AGENT_OPERATIONS.contains("kb vault upgrade"));
+    for contract in ["admission.yml", ".obsidian/", "普通笔记", "产品模板"] {
+        assert!(UPDATE_REFERENCE.contains(contract), "missing {contract}");
+    }
 }
 
 #[test]
@@ -178,8 +184,29 @@ fn agent_skill_and_mcp_references_own_their_public_contracts() {
         "kb_knowledge_save",
         "kb_maintenance",
         "confirmation_token",
+        "kb_update_plan",
+        "kb_update_status",
+        "kb_update_confirm",
     ] {
         assert!(mcp.contains(contract), "missing MCP contract: {contract}");
+    }
+}
+
+#[test]
+fn http_reference_documents_scoped_update_routes() {
+    let http = include_str!("../../../docs/reference/http.md");
+    for contract in [
+        "POST /update/plan",
+        "GET /update/status",
+        "POST /update/confirm",
+        "confirmation_token",
+        "固定 Vault",
+        "--allow-write",
+    ] {
+        assert!(
+            http.contains(contract),
+            "missing HTTP update contract: {contract}"
+        );
     }
 }
 

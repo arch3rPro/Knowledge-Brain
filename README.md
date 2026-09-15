@@ -12,7 +12,7 @@ Knowledge-Brain 是面向人和 AI 工具的本地知识库基础设施。它以
 - **Explicit admission** — `admission.yml` 明确指定允许进入知识处理范围的一级主题目录。
 - **Structured Wiki** — 来源、阶段性研究和可复用文章分别保存在固定的三层 `Wiki/` 结构中。
 - **Reviewable changes** — 采用已有目录等多文件操作先生成计划，再由用户明确执行。
-- **Reviewable Vault upgrades** — CLI 更新后可单独预览模板变化，保留个人规则、分类、笔记、Git 与 Obsidian 设置。
+- **Unified updates** — 一份计划同时列出 CLI、Vault 模板、已有受管理 Skills 和索引变化，只在最终确认后执行。
 - **Traceable sources** — 保留原始文件副本和精确版本，来源变更不覆盖旧证据。
 - **Layered search** — 默认直接查询真实文件；可选 BM25F 提供字段加权、中文检索和可解释评分。
 - **Verified backups** — 生成带逐文件 SHA-256 清单的标准 ZIP，并只向空目录恢复。
@@ -151,7 +151,7 @@ kb apply <operation-id> --json
 | `kb backup` | 创建、校验和恢复标准 ZIP 备份 |
 | `kb config` | 查看、校验和修改配置或准入清单 |
 | `kb vault` | 管理本机 Vault 注册和路径绑定 |
-| `kb vault upgrade` | 预览并确认升级产品管理的 Vault 模板 |
+| `kb vault upgrade` | 仅升级一个 Vault 模板的兼容入口 |
 | `kb status` | 查看 Vault 状态和 schema 兼容性 |
 | `kb doctor` | 运行独立诊断 |
 | `kb sync check` | 只读检查 Git、Obsidian 和跨设备同步兼容问题 |
@@ -159,7 +159,7 @@ kb apply <operation-id> --json
 | `kb skills` | 检测、安装、检查或安全卸载可移植 Agent Skill |
 | `kb mcp` | 为一个固定 Vault 启动 MCP stdio 或 Streamable HTTP 服务 |
 | `kb serve` | 按需启动固定 Vault 的可选 HTTP/SSE 接口 |
-| `kb update` | 检查或安装经过签名验证的官方 CLI 更新 |
+| `kb update` | 预览并协调 CLI 与本机受管理组件更新 |
 
 完整语法见[命令参考](docs/reference/commands.md)，配置层级和 `admission.yml` 格式见[配置参考](docs/reference/configuration.md)。
 

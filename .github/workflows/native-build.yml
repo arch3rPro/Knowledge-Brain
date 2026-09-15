@@ -55,6 +55,10 @@ jobs:
         env:
           KB_TEST_BINARY: ${{ github.workspace }}/${{ matrix.binary }}
         run: cargo test -p kb-cli --test phase2_journey
+      - name: Run unified update journey
+        env:
+          KB_TEST_BINARY: ${{ github.workspace }}/${{ matrix.binary }}
+        run: cargo test -p kb-cli --test release_update_journey
       - name: Stage and package Unix release
         if: ${{ inputs.package && runner.os != 'Windows' }}
         shell: bash

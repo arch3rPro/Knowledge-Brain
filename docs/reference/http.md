@@ -35,6 +35,10 @@ Authorization: Bearer <token>
 | `GET /operations/{id}` | 无 | 查看计划或完成结果 |
 | `GET /operations/{id}/events` | 无 | 订阅可重连的 operation SSE |
 | `POST /operations/{id}/apply` | 无 | 应用计划，仅 `--allow-write` |
+| `POST /update/plan` | `{}` | 为固定 Vault 创建完整更新预览 |
+| `GET /update/status` | 无 | 查看最新的固定 Vault 更新状态 |
+| `GET /update/status/{operation_id}` | 无 | 查看指定的固定 Vault 更新状态 |
+| `POST /update/confirm` | `{ "confirmation_token": "..." }` | 确认精确更新计划，仅 `--allow-write` |
 
 `SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
 
@@ -43,6 +47,8 @@ Authorization: Bearer <token>
 `POST /source/save` 的默认 body 为 `{ "apply": false }`；`POST /knowledge/save` 默认传入 request 与 `{ "apply": false }`。两者返回 `change_summary` 和机器字段 `confirmation_token`，由 Agent/UI 保存。它只向用户展示一次摘要，并在确认后提交 `{ "confirmation_token": "..." }`。`apply: true` 表示调用方已经取得授权，在一次请求内准备并保存。`confirmation_token` 与 `apply: true` 都要求 `--allow-write` 和现有 Bearer token；读服务在创建新操作前返回 `403`。
 
 `POST /review` 有变化时、`POST /plans` 以及 `GET /operations/{id}` 仍返回 additive `operation_summary`；operation 查看仍保留既有 `state` 与 `plan` 或 `result`。HTTP 中的 Hash、operation ID、Vault ID 和路径都是完整身份值。高级 apply 路由继续可用。确认语义与 CLI 保持一致，见[命令参考](commands.md)。
+
+更新请求不能包含 Vault 路径、Vault ID 或排除列表；服务始终注入启动时固定的 Vault。`POST /update/plan` 可以在只读服务上创建待确认预览，但 `POST /update/confirm` 同时要求 Bearer token 和 `--allow-write`。服务拒绝查询或确认其他 Vault 或多 Vault 的更新操作。长时间运行的服务不替换自己的可执行文件；其余受管理组件与 CLI 使用同一应用层，完整语义见[更新参考](cli-updates.md)。
 
 ## 网络边界
 

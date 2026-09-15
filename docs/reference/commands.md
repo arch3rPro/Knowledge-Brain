@@ -107,7 +107,7 @@ kb paths [--vault <PATH_OR_ID>] [--json]
 
 移动 Vault 后，旧登记不会自动猜测新位置。使用 `rebind` 核对新位置内的 `vault_id` 后更新本机注册表。`unregister` 不删除 Vault 数据。
 
-`vault upgrade` 只升级产品管理的 Vault 模板，不下载或替换 CLI；CLI 自身更新使用 `kb update`。默认调用返回受影响路径、完整文本差异、冲突和明确不触及的内容，并保持 Vault 不变；无冲突时使用返回的 token 执行 `--confirm <TOKEN>`，应用刚才预览的同一组变更。目标文件在预览后变化会返回 `plan_stale`。
+`vault upgrade` 是只处理一个 Vault 模板的兼容命令，不下载或替换 CLI。默认调用返回受影响路径、完整文本差异、冲突和明确不触及的内容，并保持 Vault 不变；无冲突时使用返回的 token 执行 `--confirm <TOKEN>`。目标文件在预览后变化会返回 `plan_stale`。通常使用 `kb update` 在一份计划中协调 CLI、Vault 模板、受管理 Skills 和索引。
 
 当前模板记录在 `.kb/template.yml`，与 `.kb/config.yml` 中的数据 schema 分开。升级可以创建缺失的产品 schema、识别 v0.1.0–v0.1.2 及之后登记的已知旧基线，并只替换 `KB.md` 的 `kb:rules` 标记区块。无标记且偏离已知基线的旧 `KB.md`、被修改的产品 schema 或未知模板清单会作为冲突保留，不会被覆盖。`admission.yml`、主题目录、普通笔记、Wiki 内容、`.git` 和 `.obsidian` 不属于升级写入范围；命令不执行任何 Git 操作。中断时重试同一个 token 会先恢复本次升级已经写入的文件，再重新应用。
 
@@ -134,9 +134,11 @@ kb capabilities [--json]
 ```text
 kb update check [--json]
 kb update [--json]
+kb update --confirm <TOKEN> --json
+kb update status [OPERATION_ID] [--json]
 ```
 
-`kb update check` 只检查最新稳定版本；`kb update` 下载并安排安装已验证的新版本。两者仅支持官方 GitHub Release 二进制，不会由其他命令自动触发。Cargo、源码和第三方包管理器安装返回 `capability_unavailable`，继续由原安装方式管理。签名验证、替换恢复和 JSON 字段见 [CLI 更新参考](cli-updates.md)。
+`kb update check` 只生成完整预览且不持久化。裸 `kb update` 显示 CLI、所选 Vault 模板、已有受管理 Skills 和索引的完整计划，人类模式只进行一次最终确认；JSON 模式返回绑定完整计划的 token，并要求显式 `--confirm`。`status` 是程序替换后的权威结果。完整范围、管理边界、签名验证、重试和恢复语义见[更新参考](cli-updates.md)。
 
 ## HTTP 服务
 

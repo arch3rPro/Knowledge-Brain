@@ -20,9 +20,10 @@
 1. 把根 `Cargo.toml` 的 workspace version 改为目标 `X.Y.Z`，更新 `Cargo.lock`，编写 `docs/releases/vX.Y.Z.md`，并将这些改动提交、推送到 `main`。
 2. 在 GitHub Actions 中手动运行 **Release CLI version**，分支选择 `main`。工作流不接收单独的版本参数。
 3. 工作流先确认运行提交就是当前 `origin/main`，再从 `Cargo.toml` 读取版本并检查版本说明。
-4. 质量检查和 Linux、macOS、Windows 三个平台在同一次运行中完成测试、构建、CLI journey、打包和 build provenance。
+4. 质量检查和 Linux、macOS、Windows 三个平台在同一次运行中完成测试、构建、CLI journey、统一更新计划与确认、重开状态核对、打包和 build provenance。
 5. 三个平台全部成功后，发布任务才创建 annotated `vX.Y.Z` tag、签名校验和、上传资产并公开 Release。
 6. 确认公开 Release 正好包含三个平台可执行文件、三个完整归档、`SHA256SUMS` 和 `SHA256SUMS.minisig`，并检查 provenance 证明和版本说明。
+7. 发布后从上一正式版本运行一次真实联网 `kb update`，确认可执行文件替换、重开后的版本和 `kb update status`。候选版本在公开前不会出现在稳定 Release 发现端点，因此发布前验证不宣称覆盖这次联网跳转。
 
 可执行文件名称为：
 

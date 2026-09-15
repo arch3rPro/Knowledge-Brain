@@ -59,13 +59,13 @@ kb skills status --host <HOST> --scope vault --vault "<VAULT_PATH_OR_ID>" --json
 
 已有非空目录使用 `kb adopt`。采用流程先生成可审阅计划，确认后再执行 `kb apply`，详见[采用已有目录](adopt-an-existing-directory.md)。
 
-CLI 更新后，如用户要求让已有 Vault 适配新版本，先运行：
+用户明确要求更新 Knowledge-Brain 及已有 Vault 时，先运行：
 
 ```text
-kb vault upgrade --vault "<VAULT>" --json
+kb update --vault "<VAULT>" --json
 ```
 
-这只生成模板升级预览。向用户展示实际文件变化或冲突；用户确认无冲突的预览后，使用返回的完整 token 执行 `kb vault upgrade --confirm <TOKEN> --vault "<VAULT>" --json`。不要把 `kb update`（更新 CLI）和 `kb vault upgrade`（更新 Vault 产品模板）合并，也不要借模板升级修改 `admission.yml`、主题目录、普通笔记、Wiki 正文、Git 或 Obsidian 设置。
+这会返回 CLI、Vault 模板、已有受管理 Skills 和索引的完整计划。向用户列出所有变化、跳过项与冲突；用户确认这份精确计划后，执行 `kb update --confirm <TOKEN> --json`，再以 `kb update status` 核对最终状态。不要借更新修改 `admission.yml`、主题目录、普通笔记、Wiki 正文、Git 或 Obsidian 设置。只需单独处理模板时，`kb vault upgrade` 仍作为兼容入口可用。
 
 ## 主题目录与准入配置
 
@@ -208,7 +208,7 @@ kb backup verify "<ARCHIVE.zip>" --json
 kb update check --json
 ```
 
-`kb update` 会替换受支持的官方 Release 二进制，只在用户明确要求更新时执行。源码构建和 Cargo 安装使用各自的更新方式，详见[CLI 更新参考](../reference/cli-updates.md)。
+只有用户明确要求更新时才运行写入形式的 `kb update`。必须展示完整计划，并只在一次最终确认后提交原样 `confirmation_token`；不能把“检查版本”解释为更新授权。源码构建和包管理器负责其可执行文件，Vault 与受管理组件边界见[更新参考](../reference/cli-updates.md)。
 
 ## 可选接入方式
 
