@@ -2,7 +2,7 @@ use semver::Version;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{BuildIdentity, ReleaseTarget, ReleaseTransport};
+use crate::{BuildIdentity, ReleaseTarget, ReleaseTransport, TransportFailure};
 
 /// GitHub's public redirect to the repository's latest stable release.
 pub const RELEASES_LATEST_URL: &str =
@@ -202,9 +202,19 @@ pub enum UpdateError {
     #[error("release is missing required asset {name} for {target:?}")]
     MissingAsset { target: ReleaseTarget, name: String },
     #[error("release transport failed: {0}")]
-    Transport(String),
+    Transport(TransportFailure),
     #[error("release verification failed: {0}")]
     VerificationFailed(String),
     #[error("executable replacement failed: {0}")]
     ReplacementFailed(String),
+}
+
+impl UpdateError {
+    #[must_use]
+    pub fn transport_failure(&self) -> Option<&TransportFailure> {
+        match self {
+            Self::Transport(failure) => Some(failure),
+            _ => None,
+        }
+    }
 }

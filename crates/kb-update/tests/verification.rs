@@ -6,7 +6,8 @@ use std::{
 
 use kb_update::{
     AvailableRelease, BuildIdentity, RELEASES_LATEST_URL, ReleaseTarget, ReleaseTransport,
-    UpdateError, check_for_update, parse_latest_release, verify_release,
+    TransportFailure, TransportStage, UpdateError, check_for_update, parse_latest_release,
+    verify_release,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -329,16 +330,25 @@ impl MemoryTransport {
 impl ReleaseTransport for MemoryTransport {
     fn get_bytes(&self, url: &str) -> Result<Vec<u8>, UpdateError> {
         self.requests.borrow_mut().push(url.to_owned());
-        self.values
-            .get(url)
-            .cloned()
-            .ok_or_else(|| UpdateError::Transport(format!("missing fixture: {url}")))
+        self.values.get(url).cloned().ok_or_else(|| {
+            UpdateError::Transport(TransportFailure::for_url(
+                TransportStage::Download,
+                url,
+                1,
+                false,
+                "missing fixture",
+            ))
+        })
     }
 
     fn resolve_url(&self, _url: &str) -> Result<String, UpdateError> {
-        Err(UpdateError::Transport(
-            "URL resolution is not used by this test".into(),
-        ))
+        Err(UpdateError::Transport(TransportFailure::for_url(
+            TransportStage::Resolve,
+            "https://fixture.invalid",
+            1,
+            false,
+            "URL resolution is not used by this test",
+        )))
     }
 }
 
@@ -362,9 +372,13 @@ impl RedirectTransport {
 
 impl ReleaseTransport for RedirectTransport {
     fn get_bytes(&self, _url: &str) -> Result<Vec<u8>, UpdateError> {
-        Err(UpdateError::Transport(
-            "asset download is not used by this test".into(),
-        ))
+        Err(UpdateError::Transport(TransportFailure::for_url(
+            TransportStage::Download,
+            "https://fixture.invalid",
+            1,
+            false,
+            "asset download is not used by this test",
+        )))
     }
 
     fn resolve_url(&self, url: &str) -> Result<String, UpdateError> {

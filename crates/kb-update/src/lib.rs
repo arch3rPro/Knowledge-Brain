@@ -7,7 +7,10 @@ mod release;
 mod replace;
 mod verify;
 
-pub use http::{ReleaseTransport, UreqTransport};
+pub use http::{
+    ReleaseTransport, RetryPolicy, TransportFailure, TransportStage, UreqTransport,
+    retry_test_support,
+};
 pub use identity::{BuildIdentity, ReleaseTarget, UpdateIdentityError};
 pub use install::validate_staged_identity;
 pub use release::{

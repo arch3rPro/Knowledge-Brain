@@ -32,6 +32,7 @@ directories = "6.0"
 flate2 = "=1.1.5"
 fs2 = "0.4"
 hex = "0.4"
+httpdate = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"

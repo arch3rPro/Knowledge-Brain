@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 flate2.workspace = true
 hex.workspace = true
+httpdate.workspace = true
 minisign.workspace = true
 semver.workspace = true
 serde_json.workspace = true

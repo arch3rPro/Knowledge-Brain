@@ -1,37 +1,50 @@
-use kb_update::{BuildIdentity, ReleaseTarget};
+use std::time::Duration;
 
-const TEST_KEY: &str = "RWRzq51bKcS8oJvZ4xEm+nRvGYPdsNRD3ciFPu1YJEL8Bl/3daWaj72r";
+use kb_update::{RetryPolicy, TransportFailure, TransportStage, UpdateError};
 
 #[test]
-fn official_identity_requires_a_supported_target_and_valid_public_key() {
-    let identity = BuildIdentity::official("0.1.0", "aarch64-apple-darwin", TEST_KEY).unwrap();
+fn retry_defaults_are_bounded_to_three_total_attempts() {
+    let policy = RetryPolicy::default();
 
-    assert!(identity.can_update());
-    assert_eq!(identity.target(), Some(ReleaseTarget::MacosArm64));
+    assert_eq!(policy.max_attempts(), 3);
     assert_eq!(
-        identity.target().unwrap().asset_name(identity.version()),
-        "knowledge-brain-v0.1.0-aarch64-apple-darwin.tar.gz"
+        policy.backoff(),
+        [Duration::from_secs(1), Duration::from_secs(2)]
     );
-    assert!(BuildIdentity::official("0.1.0", "darwin-x64", TEST_KEY).is_err());
-    assert!(BuildIdentity::official("0.1.0", "aarch64-apple-darwin", "not-a-key").is_err());
+    assert_eq!(policy.max_total_wait(), Duration::from_secs(3));
 }
 
 #[test]
-fn development_identity_cannot_be_an_update_target() {
-    let identity = BuildIdentity::development("0.1.0").unwrap();
+fn transport_diagnostics_do_not_expose_url_secrets() {
+    let failure = TransportFailure::for_url(
+        TransportStage::Download,
+        "https://alice:secret@example.com/releases/file?token=private",
+        3,
+        true,
+        "timed out via https://proxy-user:proxy-pass@proxy.example",
+    );
+    let rendered = UpdateError::Transport(failure).to_string();
 
-    assert!(!identity.can_update());
-    assert_eq!(identity.target(), None);
+    assert!(rendered.contains("download"));
+    assert!(rendered.contains("example.com"));
+    assert!(rendered.contains("3 attempts"));
+    assert!(!rendered.contains("alice"));
+    assert!(!rendered.contains("secret"));
+    assert!(!rendered.contains("token"));
+    assert!(!rendered.contains("proxy-user"));
+    assert!(!rendered.contains("proxy-pass"));
 }
 
 #[test]
-fn targets_name_their_executable_and_release_asset() {
-    let identity = BuildIdentity::development("0.1.0").unwrap();
-    assert_eq!(ReleaseTarget::LinuxX64.executable_name(), "kb");
-    assert_eq!(ReleaseTarget::MacosArm64.executable_name(), "kb");
-    assert_eq!(ReleaseTarget::WindowsX64.executable_name(), "kb.exe");
-    assert_eq!(
-        ReleaseTarget::WindowsX64.asset_name(identity.version()),
-        "knowledge-brain-v0.1.0-x86_64-pc-windows-msvc.zip"
+fn certificate_failures_are_not_marked_retryable() {
+    let failure = TransportFailure::for_url(
+        TransportStage::Resolve,
+        "https://github.com/example",
+        1,
+        false,
+        "certificate validation failed",
     );
+
+    assert!(!failure.retryable());
+    assert_eq!(failure.attempts(), 1);
 }

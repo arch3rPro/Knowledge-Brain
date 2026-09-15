@@ -314,32 +314,48 @@ impl Drop for UpdateStageGuard {
 
 #[allow(clippy::needless_pass_by_value)]
 fn update_error(error: kb_update::UpdateError) -> KbError {
-    let (code, retryable, action) = match error {
+    let reason = error.to_string();
+    let (code, retryable, action) = match &error {
         kb_update::UpdateError::VerificationFailed(_) => (
             ErrorCode::UpdateVerificationFailed,
             false,
-            "Do not install this release; try again later or report the failed verification.",
+            "Do not install this release; try again later or report the failed verification."
+                .to_owned(),
         ),
-        kb_update::UpdateError::Transport(_) => (
-            ErrorCode::IoFailure,
-            true,
-            "Check your network connection and run the command again.",
-        ),
+        kb_update::UpdateError::Transport(failure) => {
+            let action = if failure.retryable() {
+                format!(
+                    "The release service could not be reached reliably during {} for {} after {} attempt(s); try again later.",
+                    failure.stage(),
+                    failure.host(),
+                    failure.attempts()
+                )
+            } else {
+                format!(
+                    "The release request failed during {} for {} after {} attempt(s); review TLS or proxy settings, then retry.",
+                    failure.stage(),
+                    failure.host(),
+                    failure.attempts()
+                )
+            };
+            (ErrorCode::IoFailure, failure.retryable(), action)
+        }
         kb_update::UpdateError::InvalidRelease(_) | kb_update::UpdateError::MissingAsset { .. } => {
             (
                 ErrorCode::CapabilityUnavailable,
                 false,
-                "No compatible official update is available for this installation.",
+                "No compatible official update is available for this installation.".to_owned(),
             )
         }
         kb_update::UpdateError::ReplacementFailed(_) => (
             ErrorCode::IoFailure,
             true,
-            "The previous executable was preserved when possible; check permissions and retry.",
+            "The previous executable was preserved when possible; check permissions and retry."
+                .to_owned(),
         ),
     };
     KbError::new(code, "Cannot check for an update.", retryable, action)
-        .with_details(json!({ "reason": error.to_string() }))
+        .with_details(json!({ "reason": reason }))
 }
 
 fn run_app_request(request: AppRequest, context: &AppContext) -> Result<Value, KbError> {
@@ -532,10 +548,19 @@ mod tests {
 
     #[test]
     fn update_transport_errors_are_retryable() {
-        let error = update_error(kb_update::UpdateError::Transport(
-            "temporary failure".into(),
-        ));
+        let failure = kb_update::TransportFailure::for_url(
+            kb_update::TransportStage::Resolve,
+            "https://github.com/releases/latest?token=secret",
+            3,
+            true,
+            "temporary failure",
+        );
+        let error = update_error(kb_update::UpdateError::Transport(failure));
 
         assert!(error.retryable);
+        assert!(error.next_action.contains("resolve"));
+        assert!(error.next_action.contains("3 attempt(s)"));
+        assert!(!error.next_action.contains("network connection"));
+        assert!(!error.next_action.contains("secret"));
     }
 }
