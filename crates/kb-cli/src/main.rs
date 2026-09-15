@@ -190,7 +190,7 @@ fn replace_update_after_transition(
         command.operation_id,
         kb_core::UpdateExecutionState::CliReplaced,
     )?;
-    scrubbed_command(&executable.path)
+    let status = scrubbed_command(&executable.path)
         .arg("__resume-update")
         .arg("--operation")
         .arg(command.operation_id.to_string())
@@ -198,15 +198,25 @@ fn replace_update_after_transition(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .spawn()
+        .status()
         .map_err(|error| {
             KbError::io_failure(
-                "start updated executable",
+                "resume update with the installed executable",
                 executable.path.display().to_string(),
                 error.to_string(),
             )
         })?;
-    Ok(())
+    if status.success() {
+        Ok(())
+    } else {
+        Err(KbError::new(
+            ErrorCode::IoFailure,
+            "The installed executable could not finish the confirmed update.",
+            false,
+            "Run kb update status, preserve the operation receipt, and retry with a new update plan.",
+        )
+        .with_details(json!({ "exit_status": status.code() })))
+    }
 }
 
 fn run_update(command: &args::UpdateCommand, context: &AppContext) -> Result<Value, KbError> {

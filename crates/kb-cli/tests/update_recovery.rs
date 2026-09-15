@@ -1,5 +1,4 @@
 use std::fs;
-use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
 use kb_app::{StoredUpdateStage, UpdateStore, UserPaths};
@@ -133,19 +132,7 @@ fn replacement_helper_persists_and_resumes_to_terminal_state() {
         .unwrap();
     assert!(output.status.success());
 
-    let store = UpdateStore::new(&paths);
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let terminal = loop {
-        let operation = store.load(plan.operation_id).unwrap();
-        if operation.execution_state.is_terminal() {
-            break operation;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "resume did not reach a terminal state"
-        );
-        std::thread::sleep(Duration::from_millis(25));
-    };
+    let terminal = UpdateStore::new(&paths).load(plan.operation_id).unwrap();
     assert_eq!(terminal.execution_state, UpdateExecutionState::Completed);
     assert_eq!(terminal.components[0].state, UpdateComponentState::Applied);
     assert_eq!(
