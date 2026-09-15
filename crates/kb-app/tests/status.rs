@@ -34,7 +34,7 @@ fn current_data_schema_and_old_template_are_reported_independently() {
 
     assert_eq!(report.schema.compatibility, SchemaCompatibility::Current);
     assert_eq!(report.template.version, Some(SchemaVersion::new(1, 1)));
-    assert_eq!(report.template.latest, SchemaVersion::new(1, 2));
+    assert_eq!(report.template.latest, SchemaVersion::new(1, 3));
     assert_eq!(
         report.template.compatibility,
         TemplateCompatibility::Outdated

@@ -442,6 +442,8 @@ fn git_repository_findings(root: &Path) -> Vec<SyncFinding> {
         }
     }
 
+    findings.extend(git_upstream_findings(root));
+
     let mut arguments = vec!["ls-files", "-z", "--"];
     arguments.extend(LOCAL_PATHS);
     if let Ok(output) = run_git(root, &arguments)
@@ -506,6 +508,75 @@ fn git_repository_findings(root: &Path) -> Vec<SyncFinding> {
         ));
     }
     findings
+}
+
+fn git_upstream_findings(root: &Path) -> Vec<SyncFinding> {
+    let Ok(upstream) = run_git(
+        root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    ) else {
+        return Vec::new();
+    };
+    if !upstream.status.success() {
+        return Vec::new();
+    }
+    let upstream = String::from_utf8_lossy(&upstream.stdout).trim().to_owned();
+    let Ok(counts) = run_git(
+        root,
+        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+    ) else {
+        return vec![upstream_state_unavailable(&upstream)];
+    };
+    if !counts.status.success() {
+        return vec![upstream_state_unavailable(&upstream)];
+    }
+    let values = String::from_utf8_lossy(&counts.stdout)
+        .split_whitespace()
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>();
+    let Ok(values) = values else {
+        return vec![upstream_state_unavailable(&upstream)];
+    };
+    let [ahead, behind] = values.as_slice() else {
+        return vec![upstream_state_unavailable(&upstream)];
+    };
+    match (*ahead, *behind) {
+        (_, 0) => Vec::new(),
+        (0, behind) => vec![finding(
+            "git_branch_behind",
+            SyncFindingLevel::Error,
+            true,
+            None,
+            format!("The current branch is {behind} commit(s) behind {upstream}."),
+            "Update the working tree from its upstream, then run kb sync check again.",
+        )],
+        (ahead, behind) => vec![finding(
+            "git_branch_diverged",
+            SyncFindingLevel::Error,
+            true,
+            None,
+            format!(
+                "The current branch and {upstream} have diverged ({ahead} local, {behind} upstream commit(s))."
+            ),
+            "Resolve the Git divergence without force-pushing, then run kb sync check and kb lint again.",
+        )],
+    }
+}
+
+fn upstream_state_unavailable(upstream: &str) -> SyncFinding {
+    finding(
+        "git_upstream_state_unavailable",
+        SyncFindingLevel::Error,
+        true,
+        None,
+        format!("Git could not compare the current branch with {upstream}."),
+        "Repair the local Git upstream state, then run kb sync check again.",
+    )
 }
 
 fn run_git(root: &Path, arguments: &[&str]) -> Result<Output, std::io::Error> {

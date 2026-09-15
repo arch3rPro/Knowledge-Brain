@@ -10,6 +10,9 @@ const LEGACY_KB: &str = include_str!("../../../assets/vault-template-history/v1.
 const V1_1_KB: &str = include_str!("../../../assets/vault-template-history/v1.1/KB.md");
 const V1_1_MANIFEST: &str =
     include_str!("../../../assets/vault-template-history/v1.1/template.yml");
+const V1_2_KB: &str = include_str!("../../../assets/vault-template-history/v1.2/KB.md");
+const V1_2_MANIFEST: &str =
+    include_str!("../../../assets/vault-template-history/v1.2/template.yml");
 
 fn setup() -> (tempfile::TempDir, std::path::PathBuf) {
     let temporary = tempfile::tempdir().unwrap();
@@ -27,8 +30,8 @@ fn current_manifest_reports_current_template() {
 
     let inspection = inspect_template(&vault).unwrap();
 
-    assert_eq!(inspection.version, Some(SchemaVersion::new(1, 2)));
-    assert_eq!(inspection.latest, SchemaVersion::new(1, 2));
+    assert_eq!(inspection.version, Some(SchemaVersion::new(1, 3)));
+    assert_eq!(inspection.latest, SchemaVersion::new(1, 3));
     assert_eq!(inspection.compatibility, TemplateCompatibility::Current);
     assert!(!inspection.upgrade_available);
     assert!(inspection.modified_entries.is_empty());
@@ -46,6 +49,30 @@ fn complete_previous_manifest_is_a_safe_outdated_baseline() {
     assert_eq!(inspection.version, Some(SchemaVersion::new(1, 1)));
     assert_eq!(inspection.compatibility, TemplateCompatibility::Outdated);
     assert!(inspection.upgrade_available);
+    assert!(plan.conflicts.is_empty());
+    assert!(
+        plan.writes
+            .iter()
+            .any(|write| write.path.as_str() == "KB.md")
+    );
+    assert!(
+        plan.writes
+            .iter()
+            .any(|write| write.path.as_str() == ".kb/template.yml")
+    );
+}
+
+#[test]
+fn complete_v1_2_manifest_is_a_safe_outdated_baseline() {
+    let (_temporary, vault) = setup();
+    fs::write(vault.join("KB.md"), V1_2_KB).unwrap();
+    fs::write(vault.join(".kb/template.yml"), V1_2_MANIFEST).unwrap();
+
+    let plan = plan_template_update(&vault).unwrap();
+
+    assert_eq!(plan.from_template_version, Some(SchemaVersion::new(1, 2)));
+    assert_eq!(plan.to_template_version, SchemaVersion::new(1, 3));
+    assert_eq!(plan.compatibility, TemplateCompatibility::Outdated);
     assert!(plan.conflicts.is_empty());
     assert!(
         plan.writes
@@ -174,7 +201,7 @@ fn known_unmanaged_historical_rules_can_gain_a_manifest() {
     );
 
     let result = apply_template_update(&vault, &plan).unwrap();
-    assert_eq!(result.to_template_version, SchemaVersion::new(1, 2));
+    assert_eq!(result.to_template_version, SchemaVersion::new(1, 3));
     assert!(!result.changed.is_empty());
     assert!(result.stale.is_empty());
     assert!(result.skipped.is_empty());

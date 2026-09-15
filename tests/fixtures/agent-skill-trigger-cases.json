@@ -39,6 +39,11 @@
     "adjacent": ["把 Vault 提交到 Git"],
     "negative": ["重建搜索缓存"]
   },
+  "kb-sync": {
+    "positive": ["这个 Vault 有 Git 上游，写入前检查并同步到最新版本", "Fetch and safely push this synchronized Vault without force-pushing"],
+    "adjacent": ["检查非 Git Vault 是否健康"],
+    "negative": ["初始化 Vault", "只查询已有知识"]
+  },
   "kb-connect": {
     "positive": ["给当前 Agent 安装 Knowledge-Brain Skills", "Start a fixed-Vault MCP server"],
     "adjacent": ["用已安装的 Skill 查询知识库"],

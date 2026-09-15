@@ -1,0 +1,12 @@
+schema_version: v1.0
+template_version: v1.2
+managed:
+- path: KB.md
+  ownership: marked_region
+  sha256: 89a7dcf5c979b4b591bc95bc2da1b1fdd27fb701e70917b61d246545661744b4
+- path: .kb/schemas/admission.schema.json
+  ownership: whole_file
+  sha256: 6138b569fb40ad68b3602a5b48135e1bf7f795c11ffa4ca1eb44d3fbb1e54ecc
+- path: .kb/schemas/config.schema.json
+  ownership: whole_file
+  sha256: 32f5f34d4d17912bc74be763c16ed1bf5fc8d60fafaac1af08475172766ecf3e

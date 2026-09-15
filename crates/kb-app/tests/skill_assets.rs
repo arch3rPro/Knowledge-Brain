@@ -2,7 +2,7 @@ use kb_app::{SKILL_NAMES, legacy_skill_assets, skill_assets};
 use std::{collections::BTreeSet, fs, path::Path};
 
 #[test]
-fn embedded_skills_are_the_nine_canonical_task_scoped_sources() {
+fn embedded_skills_are_the_ten_canonical_task_scoped_sources() {
     assert_eq!(
         SKILL_NAMES,
         [
@@ -14,6 +14,7 @@ fn embedded_skills_are_the_nine_canonical_task_scoped_sources() {
             "kb-save",
             "kb-ops",
             "kb-backup",
+            "kb-sync",
             "kb-connect",
         ]
     );
@@ -34,10 +35,11 @@ fn embedded_skills_are_the_nine_canonical_task_scoped_sources() {
             "kb-save/references/request-format.md",
             "kb-ops/SKILL.md",
             "kb-backup/SKILL.md",
+            "kb-sync/SKILL.md",
             "kb-connect/SKILL.md",
         ]
     );
-    assert_eq!(assets.len(), 13);
+    assert_eq!(assets.len(), 14);
 
     let expected_actions = [
         ("kb-vault", "kb vault list|register|rebind|unregister"),
@@ -48,6 +50,7 @@ fn embedded_skills_are_the_nine_canonical_task_scoped_sources() {
         ("kb-save", "kb knowledge save <request.json>"),
         ("kb-ops", "kb maintain --vault"),
         ("kb-backup", "kb backup verify"),
+        ("kb-sync", "git fetch"),
         ("kb-connect", "kb skills detect"),
     ];
     for (name, required_action) in expected_actions {
@@ -139,7 +142,7 @@ fn embedded_assets_are_byte_identical_to_their_named_canonical_sources() {
 }
 
 #[test]
-fn published_skill_tree_contains_exactly_the_nine_discoverable_skills() {
+fn published_skill_tree_contains_exactly_the_ten_discoverable_skills() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
     let published = fs::read_dir(root)
         .unwrap()

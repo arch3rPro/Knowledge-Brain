@@ -100,6 +100,8 @@ Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 | `link_target_invalid` | error | 链接包含无效编码或不可移植路径。 |
 | `broken_link` | warning | concept 的本地 Markdown 目标不存在。 |
 | `index_drift` | warning | index 中列出的本地目标不存在。 |
+| `index_missing_entry` | warning | 受管理 research/article 页面没有出现在生成索引中。 |
+| `unmanaged_wiki_page` | warning | 普通页面被直接写进受管理的 research/articles 分区。 |
 | `orphan_concept` | warning | research/article 没有入站 Wiki 引用。 |
 | `duplicate_title` | error | 同一 research 或 articles 分区存在规范化后相同的标题。 |
 | `portable_path_collision` | error | 路径在大小写或 Unicode 可移植规则下冲突。 |
@@ -112,4 +114,4 @@ Knowledge-Brain 采用 OKF v0.2，并且不改变未知字段的含义。
 
 lint 检查标准 Markdown 文件目标，并忽略外部 scheme。以 `/` 开头的链接相对于 `Wiki/`，其他链接相对于当前文件。百分号编码会按 UTF-8 解码。fragment 会从文件查找中移除；当前版本不校验 heading fragment，因为 Markdown 消费者的 slug 规则并不统一。
 
-孤立页和 index drift 是导航提示，不代表文档不符合 OKF。index 不需要列出每个 concept；后续知识保存能力负责受管理区域的同步。
+孤立页和 index drift 是导航提示，不代表文档不符合 OKF。普通 OKF concept 不要求出现在 index；Knowledge-Brain 受管理的 concept 必须出现在生成索引中。`unmanaged_wiki_page` 不会禁止人类编辑，但提示该普通笔记应移到主题目录，或经审阅后使用 `kb knowledge save` 纳入管理。

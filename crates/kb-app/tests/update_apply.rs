@@ -177,7 +177,7 @@ fn index_failure_is_rebuild_required_without_undoing_template() {
     assert!(
         fs::read_to_string(vault.root.join(".kb/template.yml"))
             .unwrap()
-            .contains("template_version: v1.2")
+            .contains("template_version: v1.3")
     );
     assert_eq!(
         result

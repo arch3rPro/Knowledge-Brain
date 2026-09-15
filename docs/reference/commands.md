@@ -157,7 +157,7 @@ kb skills status [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--
 kb skills uninstall [--host <HOST>] [--scope vault|user] [--vault <PATH_OR_ID>] [--json]
 ```
 
-安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理九项顶层 `kb-*` Skill，包括用于普通 Markdown 写作的 `kb-note`；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。`HOST` 支持 `auto|codex|claude-code|gemini-cli|opencode|openclaw|hermes|dsh|pi`；宿主路径、兼容别名、Hermes Vault 范围限制和外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
+安装和卸载只创建可审阅 operation，必须再使用 `kb apply` 执行。它管理十项顶层 `kb-*` Skill，包括用于普通 Markdown 写作的 `kb-note` 和处理可选 Git upstream 流程的 `kb-sync`；状态会区分 `absent`、`current`、`partial`、`modified`、`external` 与可迁移的 `legacy`。`HOST` 支持 `auto|codex|claude-code|gemini-cli|opencode|openclaw|hermes|dsh|pi`；宿主路径、兼容别名、Hermes Vault 范围限制和外部安装边界见 [Portable Agent Skill 参考](agent-skill.md)。
 
 ## MCP
 

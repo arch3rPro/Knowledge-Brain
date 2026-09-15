@@ -8,9 +8,11 @@ Knowledge-Brain 不提供内置同步服务。Git 是推荐但可选的同步来
 kb sync check [--vault <PATH_OR_ID>] [--json]
 ```
 
-该命令只读取 Vault 和可用的 Git 状态，检查冲突标记、Git 未合并条目、本机文件是否被 Git 跟踪、跨平台文本规则和 Wiki 错误。Git 不可用或目标不是 Git 仓库时，Vault 文件检查仍会完成；非 Git Vault 不是错误。
+该命令只读取 Vault 和可用的 Git 状态，检查冲突标记、Git 未合并条目、本机文件是否被 Git 跟踪、跨平台文本规则和 Wiki 错误。Git 不可用或目标不是 Git 仓库时，Vault 文件检查仍会完成；非 Git Vault 不是错误。Git 仓库没有配置 upstream 时按本地历史处理，也不会阻止写入。
 
-检查结果不能证明远程仓库已经是最新版本，也不会修改 `.gitignore`、`.gitattributes`、Git 索引或 Vault 文件。外部同步前可用它发现本机未完成操作，外部同步后可用它发现冲突和需要重建的本机索引。
+`kb sync check` 不执行网络请求。外部 `git fetch` 刷新远程跟踪引用后，检查会比较当前 `HEAD` 与 upstream：落后报告 `git_branch_behind`，本地与上游各有提交报告 `git_branch_diverged`，两者都会阻止 Knowledge-Brain 的共享写入；仅本地领先不阻止写入。无法比较已配置的 upstream 时也会保守阻止写入并报告 `git_upstream_state_unavailable`。
+
+检查结果只能说明本机最近一次 fetch 所知的状态，不能永久证明远程仓库是最新版本，也不会修改 `.gitignore`、`.gitattributes`、Git 索引或 Vault 文件。推荐在共享写入前 fetch、整合并检查，在写入后再次 fetch，再用普通 push 作为最后的并发检查。Knowledge-Brain 不会替用户 pull、merge、rebase、commit、push 或 force push。
 
 ## 跨设备路径
 
@@ -90,3 +92,11 @@ Vault 可以直接在 Obsidian 中打开。Knowledge-Brain 生成普通 Markdown
 - Knowledge-Brain 不使用文件时间戳自动选择某台设备的版本。
 
 `kb sync check` 只阻止 Knowledge-Brain 自己可能破坏共享状态的最终写入，不拦截 Git、Obsidian 或其他文件工具。
+
+## 直接修改 Wiki 的检测与恢复
+
+Agent 不应直接写入 `Wiki/`。明确的创建、修改、移动和删除使用 `kb knowledge save`，由同一次受管理保存维护正文、索引和日志。
+
+人类仍可在 Obsidian 或编辑器中修改 Markdown。`kb lint` 会报告受管理分区中的普通页面 `unmanaged_wiki_page`，以及未出现在生成索引中的受管理页面 `index_missing_entry`；冲突标记、重复标题和无效链接沿用现有检查。对有效受管理正文的人工内容修改不会仅因“不是 CLI 写的”而报错，因为 Markdown 保持人可读写。
+
+发现问题后先审阅差异，再通过 `kb knowledge save` 纳入、移动、删除或重写对应页面。Knowledge-Brain 的中断恢复只处理未完成的受管理操作，不会自动撤销一次已经成功的人工作文；需要恢复历史正文时使用已启用的 Git 历史或 Knowledge-Brain 备份。没有 Git 和备份时，工具不会猜测旧内容。

@@ -1,6 +1,6 @@
 # Portable Agent Skills
 
-Knowledge-Brain 发布九个可独立选择的可移植 `kb-*` Skills：`kb-vault`、`kb-config`、`kb-ingest`、`kb-query`、`kb-note`、`kb-save`、`kb-ops`、`kb-backup` 与 `kb-connect`。操作型 Skill 使用统一的 MCP 或 CLI 契约，并明确区分“生成计划”和“执行计划”；`kb-note` 使用宿主文件能力编写普通 Markdown，不调用受管理写入。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
+Knowledge-Brain 发布十个可独立选择的可移植 `kb-*` Skills：`kb-vault`、`kb-config`、`kb-ingest`、`kb-query`、`kb-note`、`kb-save`、`kb-ops`、`kb-backup`、`kb-sync` 与 `kb-connect`。操作型 Skill 使用统一的 MCP 或 CLI 契约，并明确区分“生成计划”和“执行计划”；`kb-note` 使用宿主文件能力编写普通 Markdown，不调用受管理写入；`kb-sync` 只处理已经配置 upstream 的可选 Git 同步，不会给非 Git Vault 引入依赖。Skill 不包含个人目录、操作系统路径或某个模型专用提示。
 
 有两种安装方式：`kb skills` 创建可审阅、可执行的受管理 suite；`npx skills add` 从本项目的顶层 `skills/` 目录安装外部副本。两者互不接管文件。
 
@@ -35,7 +35,7 @@ User 范围使用操作系统用户目录或配置目录：Codex 为 `.codex/ski
 
 Hermes 的 Vault 范围不会被伪装成普通目录安装：Hermes 只在受信任的 Git checkout 中启用项目 Skill，而 Knowledge-Brain Vault 不要求 Git，因此 `--host hermes --scope vault` 返回明确的不支持结果并提示使用 User 范围。新增宿主使用其原生 Skill 目录，不创建无官方含义的桥接文件。
 
-`copy` 复制九项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到九项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
+`copy` 复制十项内置 Skill 的完整目录，包括实际存在的 `references/`、`assets/` 或 `scripts/`。`symlink` 在 Knowledge-Brain 的用户配置目录保存同一份规范目录，再让宿主目录分别链接到十项副本；显式选择该模式前应确认宿主和同步工具支持符号链接。升级、状态检查与卸载逐文件核对嵌套资源，人工修改的文件不会被覆盖或删除。未修改的旧版单一 `knowledge-brain` 安装会显示为 `legacy`，可由一次 reviewable install 迁移。
 
 ## 外部安装
 

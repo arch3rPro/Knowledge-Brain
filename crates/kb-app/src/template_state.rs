@@ -11,11 +11,11 @@ use crate::{
     source_io::safe_path,
     storage::create_new,
     template::{
-        ADMISSION_SCHEMA_JSON, CONFIG_SCHEMA_JSON, HISTORICAL_KB_MD_V1_1,
-        HISTORICAL_TEMPLATE_MANIFEST_V1_1, KB_MD, LEGACY_KB_MD_V1_0, ManagedTemplateOwnership,
-        RELEASED_KB_MD_V0_1_X, RULES_END_MARKER, RULES_START_MARKER, TemplateManifest,
-        VAULT_TEMPLATE_VERSION, current_template_manifest, hash, parse_managed_rules,
-        template_manifest_yaml,
+        ADMISSION_SCHEMA_JSON, CONFIG_SCHEMA_JSON, HISTORICAL_KB_MD_V1_1, HISTORICAL_KB_MD_V1_2,
+        HISTORICAL_TEMPLATE_MANIFEST_V1_1, HISTORICAL_TEMPLATE_MANIFEST_V1_2, KB_MD,
+        LEGACY_KB_MD_V1_0, ManagedTemplateOwnership, RELEASED_KB_MD_V0_1_X, RULES_END_MARKER,
+        RULES_START_MARKER, TemplateManifest, VAULT_TEMPLATE_VERSION, current_template_manifest,
+        hash, parse_managed_rules, template_manifest_yaml,
     },
     vault::read_vault_identity,
 };
@@ -445,6 +445,8 @@ fn is_recognized_manifest(manifest: &TemplateManifest) -> bool {
     manifest == &current_template_manifest()
         || serde_yaml_ng::from_str::<TemplateManifest>(HISTORICAL_TEMPLATE_MANIFEST_V1_1)
             .is_ok_and(|known| manifest == &known)
+        || serde_yaml_ng::from_str::<TemplateManifest>(HISTORICAL_TEMPLATE_MANIFEST_V1_2)
+            .is_ok_and(|known| manifest == &known)
 }
 
 fn known_managed_rules_digest(digest: &str) -> bool {
@@ -452,7 +454,10 @@ fn known_managed_rules_digest(digest: &str) -> bool {
     let historical = parse_managed_rules(HISTORICAL_KB_MD_V1_1)
         .map(|region| hash(region.content.as_bytes()))
         .expect("historical KB.md has valid markers");
-    digest == current || digest == historical
+    let previous = parse_managed_rules(HISTORICAL_KB_MD_V1_2)
+        .map(|region| hash(region.content.as_bytes()))
+        .expect("previous KB.md has valid markers");
+    digest == current || digest == historical || digest == previous
 }
 
 fn plan_target_write(

@@ -54,6 +54,7 @@ fn copy_install_and_uninstall_preserve_user_bridge_bytes() {
         "kb-save",
         "kb-ops",
         "kb-backup",
+        "kb-sync",
         "kb-connect",
     ] {
         assert!(

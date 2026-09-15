@@ -183,7 +183,7 @@ kb apply <operation-id> --json
 
 ## Agent Skills
 
-项目发布九个可单独安装的 `kb-*` Skills，其中 `kb-note` 为普通调研文档和主题笔记提供写作规范与按需模板。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --skill '*' --agent codex --yes` 或 `npx skills add . --skill kb-query --agent codex --yes`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
+项目发布十个可单独安装的 `kb-*` Skills，其中 `kb-note` 为普通调研文档和主题笔记提供写作规范与按需模板，`kb-sync` 负责已配置 Git upstream 的可选同步流程。需要 Knowledge-Brain 管理 Vault/User 范围安装、迁移和安全卸载时，使用 `kb skills`；只需要把 Skill 文件加入某个 Agent 工作区时，使用 `npx skills add . --skill '*' --agent codex --yes` 或 `npx skills add . --skill kb-query --agent codex --yes`。两种方式各自管理自己的文件，详见[Agent Skill 参考](docs/reference/agent-skill.md)。
 
 CLI 是 AI Agent 使用 Knowledge-Brain 的基础依赖，MCP 和 Skills 均为可选接入方式。需要把完整操作规则直接交给 Agent 时，使用 [AI Agent 操作指南](docs/guides/agent-operations.md)。
 

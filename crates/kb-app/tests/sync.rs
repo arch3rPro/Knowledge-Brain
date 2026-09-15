@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, fs, process::Command};
 
-use kb_app::{ConfigOverrides, InitRequest, UserPaths, check_sync, init_vault, register_vault};
+use kb_app::{
+    ConfigOverrides, InitRequest, UserPaths, check_sync, ensure_shared_write_sync_safe, init_vault,
+    register_vault,
+};
 
 fn user_paths(root: &std::path::Path) -> UserPaths {
     UserPaths::new(root.join("config"), root.join("state"), root.join("cache"))
@@ -101,6 +104,78 @@ fn non_git_vault_is_valid_and_git_is_optional() {
 
     assert_eq!(format!("{:?}", report.git.state), "NotRepository");
     assert!(!report.summary.writes_blocked);
+}
+
+#[test]
+fn fetched_upstream_commits_block_shared_writes_until_the_vault_is_updated() {
+    if Command::new("git").arg("--version").output().is_err() {
+        return;
+    }
+    let temporary = tempfile::tempdir().unwrap();
+    let remote = temporary.path().join("remote.git");
+    fs::create_dir(&remote).unwrap();
+    git(&remote, &["init", "--bare"]);
+
+    let vault = temporary.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    git(&vault, &["init", "-b", "main"]);
+    git(&vault, &["config", "user.name", "Sync Test"]);
+    git(&vault, &["config", "user.email", "sync@example.invalid"]);
+    git(&vault, &["add", "."]);
+    git(&vault, &["commit", "-m", "initial"]);
+    git(
+        &vault,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    git(&vault, &["push", "-u", "origin", "main"]);
+
+    let other = temporary.path().join("other");
+    let clone = Command::new("git")
+        .args(["clone", remote.to_str().unwrap(), other.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(clone.success());
+    git(&other, &["config", "user.name", "Other Writer"]);
+    git(&other, &["config", "user.email", "other@example.invalid"]);
+    fs::write(other.join("remote.md"), "remote change\n").unwrap();
+    git(&other, &["add", "remote.md"]);
+    git(&other, &["commit", "-m", "remote change"]);
+    git(&other, &["push", "origin", "main"]);
+    git(&vault, &["fetch", "origin"]);
+
+    let report = check_sync(
+        &vault,
+        &user_paths(&temporary.path().join("user")),
+        &ConfigOverrides::default(),
+    )
+    .unwrap();
+
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "git_branch_behind"
+            && finding.level == kb_app::SyncFindingLevel::Error
+            && finding.blocks_writes
+    }));
+    let error = ensure_shared_write_sync_safe(&vault).unwrap_err();
+    assert_eq!(error.code, kb_core::ErrorCode::SyncConflict);
+
+    fs::write(vault.join("local.md"), "local change\n").unwrap();
+    git(&vault, &["add", "local.md"]);
+    git(&vault, &["commit", "-m", "local change"]);
+
+    let diverged = check_sync(
+        &vault,
+        &user_paths(&temporary.path().join("diverged-user")),
+        &ConfigOverrides::default(),
+    )
+    .unwrap();
+    assert!(diverged.findings.iter().any(|finding| {
+        finding.code == "git_branch_diverged"
+            && finding.level == kb_app::SyncFindingLevel::Error
+            && finding.blocks_writes
+    }));
 }
 
 // Windows cannot create this fixture because `CON` is a reserved device name.

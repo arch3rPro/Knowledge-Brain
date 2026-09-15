@@ -13,11 +13,15 @@ pub const HISTORICAL_KB_MD_V1_1: &str =
     include_str!("../../../assets/vault-template-history/v1.1/KB.md");
 pub const HISTORICAL_TEMPLATE_MANIFEST_V1_1: &str =
     include_str!("../../../assets/vault-template-history/v1.1/template.yml");
+pub const HISTORICAL_KB_MD_V1_2: &str =
+    include_str!("../../../assets/vault-template-history/v1.2/KB.md");
+pub const HISTORICAL_TEMPLATE_MANIFEST_V1_2: &str =
+    include_str!("../../../assets/vault-template-history/v1.2/template.yml");
 pub const WIKI_INDEX_MD: &str = include_str!("../../../assets/vault-template/Wiki/index.md");
 pub const WIKI_LOG_MD: &str = include_str!("../../../assets/vault-template/Wiki/log.md");
 pub const ADMISSION_SCHEMA_JSON: &str = include_str!("../../../schemas/admission.schema.json");
 pub const CONFIG_SCHEMA_JSON: &str = include_str!("../../../schemas/config.schema.json");
-pub const VAULT_TEMPLATE_VERSION: SchemaVersion = SchemaVersion::new(1, 2);
+pub const VAULT_TEMPLATE_VERSION: SchemaVersion = SchemaVersion::new(1, 3);
 pub const RULES_START_MARKER: &str = "<!-- kb:rules:start -->";
 pub const RULES_END_MARKER: &str = "<!-- kb:rules:end -->";
 

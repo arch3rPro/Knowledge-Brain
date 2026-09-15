@@ -16,6 +16,8 @@ Confirm the actual environment instead of relying on generic Skill text:
 3. Read `kb config admission list --vault <path-or-id> --json` to understand source scope. Admission is informational for this task: it neither restricts ordinary note writing nor authorizes ingestion.
 4. Inspect existing theme directories and nearby ordinary notes.
 
+If this Vault already has a configured Git upstream and the user expects synchronized work, follow `kb-sync` before writing. A local-only or non-Git Vault does not gain a Git requirement.
+
 For a new research document, project analysis, or likely overlapping topic, run a read-only `kb query <object-and-focus> --scope all --vault <path-or-id> --json`. Use results to avoid duplicate work and identify related Wiki knowledge or saved evidence. Empty results are valid, and finding a source does not authorize saving, refreshing, or linking it as managed evidence.
 
 ## Locate the note

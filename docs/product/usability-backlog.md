@@ -523,6 +523,44 @@ Agent 已经知道普通笔记不能自动入库，也能按知识对象选择�
 - 模板可以按内容删减，不强制固定目录、frontmatter、章节数量或某个研究工具。
 - 写完普通笔记后不会自动调用 `kb source save`、`kb knowledge save` 或 `kb apply`。
 
+## UX-021 — 启用 Git 同步的 Vault 在共享写入前检查上游状态
+
+**状态：** 本机检查与 Agent 流程已实现，发布后的真实多设备验证待补。
+
+### 问题
+
+同一 Vault 在多台设备使用 Git 同步时，Agent 可能基于过期 checkout 保存来源或 Wiki，再在 push 时产生冲突。非 Git Vault 和只有本地历史的仓库又不应因此增加网络依赖。
+
+### 目标体验
+
+Git 保持推荐但可选。只有当前分支已经配置 upstream 且用户采用 Git 同步时，Agent 才在共享写入前 fetch、按用户策略整合并运行 `kb sync check`。检查读取本机跟踪引用；落后、分叉或无法比较会阻止 Knowledge-Brain 最终写入。Knowledge-Brain 本身不联网，也不 pull、merge、rebase、commit、push 或 force push。
+
+### 验收标准
+
+- 非 Git Vault 和无 upstream 的本地 Git 仓库保持可写，不自动增加远程或修改 Git 配置。
+- fetch 后落后或分叉分别报告 `git_branch_behind`、`git_branch_diverged`，并阻止共享写入。
+- Agent 在写入后复核差异，推送前再次 fetch，普通 push 被拒绝时保留本地工作并停止。
+- `kb-sync` 可独立安装，且普通查询、初始化和非 Git 任务不会误触发。
+
+## UX-022 — Agent 禁止直接写 Wiki，并检测人工编辑造成的结构漂移
+
+**状态：** 规则与 lint 检测已实现，发布后的 Obsidian/真实 Agent 验证待补。
+
+### 问题
+
+Agent 直接写 `Wiki/` 会绕过受管理保存的索引、日志、来源和确认规则；人类在 Obsidian 中直接编辑又是 Markdown 知识库必须保留的能力。当前需要明确区分两者，并在人工编辑后发现可判断的结构问题。
+
+### 目标体验
+
+Agent 对明确的 Wiki 变更统一使用 `kb knowledge save`，不直接创建、修改、移动或删除 `Wiki/` 文件。人类仍可自由编辑 Markdown；`kb lint` 检测误放在受管理分区的普通页面、受管理页面缺少索引项，以及现有冲突、重复标题和链接问题。有效正文不会仅因由人类编辑而报错。
+
+### 验收标准
+
+- Vault 规则、Agent 指南和 `kb-save` 明确禁止 Agent 直接写 Wiki。
+- `kb lint` 对普通页面误入 `Wiki/research` 或 `Wiki/articles` 报告 `unmanaged_wiki_page`。
+- 受管理页面缺少索引引用时报告 `index_missing_entry`，检查保持只读。
+- 修正通过明确的受管理保存完成；历史正文恢复依赖用户已启用的 Git 或备份，不猜测旧版本。
+
 ## 非目标
 
 - 不缩短或替换持久化的 SHA-256 身份。
@@ -534,6 +572,6 @@ Agent 已经知道普通笔记不能自动入库，也能按知识对象选择�
 
 ## 实现结果
 
-Portable Agent Skill 的交互约束已由九项 `kb-*` Skill 落地：只读动作不要求确认，普通笔记沿用用户内容授权，创建计划与最终 apply 保持一次明确确认；`kb skills` 与 `npx skills add` 的文件所有权互不覆盖。
+Portable Agent Skill 的交互约束已由十项 `kb-*` Skill 落地：只读动作不要求确认，普通笔记沿用用户内容授权，创建计划与最终 apply 保持一次明确确认；`kb-sync` 只在已有 Git upstream 的同步任务中使用，`kb skills` 与 `npx skills add` 的文件所有权互不覆盖。
 
 来源与知识的组合入口复用同一应用层语义，CLI、MCP 和 HTTP 均保留预览、确认、陈旧状态复核与恢复规则。WebUI 和 GUI 的界面实现单独列入[未来扩展](future-extensions.md)。

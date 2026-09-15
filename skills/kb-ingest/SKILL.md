@@ -13,6 +13,8 @@ First distinguish the request from ordinary content creation. “Research”, �
 
 Resolve the Vault, read `KB.md`, and use `kb source save --vault <path-or-id> --json` or MCP `kb_source_save`. Only enabled `admission.yml` directories are in scope.
 
+If this Vault already has a configured Git upstream and the user expects synchronized work, follow `kb-sync` before preparing the save. Do not enable Git for a local-only or non-Git Vault.
+
 - No changes: report that result; do not request confirmation.
 - Changes: summarize the returned added, modified, deleted, skipped, and possible-move entries. Keep the confirmation token internal.
 - Invalid or over-limit source: report the exact rejected path and reason; do not read around the admission boundary.

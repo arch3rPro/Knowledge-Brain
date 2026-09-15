@@ -70,9 +70,58 @@ fn lint_resolves_links_reports_index_drift_and_finds_orphans() {
     let report = lint(&vault, &config, now()).unwrap();
 
     assert_eq!(report.checked_files, 5);
-    assert_eq!(codes(&report), ["orphan_concept", "index_drift"]);
-    assert_eq!(report.findings[0].path.as_str(), "Wiki/articles/orphan.md");
-    assert_eq!(report.findings[1].path.as_str(), "Wiki/index.md");
+    assert_eq!(
+        codes(&report),
+        [
+            "unmanaged_wiki_page",
+            "orphan_concept",
+            "unmanaged_wiki_page",
+            "index_drift",
+            "unmanaged_wiki_page",
+        ]
+    );
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "orphan_concept" && finding.path.as_str() == "Wiki/articles/orphan.md"
+    }));
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "index_drift" && finding.path.as_str() == "Wiki/index.md"
+    }));
+}
+
+#[test]
+fn lint_reports_an_ordinary_note_written_directly_into_managed_wiki_sections() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/articles/direct-note.md"),
+        "# Direct ordinary note\n",
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "unmanaged_wiki_page"
+            && finding.path.as_str() == "Wiki/articles/direct-note.md"
+            && finding.severity == kb_core::OkfSeverity::Warning
+    }));
+}
+
+#[test]
+fn lint_reports_a_managed_page_missing_from_the_generated_index() {
+    let (_temporary, vault, config) = setup();
+    fs::write(
+        vault.join("Wiki/articles/manual-edit.md"),
+        managed_concept("Manual edit", "Manual edit"),
+    )
+    .unwrap();
+
+    let report = lint(&vault, &config, now()).unwrap();
+
+    assert!(report.findings.iter().any(|finding| {
+        finding.code == "index_missing_entry"
+            && finding.path.as_str() == "Wiki/articles/manual-edit.md"
+            && finding.severity == kb_core::OkfSeverity::Warning
+    }));
 }
 
 #[test]
@@ -93,6 +142,7 @@ fn lint_rejects_escaping_links_and_invalid_supersedes_targets() {
             "supersedes_invalid_target",
             "supersedes_self",
             "orphan_concept",
+            "unmanaged_wiki_page",
             "link_outside_wiki",
             "broken_link",
         ]

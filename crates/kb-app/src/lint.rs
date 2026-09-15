@@ -59,6 +59,20 @@ pub fn lint(
         };
         let document = parse_okf(path.clone(), &text);
         if document.kind == OkfDocumentKind::Concept
+            && (path.as_str().starts_with("Wiki/research/")
+                || path.as_str().starts_with("Wiki/articles/"))
+            && !document.managed
+        {
+            findings.push(new_finding(
+                path,
+                OkfSeverity::Warning,
+                "unmanaged_wiki_page",
+                None,
+                "This page is inside a managed Wiki section but is not managed knowledge.",
+                "Move an ordinary note to a theme directory, or review and adopt it through kb knowledge save.",
+            ));
+        }
+        if document.kind == OkfDocumentKind::Concept
             && !path.as_str().starts_with("Wiki/external-sources/records/")
             && let Some(title) = concept_title(&document)
         {
@@ -103,6 +117,7 @@ pub fn lint(
     validate_links(root, &documents, &mut incoming, &mut findings)?;
     validate_supersedes(&documents, &mut incoming, &mut findings);
     validate_source_resources(&documents, &source_versions, &mut incoming, &mut findings);
+    find_managed_pages_missing_from_index(&documents, &mut findings);
     find_orphans(&documents, &incoming, &mut findings);
     sort_findings(&mut findings);
 
@@ -111,6 +126,45 @@ pub fn lint(
         checked_files: paths.len(),
         findings,
     })
+}
+
+fn find_managed_pages_missing_from_index(
+    documents: &BTreeMap<PortableRelativePath, kb_core::ParsedOkfDocument>,
+    findings: &mut Vec<OkfFinding>,
+) {
+    let index_path = PortableRelativePath::parse("Wiki/index.md").expect("static portable path");
+    let indexed = documents
+        .get(&index_path)
+        .map(|index| {
+            index
+                .links
+                .iter()
+                .filter_map(
+                    |link| match resolve_wiki_target(&index_path, &link.destination) {
+                        Target::Wiki(path) => Some(path),
+                        _ => None,
+                    },
+                )
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    for (path, document) in documents {
+        if document.managed
+            && document.kind == OkfDocumentKind::Concept
+            && (path.as_str().starts_with("Wiki/research/")
+                || path.as_str().starts_with("Wiki/articles/"))
+            && !indexed.contains(path)
+        {
+            findings.push(new_finding(
+                path,
+                OkfSeverity::Warning,
+                "index_missing_entry",
+                None,
+                "This managed Wiki page is missing from Wiki/index.md.",
+                "Review the manual change and use kb knowledge save to regenerate the managed index.",
+            ));
+        }
+    }
 }
 
 fn concept_title(document: &kb_core::ParsedOkfDocument) -> Option<String> {

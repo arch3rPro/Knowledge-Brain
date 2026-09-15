@@ -47,6 +47,8 @@ kb apply <OPERATION_ID> [--json]
 
 请求不能直接写 `Wiki/index.md`、`Wiki/log.md`、来源记录、原始对象、配置或运行目录。
 
+Agent 对明确的 Wiki 变更必须使用本入口，不直接创建、修改、移动或删除 `Wiki/` 下的文件。人类仍可编辑 Markdown；之后使用 `kb lint` 检查普通页面误入受管理分区、索引缺项和其他结构问题，再决定是否提交受管理保存。正文历史恢复依赖用户已启用的 Git 或备份，不由 Knowledge-Brain 猜测旧版本。
+
 ## 计划和结果
 
 计划包含 operation ID、Vault ID、绝对目标根、创建时间、程序与 schema 版本、请求内容、精确来源版本、配置与准入摘要、所有目标的旧哈希和完整新内容，以及统一文本 diff。计划和 `plan.sha256` 位于用户状态目录的 `operations/<operation_id>/`；目录在 Unix 上使用仅当前用户可访问的权限。

@@ -33,7 +33,7 @@ fn legacy_default_vault_is_previewed_then_upgraded_without_touching_user_content
     let plan = create_vault_upgrade_plan(&vault, &paths).unwrap();
 
     assert_eq!(plan.from_template_version, None);
-    assert_eq!(plan.to_template_version, SchemaVersion::new(1, 2));
+    assert_eq!(plan.to_template_version, SchemaVersion::new(1, 3));
     assert!(plan.conflicts.is_empty());
     assert!(plan.diff.contains("+++ KB.md"));
     assert!(plan.diff.contains("+<!-- kb:rules:start -->"));
@@ -60,9 +60,9 @@ fn legacy_default_vault_is_previewed_then_upgraded_without_touching_user_content
 
     let result = apply_vault_upgrade(&paths, plan.operation_id).unwrap();
 
-    assert_eq!(result.template_version, SchemaVersion::new(1, 2));
+    assert_eq!(result.template_version, SchemaVersion::new(1, 3));
     assert_eq!(result.from_template_version, None);
-    assert_eq!(result.to_template_version, SchemaVersion::new(1, 2));
+    assert_eq!(result.to_template_version, SchemaVersion::new(1, 3));
     assert_eq!(result.planned, result.changed);
     assert_eq!(result.unchanged.len(), 2);
     assert!(result.stale.is_empty());
@@ -193,7 +193,7 @@ fn newer_template_metadata_requires_a_newer_cli() {
     let (_temporary, vault, paths) = setup();
     let manifest = fs::read_to_string(vault.join(".kb/template.yml"))
         .unwrap()
-        .replace("template_version: v1.2", "template_version: v2.0");
+        .replace("template_version: v1.3", "template_version: v2.0");
     fs::write(vault.join(".kb/template.yml"), manifest).unwrap();
 
     let error = create_vault_upgrade_plan(&vault, &paths).unwrap_err();
