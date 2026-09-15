@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     fs::{self, File},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 use uuid::Uuid;
 
@@ -56,6 +56,7 @@ fn acquire_skill_ownership_lock(user_paths: &UserPaths) -> Result<SkillOwnership
 pub enum SkillInstallState {
     Absent,
     Current,
+    Outdated,
     Partial,
     Modified,
     External,
@@ -193,6 +194,9 @@ fn install_changes(
     target: &SkillTarget,
     state: SkillInstallState,
 ) -> Result<(Vec<SkillFileChange>, Vec<SkillLinkChange>), KbError> {
+    if state == SkillInstallState::Outdated {
+        return outdated_install_changes(request, target);
+    }
     let (asset_root, mut links) = match request.mode {
         SkillInstallMode::Copy => {
             reject_skill_links(&target.skills_root)?;
@@ -230,6 +234,118 @@ fn install_changes(
     if let Some(bridge_file) = &target.bridge_file {
         files.push(bridge_install_change(bridge_file)?);
     }
+    Ok((files, links))
+}
+
+fn outdated_install_changes(
+    request: &SkillPlanRequest<'_>,
+    target: &SkillTarget,
+) -> Result<(Vec<SkillFileChange>, Vec<SkillLinkChange>), KbError> {
+    let record = load_installation(
+        request.user_paths,
+        request.vault_id,
+        request.host,
+        request.scope,
+    )?
+    .ok_or_else(|| {
+        stale(
+            &target.skills_root,
+            "managed Skill ownership record is missing",
+        )
+    })?;
+    if record.mode != request.mode {
+        return Err(stale(
+            &target.skills_root,
+            "installed Skill uses a different mode",
+        ));
+    }
+    if managed_state(&record, request.user_paths, target)? != SkillInstallState::Outdated {
+        return Err(stale(
+            &target.skills_root,
+            "managed Skill installation is no longer an intact old baseline",
+        ));
+    }
+    let asset_root = if record.mode == SkillInstallMode::Symlink {
+        request.user_paths.config_dir.join("skills")
+    } else {
+        target.skills_root.clone()
+    };
+    let target_paths = skill_assets()
+        .iter()
+        .map(|asset| asset_root.join(asset.path))
+        .collect::<BTreeSet<_>>();
+    let recorded_paths = record
+        .assets
+        .iter()
+        .map(|asset| asset.path.clone())
+        .collect::<BTreeSet<_>>();
+    let mut files = skill_assets()
+        .iter()
+        .map(|asset| {
+            let path = asset_root.join(asset.path);
+            let before_sha256 = digest_optional_file(&path)?;
+            if !recorded_paths.contains(&path)
+                && before_sha256
+                    .as_deref()
+                    .is_some_and(|digest| digest != asset.sha256)
+            {
+                return Err(stale(
+                    &path,
+                    "new target Skill path contains externally owned content",
+                ));
+            }
+            Ok(SkillFileChange {
+                before_sha256,
+                path,
+                after: Some(String::from_utf8_lossy(asset.bytes).into_owned()),
+            })
+        })
+        .collect::<Result<Vec<_>, KbError>>()?;
+    files.extend(
+        record
+            .assets
+            .iter()
+            .filter(|asset| !target_paths.contains(&asset.path))
+            .map(|asset| {
+                Ok(SkillFileChange {
+                    path: asset.path.clone(),
+                    before_sha256: Some(asset.sha256.clone()),
+                    after: None,
+                })
+            })
+            .collect::<Result<Vec<_>, KbError>>()?,
+    );
+    if let Some(bridge_file) = &target.bridge_file {
+        files.push(bridge_update_change(bridge_file)?);
+    }
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+
+    let desired_links = expected_links(target, request.user_paths, record.mode, true);
+    for link in &desired_links {
+        if !record
+            .links
+            .iter()
+            .any(|recorded| recorded.path == link.path)
+        {
+            validate_link_for_install(&link.path, &link.target)?;
+        }
+    }
+    let desired_paths = desired_links
+        .iter()
+        .map(|link| link.path.clone())
+        .collect::<BTreeSet<_>>();
+    let mut links = record
+        .links
+        .iter()
+        .filter(|link| !desired_paths.contains(&link.path))
+        .cloned()
+        .map(|link| SkillLinkChange {
+            create: false,
+            ..link
+        })
+        .collect::<Vec<_>>();
+    links.extend(desired_links);
+    links.sort_by(|left, right| (&left.path, left.create).cmp(&(&right.path, right.create)));
     Ok((files, links))
 }
 
@@ -650,6 +766,24 @@ fn ownership_records(
     Ok(records)
 }
 
+/// Return every durable Knowledge-Brain Skill ownership record.
+///
+/// # Errors
+///
+/// Returns an error for malformed, linked, or unreadable ownership storage.
+pub fn list_managed_skill_installations(
+    user_paths: &UserPaths,
+) -> Result<Vec<ManagedSkillInstallation>, KbError> {
+    let mut records = ownership_records(user_paths)?
+        .into_iter()
+        .map(|(_, record)| record)
+        .collect::<Vec<_>>();
+    records.sort_by(|left, right| {
+        (left.scope, left.host, left.vault_id).cmp(&(right.scope, right.host, right.vault_id))
+    });
+    Ok(records)
+}
+
 fn managed_state(
     record: &ManagedSkillInstallation,
     user_paths: &UserPaths,
@@ -666,24 +800,13 @@ fn managed_state(
         || record.skills_root != target.skills_root
         || record.bridge_file != target.bridge_file
         || record.bridge_file.is_some() != record.bridge_sha256.is_some()
-        || record.assets.len() != skill_assets().len()
         || record.canonical_paths.len() != record.assets.len()
         || record
             .canonical_paths
             .iter()
             .zip(&record.assets)
             .any(|(path, asset)| path != &asset.path)
-        || record
-            .assets
-            .iter()
-            .zip(skill_assets())
-            .any(|(managed, asset)| managed.path != asset_root.join(asset.path))
-        || record
-            .assets
-            .iter()
-            .zip(skill_assets())
-            .any(|(managed, asset)| managed.sha256 != asset.sha256)
-        || record.links != expected_links(target, user_paths, record.mode, true)
+        || !record_paths_are_safe(record, &asset_root, target)
     {
         return Ok(SkillInstallState::Modified);
     }
@@ -707,16 +830,136 @@ fn managed_state(
         }
     }
     if let (Some(bridge_file), Some(bridge_sha256)) = (&record.bridge_file, &record.bridge_sha256) {
-        match digest_optional_file(bridge_file)? {
+        match read_optional_file(bridge_file)? {
             None => missing = true,
-            Some(actual) if actual == *bridge_sha256 => {}
+            Some(actual)
+                if bridge_matches_record(
+                    &actual,
+                    bridge_sha256,
+                    record.bridge_block_sha256.as_deref(),
+                ) => {}
             Some(_) => return Ok(SkillInstallState::Modified),
         }
     }
-    Ok(if missing {
-        SkillInstallState::Partial
+    if missing {
+        return Ok(SkillInstallState::Partial);
+    }
+    let target_assets = skill_assets()
+        .iter()
+        .map(|asset| (asset_root.join(asset.path), asset.sha256.as_str()))
+        .collect::<BTreeSet<_>>();
+    let recorded_assets = record
+        .assets
+        .iter()
+        .map(|asset| (asset.path.clone(), asset.sha256.as_str()))
+        .collect::<BTreeSet<_>>();
+    let bridge_current = match &record.bridge_file {
+        Some(path) => read_optional_file(path)?
+            .as_deref()
+            .and_then(|bytes| std::str::from_utf8(bytes).ok())
+            .and_then(managed_bridge)
+            .is_some_and(|block| block == BRIDGE_BLOCK),
+        None => true,
+    };
+    Ok(
+        if recorded_assets == target_assets
+            && record.links == expected_links(target, user_paths, record.mode, true)
+            && bridge_current
+        {
+            SkillInstallState::Current
+        } else {
+            SkillInstallState::Outdated
+        },
+    )
+}
+
+fn record_paths_are_safe(
+    record: &ManagedSkillInstallation,
+    asset_root: &Path,
+    target: &SkillTarget,
+) -> bool {
+    let mut assets = BTreeSet::new();
+    let assets_safe = record.assets.iter().all(|asset| {
+        safe_recorded_descendant(&asset.path, asset_root)
+            && is_sha256(&asset.sha256)
+            && assets.insert(asset.path.clone())
+    });
+    let mut links = BTreeSet::new();
+    let links_safe = record.links.iter().all(|link| {
+        link.create
+            && safe_recorded_descendant(&link.path, &target.skills_root)
+            && safe_recorded_descendant(&link.target, asset_root)
+            && links.insert(link.path.clone())
+    });
+    assets_safe && links_safe
+}
+
+fn safe_recorded_descendant(path: &Path, root: &Path) -> bool {
+    path.strip_prefix(root).is_ok_and(|relative| {
+        !relative.as_os_str().is_empty()
+            && relative
+                .components()
+                .all(|component| matches!(component, Component::Normal(_)))
+    })
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn bridge_matches_record(
+    actual: &[u8],
+    recorded_file_digest: &str,
+    recorded_block_digest: Option<&str>,
+) -> bool {
+    if hash(actual) == recorded_file_digest {
+        return true;
+    }
+    let Ok(text) = std::str::from_utf8(actual) else {
+        return false;
+    };
+    let Some(block) = managed_bridge(text) else {
+        return false;
+    };
+    if let Some(recorded) = recorded_block_digest {
+        hash(block.as_bytes()) == recorded
     } else {
-        SkillInstallState::Current
+        block == BRIDGE_BLOCK || block == LEGACY_BRIDGE_BLOCK
+    }
+}
+
+fn managed_bridge(content: &str) -> Option<&str> {
+    const START: &str = "<!-- knowledge-brain:start -->";
+    const END: &str = "<!-- knowledge-brain:end -->";
+    let starts = content.match_indices(START).collect::<Vec<_>>();
+    let ends = content.match_indices(END).collect::<Vec<_>>();
+    if starts.len() != 1 || ends.len() != 1 || ends[0].0 < starts[0].0 + START.len() {
+        return None;
+    }
+    let mut end = ends[0].0 + END.len();
+    if content.as_bytes().get(end) == Some(&b'\n') {
+        end += 1;
+    }
+    Some(&content[starts[0].0..end])
+}
+
+fn bridge_update_change(path: &Path) -> Result<SkillFileChange, KbError> {
+    let before = read_optional_file(path)?
+        .ok_or_else(|| stale(path, "Knowledge-Brain bridge is missing"))?;
+    let current = std::str::from_utf8(&before)
+        .map_err(|error| KbError::invalid_config(path.display().to_string(), error.to_string()))?;
+    let block = managed_bridge(current)
+        .ok_or_else(|| stale(path, "Knowledge-Brain bridge markers were modified"))?;
+    let start = block.as_ptr() as usize - current.as_ptr() as usize;
+    let end = start + block.len();
+    let after = format!("{}{}{}", &current[..start], BRIDGE_BLOCK, &current[end..]);
+    Ok(SkillFileChange {
+        path: path.to_path_buf(),
+        before_sha256: Some(hash(&before)),
+        after: Some(after),
     })
 }
 
@@ -752,6 +995,10 @@ fn installation_from_plan(
                 })
         })
         .transpose()?;
+    let bridge_block_sha256 = target
+        .bridge_file
+        .as_ref()
+        .map(|_| hash(BRIDGE_BLOCK.as_bytes()));
     Ok(ManagedSkillInstallation {
         schema_version: CURRENT_SCHEMA_VERSION,
         vault_id: plan.vault_id,
@@ -761,6 +1008,7 @@ fn installation_from_plan(
         skills_root: target.skills_root,
         bridge_file: target.bridge_file,
         bridge_sha256,
+        bridge_block_sha256,
         canonical_paths: assets.iter().map(|asset| asset.path.clone()).collect(),
         assets,
         links: plan
@@ -1010,6 +1258,18 @@ fn validate_install_plan(
         .iter()
         .map(|(path, _)| path.clone())
         .collect::<BTreeSet<_>>();
+    let managed_record = load_installation(user_paths, plan.vault_id, plan.host, plan.scope)?;
+    let outdated_record = match managed_record.as_ref() {
+        Some(record)
+            if managed_state(record, user_paths, target)? == SkillInstallState::Outdated =>
+        {
+            Some(record)
+        }
+        _ => None,
+    };
+    if let Some(record) = outdated_record {
+        expected.extend(record.assets.iter().map(|asset| asset.path.clone()));
+    }
     if let Some(bridge_file) = &target.bridge_file {
         expected.insert(bridge_file.clone());
     }
@@ -1032,7 +1292,8 @@ fn validate_install_plan(
             if !change
                 .after
                 .as_deref()
-                .is_some_and(|after| after.ends_with(BRIDGE_BLOCK))
+                .and_then(managed_bridge)
+                .is_some_and(|block| block == BRIDGE_BLOCK)
             {
                 return invalid_plan("Skill plan bridge", "managed bridge content is invalid");
             }
@@ -1043,6 +1304,12 @@ fn validate_install_plan(
             if change.after.as_deref().map(str::as_bytes) != Some(*bytes) {
                 return invalid_plan("Skill plan asset", "embedded Skill content is invalid");
             }
+        } else if outdated_record.is_some_and(|record| {
+            record
+                .assets
+                .iter()
+                .any(|asset| asset.path == change.path && change.after.is_none())
+        }) {
         } else if legacy_roots.iter().any(|root| {
             legacy_skill_assets()
                 .iter()
@@ -1223,6 +1490,25 @@ fn validate_links(
         return Ok(());
     }
     let mut expected = expected_links(target, user_paths, plan.mode, true);
+    if let Some(record) = load_installation(user_paths, plan.vault_id, plan.host, plan.scope)?
+        && managed_state(&record, user_paths, target)? == SkillInstallState::Outdated
+    {
+        let desired_paths = expected
+            .iter()
+            .map(|link| link.path.clone())
+            .collect::<BTreeSet<_>>();
+        expected.extend(
+            record
+                .links
+                .into_iter()
+                .filter(|link| !desired_paths.contains(&link.path))
+                .map(|link| SkillLinkChange {
+                    create: false,
+                    ..link
+                }),
+        );
+        expected.sort_by(|left, right| (&left.path, left.create).cmp(&(&right.path, right.create)));
+    }
     let legacy_removal = plan
         .links
         .iter()

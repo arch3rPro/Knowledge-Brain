@@ -1,9 +1,13 @@
-use kb_app::{AppContext, AppRequest, InitRequest, SkillRequest, init_vault, legacy_skill_assets};
+use kb_app::{
+    AppContext, AppRequest, InitRequest, SkillRequest, UserPaths, init_vault, legacy_skill_assets,
+    list_managed_skill_installations,
+};
 use kb_core::{
     CURRENT_SCHEMA_VERSION, ErrorCode, OperationId, OperationKind, SkillAction, SkillFileChange,
     SkillHost, SkillInstallMode, SkillLinkChange, SkillPlan, SkillScope,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, fs, path::Path};
 use uuid::Uuid;
 
@@ -748,6 +752,232 @@ fn managed_missing_asset_is_partial_and_modified_asset_is_modified() {
         skills_status(&context, &vault, SkillHost::Codex)["state"],
         "modified"
     );
+}
+
+#[test]
+fn intact_recorded_old_assets_are_outdated_and_safely_upgraded() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let context = context(temp.path());
+    let install = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&install),
+        },
+        &context,
+    )
+    .unwrap();
+
+    let record_path = temp
+        .path()
+        .join("state/skill-installations/vault")
+        .join(install["vault_id"].as_str().unwrap())
+        .join("codex.json");
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    let old_content = "# Recorded old kb-vault Skill\n";
+    let old_digest = hex::encode(Sha256::digest(old_content.as_bytes()));
+    let asset_path = record["assets"][0]["path"].as_str().unwrap().to_owned();
+    fs::write(&asset_path, old_content).unwrap();
+    record["assets"][0]["sha256"] = Value::String(old_digest);
+    fs::write(&record_path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+    fs::write(
+        vault.join("AGENTS.md"),
+        fs::read_to_string(vault.join("AGENTS.md")).unwrap() + "\n# User-owned tail\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "outdated"
+    );
+    assert_eq!(
+        list_managed_skill_installations(&UserPaths::new(
+            temp.path().join("config"),
+            temp.path().join("state"),
+            temp.path().join("cache"),
+        ))
+        .unwrap()
+        .len(),
+        1
+    );
+
+    let upgrade = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&upgrade),
+        },
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "current"
+    );
+    assert!(
+        fs::read_to_string(vault.join("AGENTS.md"))
+            .unwrap()
+            .contains("# User-owned tail")
+    );
+}
+
+#[test]
+fn target_added_asset_does_not_overwrite_an_unrecorded_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let context = context(temp.path());
+    let install = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&install),
+        },
+        &context,
+    )
+    .unwrap();
+
+    let record_path = temp
+        .path()
+        .join("state/skill-installations/vault")
+        .join(install["vault_id"].as_str().unwrap())
+        .join("codex.json");
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    let unrecorded = record["assets"].as_array_mut().unwrap().remove(0);
+    record["canonical_paths"].as_array_mut().unwrap().remove(0);
+    let unrecorded_path = unrecorded["path"].as_str().unwrap();
+    fs::write(unrecorded_path, "external file at a newly managed path\n").unwrap();
+    fs::write(&record_path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "outdated"
+    );
+    let error = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::PlanStale);
+    assert_eq!(
+        fs::read_to_string(unrecorded_path).unwrap(),
+        "external file at a newly managed path\n"
+    );
+}
+
+#[test]
+fn obsolete_recorded_asset_is_removed_only_from_an_intact_old_installation() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    init_vault(&InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+    let context = context(temp.path());
+    let install = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&install),
+        },
+        &context,
+    )
+    .unwrap();
+
+    let record_path = temp
+        .path()
+        .join("state/skill-installations/vault")
+        .join(install["vault_id"].as_str().unwrap())
+        .join("codex.json");
+    let obsolete = vault.join(".agents/skills/kb-old/SKILL.md");
+    fs::create_dir_all(obsolete.parent().unwrap()).unwrap();
+    fs::write(&obsolete, "recorded old asset\n").unwrap();
+    let digest = hex::encode(Sha256::digest(b"recorded old asset\n"));
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record["assets"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "path": obsolete,
+            "sha256": digest,
+        }));
+    record["canonical_paths"]
+        .as_array_mut()
+        .unwrap()
+        .push(Value::String(obsolete.display().to_string()));
+    fs::write(&record_path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+    assert_eq!(
+        skills_status(&context, &vault, SkillHost::Codex)["state"],
+        "outdated"
+    );
+    let upgrade = kb_app::run(
+        AppRequest::Skills(SkillRequest::Install {
+            vault: Some(vault.display().to_string()),
+            host: Some(SkillHost::Codex),
+            scope: SkillScope::Vault,
+            mode: SkillInstallMode::Copy,
+        }),
+        &context,
+    )
+    .unwrap();
+    assert!(upgrade["files"].as_array().unwrap().iter().any(|change| {
+        change["path"].as_str() == Some(obsolete.to_string_lossy().as_ref())
+            && change["after"].is_null()
+    }));
+    kb_app::run(
+        AppRequest::Apply {
+            operation_id: operation_id(&upgrade),
+        },
+        &context,
+    )
+    .unwrap();
+    assert!(!obsolete.exists());
 }
 
 #[test]

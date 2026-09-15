@@ -19,6 +19,17 @@ pub enum SkillHost {
 }
 
 impl SkillHost {
+    pub const ALL: [Self; 8] = [
+        Self::Codex,
+        Self::ClaudeCode,
+        Self::GeminiCli,
+        Self::OpenCode,
+        Self::OpenClaw,
+        Self::Hermes,
+        Self::DeepSeekHarness,
+        Self::Pi,
+    ];
+
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -34,7 +45,7 @@ impl SkillHost {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillScope {
     Vault,
@@ -88,6 +99,8 @@ pub struct ManagedSkillInstallation {
     pub bridge_file: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bridge_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bridge_block_sha256: Option<String>,
     pub assets: Vec<ManagedSkillAsset>,
     pub canonical_paths: Vec<PathBuf>,
     pub links: Vec<SkillLinkChange>,

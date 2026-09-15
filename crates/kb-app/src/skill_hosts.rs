@@ -206,6 +206,42 @@ pub fn detect_skill_hosts(root: &Path) -> Result<Vec<DetectedSkillHost>, KbError
         .collect())
 }
 
+/// Detect Agent hosts from evidence appropriate to the requested installation scope.
+///
+/// # Errors
+///
+/// Returns an error when the Vault root required for Vault-scope detection is invalid.
+pub fn detect_skill_hosts_for_scope(
+    vault_root: &Path,
+    roots: &AgentRoots,
+    scope: SkillScope,
+) -> Result<Vec<DetectedSkillHost>, KbError> {
+    if scope == SkillScope::Vault {
+        return detect_skill_hosts(vault_root);
+    }
+    let candidates = [
+        (SkillHost::Codex, roots.home_dir.join(".codex")),
+        (SkillHost::ClaudeCode, roots.home_dir.join(".claude")),
+        (SkillHost::GeminiCli, roots.home_dir.join(".gemini")),
+        (SkillHost::OpenCode, roots.config_dir.join("opencode")),
+        (SkillHost::OpenClaw, roots.home_dir.join(".openclaw/skills")),
+        (SkillHost::Hermes, roots.home_dir.join(".hermes/skills")),
+        (
+            SkillHost::DeepSeekHarness,
+            roots.home_dir.join(".dsh/skills"),
+        ),
+        (SkillHost::Pi, roots.home_dir.join(".pi/agent/skills")),
+    ];
+    Ok(candidates
+        .into_iter()
+        .filter(|(_, path)| path.exists())
+        .map(|(host, path)| DetectedSkillHost {
+            host,
+            evidence: vec![path.display().to_string()],
+        })
+        .collect())
+}
+
 /// Select an explicit host or the only detected host.
 ///
 /// # Errors
@@ -220,13 +256,21 @@ pub fn resolve_skill_host(
     }
     match detected {
         [only] => Ok(only.host),
-        [] => Err(KbError::invalid_config(
-            "auto Skill host",
-            "no supported Agent host was detected; pass --host explicitly",
-        )),
-        _ => Err(KbError::invalid_config(
-            "auto Skill host",
-            "host detection is ambiguous; pass --host explicitly",
-        )),
+        [] => Err(detection_error("no supported Agent host was detected")),
+        _ => Err(detection_error("host detection is ambiguous")),
     }
+}
+
+fn detection_error(reason: &str) -> KbError {
+    let hosts = SkillHost::ALL
+        .iter()
+        .map(|host| host.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    KbError::new(
+        ErrorCode::InvalidConfig,
+        format!("{reason}; valid --host values: {hosts}"),
+        false,
+        "Pass a host explicitly, for example: kb skills status --host hermes --scope user",
+    )
 }

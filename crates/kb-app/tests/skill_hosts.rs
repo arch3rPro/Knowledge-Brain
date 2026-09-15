@@ -1,4 +1,6 @@
-use kb_app::{AgentRoots, detect_skill_hosts, resolve_skill_host, skill_target};
+use kb_app::{
+    AgentRoots, detect_skill_hosts, detect_skill_hosts_for_scope, resolve_skill_host, skill_target,
+};
 use kb_core::{ErrorCode, SkillHost, SkillScope};
 
 #[test]
@@ -121,4 +123,40 @@ fn new_native_host_directories_are_detected_without_generic_roots() {
         let detected = detect_skill_hosts(&root).unwrap();
         assert_eq!(resolve_skill_host(None, &detected).unwrap(), host);
     }
+}
+
+#[test]
+fn user_scope_detection_finds_hermes_home_without_treating_it_as_vault_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    let roots = AgentRoots::new(temp.path().join("home"), temp.path().join("config"));
+    std::fs::create_dir_all(roots.home_dir.join(".hermes/skills")).unwrap();
+    std::fs::create_dir(&vault).unwrap();
+
+    let user = detect_skill_hosts_for_scope(&vault, &roots, SkillScope::User).unwrap();
+    assert_eq!(resolve_skill_host(None, &user).unwrap(), SkillHost::Hermes);
+    let local = detect_skill_hosts_for_scope(&vault, &roots, SkillScope::Vault).unwrap();
+    assert!(local.is_empty());
+}
+
+#[test]
+fn automatic_detection_errors_list_stable_ids_and_an_example() {
+    let error = resolve_skill_host(None, &[]).unwrap_err();
+    for host in [
+        "codex",
+        "claude-code",
+        "gemini-cli",
+        "opencode",
+        "openclaw",
+        "hermes",
+        "dsh",
+        "pi",
+    ] {
+        assert!(error.message.contains(host), "missing {host}");
+    }
+    assert!(
+        error
+            .next_action
+            .contains("kb skills status --host hermes --scope user")
+    );
 }

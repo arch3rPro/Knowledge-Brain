@@ -996,12 +996,12 @@ fn run_skills(request: &SkillRequest, context: &AppContext) -> Result<Value, KbE
         | SkillRequest::Uninstall { vault, host, scope } => (vault.clone(), *host, *scope),
     };
     let selected = select_vault(context, vault)?;
-    let detected = crate::detect_skill_hosts(&selected.root)?;
+    let roots = context.agent_roots()?;
+    let detected = crate::detect_skill_hosts_for_scope(&selected.root, &roots, scope)?;
     if matches!(request, SkillRequest::Detect { .. }) {
         return Ok(json!({ "detected": detected }));
     }
     let host = resolve_skill_host(explicit_host, &detected)?;
-    let roots = context.agent_roots()?;
     match request {
         SkillRequest::Status { .. } => to_value(crate::skill_status(
             context.user_paths()?,

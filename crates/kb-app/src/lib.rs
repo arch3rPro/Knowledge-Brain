@@ -20,12 +20,12 @@ pub use review::{inspect_source_changes, review_sources};
 pub use search::{query, rebuild_catalog};
 pub use skill_assets::{SKILL_NAMES, SkillAsset, legacy_skill_assets, skill_assets};
 pub use skill_hosts::{
-    AgentRoots, DetectedSkillHost, SkillTarget, detect_skill_hosts, resolve_skill_host,
-    skill_target,
+    AgentRoots, DetectedSkillHost, SkillTarget, detect_skill_hosts, detect_skill_hosts_for_scope,
+    resolve_skill_host, skill_target,
 };
 pub use skill_plan::{
     SkillInstallState, SkillPlanRequest, SkillStatusReport, apply_skill_plan, create_skill_plan,
-    skill_status,
+    list_managed_skill_installations, skill_status,
 };
 pub use source_plan::{
     ReviewReport, SourceCapturePlan, SourceCaptureResult, SourceInspectionReport,
