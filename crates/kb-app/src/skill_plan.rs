@@ -1137,6 +1137,70 @@ pub fn apply_skill_plan(
     result
 }
 
+/// Apply an already-confirmed Skill plan as one component of a wider durable
+/// operation without creating a second user-visible plan.
+///
+/// # Errors
+///
+/// Returns an error when ownership, Vault identity, paths, or preconditions
+/// differ from the reviewed plan.
+pub fn apply_skill_plan_direct(
+    user_paths: &UserPaths,
+    roots: &AgentRoots,
+    plan: &SkillPlan,
+) -> Result<SkillApplyResult, KbError> {
+    if plan.schema_version != CURRENT_SCHEMA_VERSION || plan.kind != OperationKind::ManageSkill {
+        return Err(KbError::invalid_config(
+            "Skill plan",
+            "schema or operation kind is invalid",
+        ));
+    }
+    crate::app::ensure_mutation_allowed(&plan.vault_root)?;
+    let identity = crate::vault::read_vault_identity(&plan.vault_root)?;
+    if identity.vault_id != plan.vault_id {
+        return Err(KbError::new(
+            ErrorCode::AuthDenied,
+            "Skill plan Vault identity does not match its target.",
+            false,
+            "Create a new update plan for this Vault.",
+        ));
+    }
+    let _ownership_lock = acquire_skill_ownership_lock(user_paths)?;
+    let _lock = VaultLock::acquire(
+        &plan.vault_root,
+        LockMode::Exclusive,
+        "apply update Skill component",
+        Some(plan.operation_id),
+    )?;
+    validate_plan_paths(plan, user_paths, roots)?;
+    preflight(plan)?;
+    let mut changed = Vec::new();
+    for change in &plan.files {
+        if apply_file_change(change)? {
+            changed.push(change.path.clone());
+        }
+    }
+    for link in plan.all_links() {
+        if apply_link_change(link)? {
+            changed.push(link.path.clone());
+        }
+    }
+    cleanup_empty_skill_directories(plan);
+    finalize_ownership(user_paths, roots, plan)?;
+    Ok(SkillApplyResult {
+        kind: OperationKind::ManageSkill,
+        operation_id: plan.operation_id,
+        vault_id: plan.vault_id,
+        vault_root: plan.vault_root.clone(),
+        host: plan.host,
+        scope: plan.scope,
+        mode: plan.mode,
+        action: plan.action,
+        changed,
+        warnings: Vec::new(),
+    })
+}
+
 fn apply_skill_plan_inner(
     user_paths: &UserPaths,
     roots: &AgentRoots,

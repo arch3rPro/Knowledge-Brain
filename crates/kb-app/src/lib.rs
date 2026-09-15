@@ -24,8 +24,9 @@ pub use skill_hosts::{
     resolve_skill_host, skill_target,
 };
 pub use skill_plan::{
-    SkillInstallState, SkillPlanRequest, SkillStatusReport, apply_skill_plan, create_skill_plan,
-    list_managed_skill_installations, preview_skill_plan, skill_status,
+    SkillInstallState, SkillPlanRequest, SkillStatusReport, apply_skill_plan,
+    apply_skill_plan_direct, create_skill_plan, list_managed_skill_installations,
+    preview_skill_plan, skill_status,
 };
 pub use source_plan::{
     ReviewReport, SourceCapturePlan, SourceCaptureResult, SourceInspectionReport,
@@ -52,6 +53,7 @@ mod storage;
 mod sync;
 mod template;
 mod template_state;
+mod update_apply;
 mod update_plan;
 mod update_store;
 mod user_dirs;
@@ -61,7 +63,8 @@ mod vault_upgrade;
 pub use adopt::{apply_operation, create_adoption_plan};
 pub use app::{
     AdmissionRequest, AppContext, AppRequest, AppResponse, BackupRequest, ConfigRequest,
-    OperationRequest, SaveMode, SkillRequest, UpdateRequest, VaultRequest, run,
+    OperationRequest, SaveMode, SkillRequest, UpdateRequest, VaultRequest, confirm_update,
+    resume_update, run,
 };
 pub use backup::{BackupCreateRequest, create_backup, restore_backup, verify_backup};
 pub use capabilities::{Capabilities, capabilities};

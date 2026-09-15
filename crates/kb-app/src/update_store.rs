@@ -155,6 +155,50 @@ impl UpdateStore {
         Ok(stored.operation)
     }
 
+    /// Load and verify the immutable plan bound to an operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the operation path, stored digest, JSON, or plan
+    /// identity is invalid.
+    pub fn load_plan(&self, operation_id: OperationId) -> Result<UpdatePlan, KbError> {
+        let directory = self.checked_operation_directory(operation_id)?;
+        let stored: StoredOperation = read_json(&directory.join("operation.json"))?;
+        validate_stored_identity(&stored, operation_id)?;
+        let path = directory.join("plan.json");
+        ensure_regular_file(&path)?;
+        let bytes = fs::read(&path)
+            .map_err(|error| io_error("read immutable update plan", &path, &error))?;
+        if digest(&bytes) != stored.plan_sha256 {
+            return Err(stale_plan(
+                "The persisted update plan changed after it was created.",
+            ));
+        }
+        let plan: UpdatePlan = serde_json::from_slice(&bytes).map_err(|error| {
+            KbError::invalid_config(path.display().to_string(), error.to_string())
+        })?;
+        plan.validate()?;
+        if plan.operation_id != operation_id {
+            return Err(stale_plan("The persisted update plan identity is invalid."));
+        }
+        Ok(plan)
+    }
+
+    /// Load typed metadata for an attached verified executable stage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the stage metadata is absent, linked, or malformed.
+    pub fn load_stage<T: for<'de> Deserialize<'de>>(
+        &self,
+        operation_id: OperationId,
+    ) -> Result<T, KbError> {
+        let directory = self.checked_operation_directory(operation_id)?;
+        let path = directory.join("stage.json");
+        ensure_regular_file(&path)?;
+        read_json(&path)
+    }
+
     /// Confirm exactly the immutable preview represented by token.
     ///
     /// # Errors

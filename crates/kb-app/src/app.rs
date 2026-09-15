@@ -376,13 +376,55 @@ fn run_update_request(request: UpdateRequest, context: &AppContext) -> Result<Va
                 None => to_value(store.latest()?),
             }
         }
-        UpdateRequest::Confirm { .. } | UpdateRequest::Resume { .. } => Err(KbError::new(
-            ErrorCode::CapabilityUnavailable,
-            "Confirmed unified update execution is not available in this build step.",
-            false,
-            "Keep the reviewed operation and resume after update execution support is installed.",
-        )),
+        UpdateRequest::Confirm { token } => to_value(confirm_update(context, &token)?),
+        UpdateRequest::Resume { operation_id } => to_value(resume_update(context, operation_id)?),
     }
+}
+
+/// Confirm the exact latest preview and apply components that do not require
+/// executable replacement.
+///
+/// # Errors
+///
+/// Returns an error for a missing preview, wrong token, or unsafe operation.
+pub fn confirm_update(
+    context: &AppContext,
+    token: &kb_core::UpdateConfirmationToken,
+) -> Result<kb_core::UpdateOperation, KbError> {
+    let store = crate::UpdateStore::new(context.user_paths()?);
+    let latest = store.latest()?.ok_or_else(|| {
+        KbError::new(
+            ErrorCode::OperationNotFound,
+            "No prepared update is available to confirm.",
+            false,
+            "Run kb update and review the complete plan first.",
+        )
+    })?;
+    let confirmed = store.confirm(latest.operation_id, token)?;
+    if confirmed.components.iter().any(|component| {
+        component.kind == kb_core::UpdateComponentKind::Executable
+            && component.state == kb_core::UpdateComponentState::Pending
+    }) {
+        return Ok(confirmed);
+    }
+    resume_update(context, confirmed.operation_id)
+}
+
+/// Resume a confirmed update from its durable component receipts.
+///
+/// # Errors
+///
+/// Returns an error when persisted state or a managed boundary is unsafe.
+pub fn resume_update(
+    context: &AppContext,
+    operation_id: OperationId,
+) -> Result<kb_core::UpdateOperation, KbError> {
+    crate::update_apply::resume_update_components(
+        context.user_paths()?,
+        &context.agent_roots()?,
+        &context.environment,
+        operation_id,
+    )
 }
 
 fn run_update_plan(

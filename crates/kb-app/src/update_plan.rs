@@ -631,7 +631,7 @@ fn plan_vault_components(
     Ok(())
 }
 
-fn skill_component(
+pub(crate) fn skill_component(
     request: &TargetPlanRequest,
     installation: &ManagedSkillInstallation,
     conflicts: &mut Vec<UpdateConflict>,

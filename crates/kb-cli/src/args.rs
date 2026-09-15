@@ -21,6 +21,8 @@ pub(crate) enum ParsedCommand {
     Mcp(McpCommand),
     Update(UpdateCommand),
     UpdatePlan(TargetPlanCommand),
+    ReplaceUpdate(ReplaceUpdateCommand),
+    ResumeUpdate(ResumeUpdateCommand),
     Replace(ReplaceCommand),
     Cleanup(CleanupCommand),
 }
@@ -58,6 +60,17 @@ pub(crate) struct UpdateCommand {
 pub(crate) struct TargetPlanCommand {
     pub request: PathBuf,
     pub output: PathBuf,
+}
+
+pub(crate) struct ReplaceUpdateCommand {
+    pub operation_id: OperationId,
+    pub parent_pid: u32,
+    pub parent_start_time: u64,
+}
+
+pub(crate) struct ResumeUpdateCommand {
+    pub operation_id: OperationId,
+    pub json: bool,
 }
 
 pub(crate) struct ReplaceCommand {
@@ -276,6 +289,22 @@ enum Commands {
         request: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    #[command(name = "__replace-update", hide = true)]
+    ReplaceUpdate {
+        #[arg(long)]
+        operation: OperationId,
+        #[arg(long)]
+        parent_pid: u32,
+        #[arg(long)]
+        parent_start_time: u64,
+    },
+    #[command(name = "__resume-update", hide = true)]
+    ResumeUpdate {
+        #[arg(long)]
+        operation: OperationId,
+        #[arg(long)]
+        json: bool,
     },
     #[command(name = "__replace", hide = true)]
     Replace {
@@ -819,6 +848,21 @@ impl Cli {
             }
             Commands::UpdatePlan { request, output } => {
                 ParsedCommand::UpdatePlan(TargetPlanCommand { request, output })
+            }
+            Commands::ReplaceUpdate {
+                operation,
+                parent_pid,
+                parent_start_time,
+            } => ParsedCommand::ReplaceUpdate(ReplaceUpdateCommand {
+                operation_id: operation,
+                parent_pid,
+                parent_start_time,
+            }),
+            Commands::ResumeUpdate { operation, json } => {
+                ParsedCommand::ResumeUpdate(ResumeUpdateCommand {
+                    operation_id: operation,
+                    json,
+                })
             }
             Commands::Replace {
                 parent_pid,

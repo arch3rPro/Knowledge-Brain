@@ -55,6 +55,21 @@ async fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(_) => ExitCode::FAILURE,
         },
+        args::ParsedCommand::ReplaceUpdate(command) => match run_replace_update(&command) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        },
+        args::ParsedCommand::ResumeUpdate(command) => {
+            match kb_app::run(
+                AppRequest::Update(Box::new(kb_app::UpdateRequest::Resume {
+                    operation_id: command.operation_id,
+                })),
+                &context,
+            ) {
+                Ok(value) => render::success(&value, command.json, false, false),
+                Err(error) => render::error(error, command.json),
+            }
+        }
         args::ParsedCommand::Replace(command) => {
             let json = command.json;
             let request = kb_update::ReplaceRequest::verified(
@@ -102,6 +117,66 @@ fn run_target_plan(command: &args::TargetPlanCommand) -> Result<(), KbError> {
         KbError::invalid_config(command.output.display().to_string(), error.to_string())
     })?;
     kb_app::atomic_replace(&command.output, &output)
+}
+
+fn run_replace_update(command: &args::ReplaceUpdateCommand) -> Result<(), KbError> {
+    let environment = std::env::vars().collect::<BTreeMap<_, _>>();
+    let paths = kb_app::UserPaths::resolve(&environment)?;
+    let store = kb_app::UpdateStore::new(&paths);
+    store.transition(
+        command.operation_id,
+        kb_core::UpdateExecutionState::ReplacingCli,
+    )?;
+    let stage: kb_app::StoredUpdateStage = store.load_stage(command.operation_id)?;
+    let operation = store.load(command.operation_id)?;
+    let executable = operation
+        .components
+        .iter()
+        .find(|component| {
+            component.kind == kb_core::UpdateComponentKind::Executable
+                && component.state == kb_core::UpdateComponentState::Pending
+        })
+        .and_then(|component| component.changes.first())
+        .ok_or_else(|| KbError::invalid_config("update operation", "missing executable change"))?;
+    let operation_dir = paths
+        .state_dir
+        .join("updates")
+        .join(command.operation_id.to_string());
+    let staged = operation_dir.join(&stage.executable_relative);
+    let backup = operation_dir.join("cli.backup");
+    let replacement = kb_update::ReplaceRequest::verified(
+        staged,
+        &executable.path,
+        backup,
+        stage.executable_sha256,
+    );
+    let replaced = kb_update::wait_for_parent_exit(command.parent_pid, command.parent_start_time)
+        .and_then(|()| kb_update::replace_with_backup(&replacement));
+    if let Err(error) = replaced {
+        let _ = store.transition(command.operation_id, kb_core::UpdateExecutionState::Failed);
+        return Err(update_error(error));
+    }
+    store.transition(
+        command.operation_id,
+        kb_core::UpdateExecutionState::CliReplaced,
+    )?;
+    scrubbed_command(&executable.path)
+        .arg("__resume-update")
+        .arg("--operation")
+        .arg(command.operation_id.to_string())
+        .arg("--json")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| {
+            KbError::io_failure(
+                "start updated executable",
+                executable.path.display().to_string(),
+                error.to_string(),
+            )
+        })?;
+    Ok(())
 }
 
 fn run_update(command: args::UpdateCommand, context: &AppContext) -> Result<Value, KbError> {
