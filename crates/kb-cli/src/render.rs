@@ -36,6 +36,15 @@ pub(crate) fn success(
 
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError> {
+    if value.get("outcome").and_then(Value::as_str) == Some("plan") {
+        return Ok(render_update_plan(value));
+    }
+    if value.get("outcome").and_then(Value::as_str) == Some("existing") {
+        return Ok(render_update_result(&value["operation"]));
+    }
+    if value.get("kind").and_then(Value::as_str) == Some("update") {
+        return Ok(render_update_result(value));
+    }
     if value.get("kind").and_then(Value::as_str) == Some("upgrade_vault") {
         return Ok(render_vault_upgrade(value));
     }
@@ -67,6 +76,140 @@ pub(crate) fn human(value: &Value, full_hashes: bool) -> Result<String, KbError>
     let mut output = String::new();
     render_value(&mut output, value, 0, full_hashes, false);
     Ok(output.trim_end().to_owned())
+}
+
+fn render_update_plan(value: &Value) -> String {
+    let plan = &value["plan"];
+    let current = plan
+        .get("current_version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let target = plan
+        .get("target_version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let state = plan
+        .get("state")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let mut output = format!("更新计划\n版本 {current} → {target}\n状态：{state}");
+    let components = plan
+        .get("components")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if !components.is_empty() {
+        output.push_str("\n\n组件：");
+        for component in components {
+            let kind = component
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let component_state = component
+                .get("state")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let message = component
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let _ = write!(output, "\n- {kind} [{component_state}] {message}");
+            for change in component
+                .get("changes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let action = change
+                    .get("action")
+                    .and_then(Value::as_str)
+                    .unwrap_or("change");
+                let path = change
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let _ = write!(output, "\n  - {action}: {path}");
+            }
+        }
+    }
+    render_update_boundaries(&mut output, plan);
+    if let Some(token) = value.get("confirmation_token").and_then(Value::as_str) {
+        let _ = write!(output, "\n\n确认令牌：{token}");
+    } else if state == "no_changes" {
+        output.push_str("\n\n当前没有需要应用的更新。");
+    }
+    output
+}
+
+fn render_update_boundaries(output: &mut String, plan: &Value) {
+    for (key, heading) in [
+        ("conflicts", "冲突（不会覆盖）"),
+        ("skipped", "已跳过"),
+        ("untouched", "不在管理范围"),
+        ("excluded_vaults", "已排除 Vault"),
+    ] {
+        let Some(items) = plan.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        if items.is_empty() {
+            continue;
+        }
+        let _ = write!(output, "\n\n{heading}：");
+        for item in items {
+            if let Some(text) = item.as_str() {
+                let _ = write!(output, "\n- {text}");
+            } else {
+                let component = item
+                    .get("component_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("component");
+                let reason = item
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("conflict");
+                let _ = write!(output, "\n- {component}: {reason}");
+            }
+        }
+    }
+}
+
+fn render_update_result(value: &Value) -> String {
+    if value.get("cancelled").and_then(Value::as_bool) == Some(true) {
+        return "更新已取消，未执行任何变更。".into();
+    }
+    let operation = value
+        .get("operation_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let state = value
+        .get("execution_state")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let mut output = format!("更新状态\n操作：{operation}\n状态：{state}");
+    if state == "confirmed" {
+        output.push_str("\n程序替换已启动；请使用 `kb update status` 查看最终结果。");
+    }
+    for component in value
+        .get("components")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = component
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let component_state = component
+            .get("state")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let message = component
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let _ = write!(output, "\n- {kind} [{component_state}] {message}");
+    }
+    output
 }
 
 fn render_vault_upgrade(value: &Value) -> String {

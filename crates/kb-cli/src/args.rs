@@ -7,6 +7,7 @@ use kb_app::{
 };
 use kb_core::{
     KnowledgePlanRequest, OperationId, SearchMatchMode, SkillHost, SkillInstallMode, SkillScope,
+    UpdateConfirmationToken,
 };
 use uuid::Uuid;
 
@@ -51,10 +52,18 @@ pub(crate) struct ServeCommand {
 
 #[derive(Clone)]
 pub(crate) struct UpdateCommand {
-    pub check_only: bool,
+    pub action: UpdateAction,
     pub json: bool,
     pub vault: Option<String>,
     pub excluded_vaults: Vec<Uuid>,
+}
+
+#[derive(Clone)]
+pub(crate) enum UpdateAction {
+    Check,
+    Prepare,
+    Confirm(UpdateConfirmationToken),
+    Status(Option<OperationId>),
 }
 
 pub(crate) struct TargetPlanCommand {
@@ -270,12 +279,18 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Check for or install a newer official release binary.
+    /// Review and update the CLI plus managed local Knowledge-Brain components.
+    #[command(
+        after_help = "Bare `kb update` displays one complete plan, then asks once before applying it. `kb update check` never persists or changes anything. Use `kb update status` for the authoritative result after executable replacement. Optional Skills are updated only when Knowledge-Brain has a managed installation record; missing or externally installed Skills are not installed or adopted. Package-manager-managed executables are reported and left to their package manager."
+    )]
     Update {
         #[command(subcommand)]
         command: Option<UpdateCommands>,
         #[arg(long)]
         json: bool,
+        /// Apply exactly one previously displayed update plan.
+        #[arg(long)]
+        confirm: Option<UpdateConfirmationToken>,
         /// Update only one Vault path or registered stable ID.
         #[arg(long, global = true)]
         vault: Option<String>,
@@ -349,6 +364,12 @@ enum Commands {
 enum UpdateCommands {
     /// Check the latest official stable release without changing this installation.
     Check {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the latest update operation or one operation by ID.
+    Status {
+        operation_id: Option<OperationId>,
         #[arg(long)]
         json: bool,
     },
@@ -832,15 +853,31 @@ impl Cli {
             Commands::Update {
                 command,
                 json,
+                confirm,
                 vault,
                 excluded_vaults,
             } => {
-                let (check_only, json) = match command {
-                    Some(UpdateCommands::Check { json }) => (true, json),
-                    None => (false, json),
+                let (action, json) = match (command, confirm) {
+                    (Some(UpdateCommands::Check { json }), None) => (UpdateAction::Check, json),
+                    (Some(UpdateCommands::Status { operation_id, json }), None) => {
+                        (UpdateAction::Status(operation_id), json)
+                    }
+                    (None, Some(token)) => (UpdateAction::Confirm(token), json),
+                    (None, None) => (UpdateAction::Prepare, json),
+                    (Some(_), Some(_)) => {
+                        return ParsedCommand::App {
+                            request: Err(kb_core::KbError::invalid_config(
+                                "kb update",
+                                "--confirm cannot be combined with an update subcommand",
+                            )),
+                            json,
+                            fail_on_findings: false,
+                            full_hashes: false,
+                        };
+                    }
                 };
                 ParsedCommand::Update(UpdateCommand {
-                    check_only,
+                    action,
                     json,
                     vault,
                     excluded_vaults,

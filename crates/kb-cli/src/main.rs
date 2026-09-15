@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs,
+    io::{self, BufRead, Write},
     path::Path,
     process::{Command, ExitCode, Stdio},
     sync::{Arc, Mutex},
@@ -9,6 +10,7 @@ use std::{
 use kb_app::{AppContext, AppRequest};
 use kb_core::{ErrorCode, KbError};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 mod args;
 mod render;
@@ -46,7 +48,7 @@ async fn main() -> ExitCode {
         },
         args::ParsedCommand::Update(command) => {
             let json = command.json;
-            match run_update(command, &context) {
+            match run_update(&command, &context) {
                 Ok(value) => render::success(&value, json, false, false),
                 Err(error) => render::error(error, json),
             }
@@ -127,6 +129,18 @@ fn run_replace_update(command: &args::ReplaceUpdateCommand) -> Result<(), KbErro
         command.operation_id,
         kb_core::UpdateExecutionState::ReplacingCli,
     )?;
+    let result = replace_update_after_transition(command, &paths, &store);
+    if result.is_err() {
+        let _ = store.transition(command.operation_id, kb_core::UpdateExecutionState::Failed);
+    }
+    result
+}
+
+fn replace_update_after_transition(
+    command: &args::ReplaceUpdateCommand,
+    paths: &kb_app::UserPaths,
+    store: &kb_app::UpdateStore,
+) -> Result<(), KbError> {
     let stage: kb_app::StoredUpdateStage = store.load_stage(command.operation_id)?;
     let operation = store.load(command.operation_id)?;
     let executable = operation
@@ -138,6 +152,23 @@ fn run_replace_update(command: &args::ReplaceUpdateCommand) -> Result<(), KbErro
         })
         .and_then(|component| component.changes.first())
         .ok_or_else(|| KbError::invalid_config("update operation", "missing executable change"))?;
+    let actual_before = fs::read(&executable.path)
+        .map(|bytes| hex::encode(Sha256::digest(bytes)))
+        .map_err(|error| {
+            KbError::io_failure(
+                "verify installed executable",
+                executable.path.display().to_string(),
+                error.to_string(),
+            )
+        })?;
+    if executable.before_sha256.as_deref() != Some(actual_before.as_str()) {
+        return Err(KbError::new(
+            ErrorCode::PlanStale,
+            "The installed executable changed after update confirmation.",
+            false,
+            "Keep the current executable and prepare a new update plan.",
+        ));
+    }
     let operation_dir = paths
         .state_dir
         .join("updates")
@@ -153,7 +184,6 @@ fn run_replace_update(command: &args::ReplaceUpdateCommand) -> Result<(), KbErro
     let replaced = kb_update::wait_for_parent_exit(command.parent_pid, command.parent_start_time)
         .and_then(|()| kb_update::replace_with_backup(&replacement));
     if let Err(error) = replaced {
-        let _ = store.transition(command.operation_id, kb_core::UpdateExecutionState::Failed);
         return Err(update_error(error));
     }
     store.transition(
@@ -179,7 +209,80 @@ fn run_replace_update(command: &args::ReplaceUpdateCommand) -> Result<(), KbErro
     Ok(())
 }
 
-fn run_update(command: args::UpdateCommand, context: &AppContext) -> Result<Value, KbError> {
+fn run_update(command: &args::UpdateCommand, context: &AppContext) -> Result<Value, KbError> {
+    match command.action.clone() {
+        args::UpdateAction::Status(operation_id) => {
+            reject_update_scope(command)?;
+            return kb_app::run(
+                AppRequest::Update(Box::new(kb_app::UpdateRequest::Status { operation_id })),
+                context,
+            );
+        }
+        args::UpdateAction::Confirm(token) => {
+            reject_update_scope(command)?;
+            return confirm_and_schedule(context, token);
+        }
+        args::UpdateAction::Check => return prepare_update(command, context, false),
+        args::UpdateAction::Prepare => {}
+    }
+
+    let mut preview = prepare_update(command, context, true)?;
+    if command.json || update_confirmation(&preview)?.is_none() {
+        return Ok(preview);
+    }
+
+    println!("{}", render::human(&preview, false)?);
+    let selected = selected_vault_ids(&preview)?;
+    if selected.len() > 1 {
+        let Some(input) = read_prompt(
+            "Exclude Vault IDs before confirmation (comma-separated, Enter for none): ",
+        )?
+        else {
+            return cancel_preview(context, &preview);
+        };
+        let additional = match parse_exclusions(&input, &selected) {
+            Ok(additional) => additional,
+            Err(error) => {
+                let _ = cancel_preview(context, &preview);
+                return Err(error);
+            }
+        };
+        if !additional.is_empty() {
+            cancel_preview(context, &preview)?;
+            let mut excluded_vaults = command.excluded_vaults.clone();
+            excluded_vaults.extend(additional);
+            excluded_vaults.sort_unstable();
+            excluded_vaults.dedup();
+            preview = prepare_update(
+                &args::UpdateCommand {
+                    action: args::UpdateAction::Prepare,
+                    excluded_vaults,
+                    ..command.clone()
+                },
+                context,
+                true,
+            )?;
+            println!("{}", render::human(&preview, false)?);
+        }
+    }
+
+    let Some(answer) = read_prompt("Apply this exact update plan? [y/N] ")? else {
+        return cancel_preview(context, &preview);
+    };
+    if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+        return cancel_preview(context, &preview);
+    }
+    let token = update_confirmation(&preview)?.ok_or_else(|| {
+        KbError::invalid_config("update preview", "confirmation token is missing")
+    })?;
+    confirm_and_schedule(context, token)
+}
+
+fn prepare_update(
+    command: &args::UpdateCommand,
+    context: &AppContext,
+    persist: bool,
+) -> Result<Value, KbError> {
     let identity = compiled_identity()?;
     let executable = std::env::current_exe().map_err(|error| {
         KbError::io_failure("locate current executable", "process", error.to_string())
@@ -189,18 +292,190 @@ fn run_update(command: args::UpdateCommand, context: &AppContext) -> Result<Valu
         executable,
     });
     let selection = kb_app::UpdateSelection {
-        vault: command.vault,
-        excluded_vaults: command.excluded_vaults,
-        persist: !command.check_only,
+        vault: command.vault.clone(),
+        excluded_vaults: command.excluded_vaults.clone(),
+        persist,
     };
     kb_app::run(
-        AppRequest::Update(Box::new(if command.check_only {
-            kb_app::UpdateRequest::Check(selection)
-        } else {
+        AppRequest::Update(Box::new(if persist {
             kb_app::UpdateRequest::Prepare(selection)
+        } else {
+            kb_app::UpdateRequest::Check(selection)
         })),
         &context,
     )
+}
+
+fn reject_update_scope(command: &args::UpdateCommand) -> Result<(), KbError> {
+    if command.vault.is_some() || !command.excluded_vaults.is_empty() {
+        return Err(KbError::invalid_config(
+            "kb update",
+            "--vault and --exclude-vault are valid only while checking or preparing a plan",
+        ));
+    }
+    Ok(())
+}
+
+fn update_confirmation(value: &Value) -> Result<Option<kb_core::UpdateConfirmationToken>, KbError> {
+    value
+        .get("confirmation_token")
+        .and_then(Value::as_str)
+        .map(str::parse)
+        .transpose()
+}
+
+fn update_operation_id(value: &Value) -> Result<kb_core::OperationId, KbError> {
+    value
+        .pointer("/plan/operation_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| KbError::invalid_config("update preview", "operation ID is missing"))?
+        .parse::<kb_core::OperationId>()
+        .map_err(|error| KbError::invalid_config("update preview", error.to_string()))
+}
+
+fn selected_vault_ids(value: &Value) -> Result<Vec<uuid::Uuid>, KbError> {
+    value
+        .pointer("/plan/scope/vaults")
+        .and_then(Value::as_array)
+        .ok_or_else(|| KbError::invalid_config("update preview", "selected Vaults are missing"))?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| KbError::invalid_config("update preview", "invalid Vault ID"))?
+                .parse::<uuid::Uuid>()
+                .map_err(|error| KbError::invalid_config("update preview", error.to_string()))
+        })
+        .collect()
+}
+
+fn parse_exclusions(input: &str, selected: &[uuid::Uuid]) -> Result<Vec<uuid::Uuid>, KbError> {
+    let mut exclusions = input
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .parse::<uuid::Uuid>()
+                .map_err(|error| KbError::invalid_config("Vault exclusion", error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    exclusions.sort_unstable();
+    exclusions.dedup();
+    if let Some(unknown) = exclusions.iter().find(|id| !selected.contains(id)) {
+        return Err(KbError::invalid_config(
+            "Vault exclusion",
+            format!("{unknown} is not part of the displayed update plan"),
+        ));
+    }
+    Ok(exclusions)
+}
+
+fn read_prompt(prompt: &str) -> Result<Option<String>, KbError> {
+    print!("{prompt}");
+    io::stdout()
+        .flush()
+        .map_err(|error| KbError::io_failure("show update prompt", "stdout", error.to_string()))?;
+    let mut answer = String::new();
+    let bytes = io::stdin().lock().read_line(&mut answer).map_err(|error| {
+        KbError::io_failure("read update confirmation", "stdin", error.to_string())
+    })?;
+    Ok((bytes != 0).then_some(answer))
+}
+
+fn cancel_preview(context: &AppContext, preview: &Value) -> Result<Value, KbError> {
+    kb_app::run(
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::Cancel {
+            operation_id: update_operation_id(preview)?,
+        })),
+        context,
+    )
+}
+
+fn confirm_and_schedule(
+    context: &AppContext,
+    token: kb_core::UpdateConfirmationToken,
+) -> Result<Value, KbError> {
+    let value = kb_app::run(
+        AppRequest::Update(Box::new(kb_app::UpdateRequest::Confirm { token })),
+        context,
+    )?;
+    let operation: kb_core::UpdateOperation = serde_json::from_value(value.clone())
+        .map_err(|error| KbError::invalid_config("update operation", error.to_string()))?;
+    if operation.execution_state == kb_core::UpdateExecutionState::Confirmed
+        && operation.components.iter().any(|component| {
+            component.kind == kb_core::UpdateComponentKind::Executable
+                && component.state == kb_core::UpdateComponentState::Pending
+        })
+    {
+        if let Err(error) = schedule_update_replacement(operation.operation_id) {
+            let environment = std::env::vars().collect::<BTreeMap<_, _>>();
+            if let Ok(paths) = kb_app::UserPaths::resolve(&environment) {
+                let store = kb_app::UpdateStore::new(&paths);
+                let _ = store.transition(
+                    operation.operation_id,
+                    kb_core::UpdateExecutionState::Failed,
+                );
+            }
+            return Err(error);
+        }
+    }
+    Ok(value)
+}
+
+fn schedule_update_replacement(operation_id: kb_core::OperationId) -> Result<(), KbError> {
+    let environment = std::env::vars().collect::<BTreeMap<_, _>>();
+    let paths = kb_app::UserPaths::resolve(&environment)?;
+    let operation_dir = paths
+        .state_dir
+        .join("updates")
+        .join(operation_id.to_string());
+    let current = std::env::current_exe().map_err(|error| {
+        KbError::io_failure("locate update helper", "process", error.to_string())
+    })?;
+    let helper = operation_dir.join(if cfg!(windows) {
+        "update-helper.exe"
+    } else {
+        "update-helper"
+    });
+    if fs::symlink_metadata(&helper).is_ok() {
+        return Err(KbError::invalid_config(
+            helper.display().to_string(),
+            "update helper already exists",
+        ));
+    }
+    fs::copy(&current, &helper).map_err(|error| {
+        KbError::io_failure(
+            "copy update helper",
+            helper.display().to_string(),
+            error.to_string(),
+        )
+    })?;
+    let parent_pid = std::process::id();
+    let parent_start_time =
+        kb_update::parent_process_start_time(parent_pid).map_err(update_error)?;
+    if let Err(error) = scrubbed_command(&helper)
+        .arg("__replace-update")
+        .arg("--operation")
+        .arg(operation_id.to_string())
+        .arg("--parent-pid")
+        .arg(parent_pid.to_string())
+        .arg("--parent-start-time")
+        .arg(parent_start_time.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        let store = kb_app::UpdateStore::new(&paths);
+        let _ = store.transition(operation_id, kb_core::UpdateExecutionState::Failed);
+        return Err(KbError::io_failure(
+            "start update helper",
+            helper.display().to_string(),
+            error.to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn schedule_cleanup(

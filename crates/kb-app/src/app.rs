@@ -136,6 +136,9 @@ pub enum UpdateRequest {
     Confirm {
         token: kb_core::UpdateConfirmationToken,
     },
+    Cancel {
+        operation_id: OperationId,
+    },
     Status {
         operation_id: Option<OperationId>,
     },
@@ -377,6 +380,15 @@ fn run_update_request(request: UpdateRequest, context: &AppContext) -> Result<Va
             }
         }
         UpdateRequest::Confirm { token } => to_value(confirm_update(context, &token)?),
+        UpdateRequest::Cancel { operation_id } => {
+            let store = crate::UpdateStore::new(context.user_paths()?);
+            store.remove_cancelled(operation_id)?;
+            Ok(json!({
+                "kind": "update",
+                "operation_id": operation_id,
+                "cancelled": true
+            }))
+        }
         UpdateRequest::Resume { operation_id } => to_value(resume_update(context, operation_id)?),
     }
 }

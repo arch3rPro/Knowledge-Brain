@@ -111,6 +111,7 @@ pub(crate) fn resume_update_components(
     store.transition(operation_id, terminal)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_component(
     user_paths: &UserPaths,
     roots: &AgentRoots,

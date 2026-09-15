@@ -190,3 +190,37 @@ fn failed_replacement_preserves_target_and_records_failed_state() {
         UpdateExecutionState::Failed
     );
 }
+
+#[test]
+fn replacement_rejects_an_executable_changed_after_confirmation() {
+    let temp = tempfile::tempdir().unwrap();
+    let (paths, plan, target) = prepare_executable_update(&temp, true);
+    fs::write(&target, b"changed after confirmation").unwrap();
+
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .env("KB_CONFIG_DIR", &paths.config_dir)
+        .env("KB_STATE_DIR", &paths.state_dir)
+        .env("KB_CACHE_DIR", &paths.cache_dir)
+        .args([
+            "__replace-update",
+            "--operation",
+            &plan.operation_id.to_string(),
+            "--parent-pid",
+            &u32::MAX.to_string(),
+            "--parent-start-time",
+            "0",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(fs::read(target).unwrap(), b"changed after confirmation");
+    assert_eq!(
+        UpdateStore::new(&paths)
+            .load(plan.operation_id)
+            .unwrap()
+            .execution_state,
+        UpdateExecutionState::Failed
+    );
+}

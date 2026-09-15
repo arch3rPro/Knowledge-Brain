@@ -150,6 +150,23 @@ fn update_check_accepts_vault_scope_and_repeatable_exclusions() {
     );
 }
 
+#[test]
+fn update_help_explains_confirmation_and_managed_boundaries() {
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .args(["update", "--help"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("displays one complete plan, then asks once"));
+    assert!(help.contains("missing or externally installed Skills are not installed"));
+    assert!(help.contains("Package-manager-managed executables"));
+    assert!(help.contains("update status"));
+    assert!(help.contains("--confirm"));
+}
+
 fn directory_entries(path: &Path) -> Vec<String> {
     std::fs::read_dir(path)
         .unwrap()
