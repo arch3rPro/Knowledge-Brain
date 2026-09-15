@@ -52,6 +52,7 @@ mod storage;
 mod sync;
 mod template;
 mod template_state;
+mod update_store;
 mod user_dirs;
 mod vault;
 mod vault_upgrade;
@@ -98,6 +99,7 @@ pub use template_state::{
     TemplateCompatibility, TemplateInspection, TemplateUpdatePlan, TemplateUpdateResult,
     TemplateWrite, apply_template_update, inspect_template, plan_template_update,
 };
+pub use update_store::UpdateStore;
 pub use user_dirs::UserPaths;
 pub use vault::{ResolvedVault, VaultSelection, resolve_vault};
 pub use vault_upgrade::{
