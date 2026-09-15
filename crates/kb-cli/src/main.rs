@@ -1,8 +1,7 @@
 use std::{
     collections::BTreeMap,
-    fs::{self, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
+    fs,
+    path::Path,
     process::{Command, ExitCode, Stdio},
     sync::{Arc, Mutex},
 };
@@ -47,11 +46,15 @@ async fn main() -> ExitCode {
         },
         args::ParsedCommand::Update(command) => {
             let json = command.json;
-            match run_update(command) {
+            match run_update(command, &context) {
                 Ok(value) => render::success(&value, json, false, false),
                 Err(error) => render::error(error, json),
             }
         }
+        args::ParsedCommand::UpdatePlan(command) => match run_target_plan(&command) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        },
         args::ParsedCommand::Replace(command) => {
             let json = command.json;
             let request = kb_update::ReplaceRequest::verified(
@@ -82,127 +85,47 @@ async fn main() -> ExitCode {
     }
 }
 
-fn run_update(command: args::UpdateCommand) -> Result<Value, KbError> {
-    let identity = compiled_identity()?;
-    if !identity.can_update() {
-        return Err(KbError::new(
-            ErrorCode::CapabilityUnavailable,
-            "This installation was not installed from an official GitHub Release.",
-            false,
-            "Use your source or Cargo package manager to update it.",
-        ));
-    }
-    let check =
-        kb_update::check_for_update(&identity, &kb_update::UreqTransport).map_err(update_error)?;
-    if command.check_only || !check.update_available {
-        return Ok(json!({
-            "current": check.current.to_string(),
-            "latest": check.latest.as_ref().map(|release| release.version.to_string()),
-            "update_available": check.update_available,
-            "status": "checked",
-        }));
-    }
-
-    let release = check.latest.ok_or_else(|| {
-        KbError::new(
-            ErrorCode::CapabilityUnavailable,
-            "No newer official release is available.",
-            false,
-            "Continue using the installed version.",
-        )
-    })?;
-    let version = release.version.clone();
-    schedule_update(&identity, release)?;
-    Ok(json!({
-        "current": check.current.to_string(),
-        "latest": version.to_string(),
-        "update_available": true,
-        "status": "scheduled",
-    }))
-}
-
-fn schedule_update(
-    identity: &kb_update::BuildIdentity,
-    release: kb_update::AvailableRelease,
-) -> Result<(), KbError> {
-    let current = std::env::current_exe().map_err(|error| {
-        KbError::io_failure("locate current executable", "process", error.to_string())
-    })?;
-    let parent = current.parent().ok_or_else(|| {
+fn run_target_plan(command: &args::TargetPlanCommand) -> Result<(), KbError> {
+    let request_bytes = fs::read(&command.request).map_err(|error| {
         KbError::io_failure(
-            "locate executable directory",
-            current.display().to_string(),
-            "missing parent",
-        )
-    })?;
-    let token = uuid::Uuid::new_v4().simple().to_string();
-    let stage_path = parent.join(format!(".kb-update-{token}"));
-    create_private_stage(&stage_path, &token)?;
-    let mut stage = UpdateStageGuard::new(stage_path.clone(), token.clone());
-
-    let verified =
-        kb_update::verify_release(identity, release, &kb_update::UreqTransport, &stage_path)
-            .map_err(update_error)?;
-    let output = scrubbed_command(&verified.executable)
-        .args(["version", "--json"])
-        .output()
-        .map_err(|error| {
-            update_error(kb_update::UpdateError::VerificationFailed(format!(
-                "run staged executable: {error}"
-            )))
-        })?;
-    if !output.status.success() {
-        return Err(update_error(kb_update::UpdateError::VerificationFailed(
-            "staged executable could not report its identity".into(),
-        )));
-    }
-    kb_update::validate_staged_identity(&output.stdout, &verified.version, verified.target)
-        .map_err(update_error)?;
-
-    let helper = stage_path.join(verified.target.executable_name());
-    fs::copy(&current, &helper).map_err(|error| {
-        KbError::io_failure(
-            "copy update helper",
-            helper.display().to_string(),
+            "read target update request",
+            command.request.display().to_string(),
             error.to_string(),
         )
     })?;
-    let backup = parent.join(format!(".kb-backup-{}-{token}", verified.version));
-    let parent_pid = std::process::id();
-    let parent_start_time =
-        kb_update::parent_process_start_time(parent_pid).map_err(update_error)?;
-    scrubbed_command(&helper)
-        .arg("__replace")
-        .arg("--parent-pid")
-        .arg(parent_pid.to_string())
-        .arg("--parent-start-time")
-        .arg(parent_start_time.to_string())
-        .arg("--from")
-        .arg(&verified.executable)
-        .arg("--to")
-        .arg(&current)
-        .arg("--backup")
-        .arg(&backup)
-        .arg("--expected-sha256")
-        .arg(&verified.executable_sha256)
-        .arg("--cleanup-dir")
-        .arg(&stage_path)
-        .arg("--cleanup-token")
-        .arg(&token)
-        .arg("--json")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| {
-            KbError::io_failure(
-                "start update helper",
-                helper.display().to_string(),
-                error.to_string(),
-            )
+    let request: kb_app::TargetPlanRequest =
+        serde_json::from_slice(&request_bytes).map_err(|error| {
+            KbError::invalid_config(command.request.display().to_string(), error.to_string())
         })?;
-    stage.disarm();
-    Ok(())
+    let plan = kb_app::create_target_update_plan(&request)?;
+    let output = serde_json::to_vec_pretty(&plan).map_err(|error| {
+        KbError::invalid_config(command.output.display().to_string(), error.to_string())
+    })?;
+    kb_app::atomic_replace(&command.output, &output)
+}
+
+fn run_update(command: args::UpdateCommand, context: &AppContext) -> Result<Value, KbError> {
+    let identity = compiled_identity()?;
+    let executable = std::env::current_exe().map_err(|error| {
+        KbError::io_failure("locate current executable", "process", error.to_string())
+    })?;
+    let context = context.clone().with_update_runtime(kb_app::UpdateRuntime {
+        identity,
+        executable,
+    });
+    let selection = kb_app::UpdateSelection {
+        vault: command.vault,
+        excluded_vaults: command.excluded_vaults,
+        persist: !command.check_only,
+    };
+    kb_app::run(
+        AppRequest::Update(Box::new(if command.check_only {
+            kb_app::UpdateRequest::Check(selection)
+        } else {
+            kb_app::UpdateRequest::Prepare(selection)
+        })),
+        &context,
+    )
 }
 
 fn schedule_cleanup(
@@ -242,74 +165,6 @@ fn scrubbed_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = Command::new(program);
     command.env_clear().envs(environment);
     command
-}
-
-fn create_private_stage(path: &Path, token: &str) -> Result<(), KbError> {
-    fs::create_dir(path).map_err(|error| {
-        KbError::io_failure(
-            "create update stage",
-            path.display().to_string(),
-            error.to_string(),
-        )
-    })?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|error| {
-            KbError::io_failure(
-                "secure update stage",
-                path.display().to_string(),
-                error.to_string(),
-            )
-        })?;
-    }
-    let marker = path.join(".cleanup-token");
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&marker)
-        .map_err(|error| {
-            KbError::io_failure(
-                "create update marker",
-                marker.display().to_string(),
-                error.to_string(),
-            )
-        })?;
-    output.write_all(token.as_bytes()).map_err(|error| {
-        KbError::io_failure(
-            "write update marker",
-            marker.display().to_string(),
-            error.to_string(),
-        )
-    })
-}
-
-struct UpdateStageGuard {
-    path: PathBuf,
-    token: String,
-    armed: bool,
-}
-
-impl UpdateStageGuard {
-    fn new(path: PathBuf, token: String) -> Self {
-        Self {
-            path,
-            token,
-            armed: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for UpdateStageGuard {
-    fn drop(&mut self) {
-        if self.armed {
-            let _ = kb_update::remove_update_stage(&self.path, &self.token);
-        }
-    }
 }
 
 #[allow(clippy::needless_pass_by_value)]

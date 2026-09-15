@@ -5,7 +5,7 @@ use assert_cmd::Command;
 use sha2::{Digest, Sha256};
 
 #[test]
-fn development_binary_refuses_update_without_network_or_file_writes() {
+fn development_binary_checks_managed_components_without_network_or_file_writes() {
     let temp = tempfile::tempdir().unwrap();
     let before = directory_entries(temp.path());
 
@@ -18,25 +18,42 @@ fn development_binary_refuses_update_without_network_or_file_writes() {
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(response["error"]["code"], "capability_unavailable");
+    assert_eq!(response["data"]["outcome"], "plan");
+    assert_eq!(response["data"]["plan"]["state"], "no_changes");
+    assert_eq!(
+        response["data"]["plan"]["components"][0]["kind"],
+        "executable"
+    );
+    assert_eq!(
+        response["data"]["plan"]["components"][0]["state"],
+        "skipped"
+    );
     assert_eq!(directory_entries(temp.path()), before);
 }
 
 #[test]
-fn development_binary_uses_kb_update_as_the_install_command() {
+fn development_binary_uses_bare_kb_update_as_the_prepare_command() {
+    let temp = tempfile::tempdir().unwrap();
     let output = Command::cargo_bin("kb")
         .unwrap()
+        .env("KB_CONFIG_DIR", temp.path().join("config"))
+        .env("KB_STATE_DIR", temp.path().join("state"))
+        .env("KB_CACHE_DIR", temp.path().join("cache"))
         .args(["update", "--json"])
         .output()
         .unwrap();
 
-    assert!(!output.status.success());
+    assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(response["error"]["code"], "capability_unavailable");
+    assert_eq!(response["data"]["outcome"], "plan");
+    assert_eq!(
+        response["data"]["plan"]["components"][0]["state"],
+        "skipped"
+    );
 }
 
 #[test]
@@ -91,6 +108,45 @@ fn hidden_helper_replaces_the_binary_and_cleans_its_private_stage() {
     assert_eq!(
         hex::encode(Sha256::digest(std::fs::read(target).unwrap())),
         expected
+    );
+}
+
+#[test]
+fn update_check_accepts_vault_scope_and_repeatable_exclusions() {
+    let temp = tempfile::tempdir().unwrap();
+    let vault = temp.path().join("vault");
+    let report = kb_app::init_vault(&kb_app::InitRequest {
+        target: vault.clone(),
+    })
+    .unwrap();
+
+    let output = Command::cargo_bin("kb")
+        .unwrap()
+        .env("KB_CONFIG_DIR", temp.path().join("config"))
+        .env("KB_STATE_DIR", temp.path().join("state"))
+        .env("KB_CACHE_DIR", temp.path().join("cache"))
+        .arg("update")
+        .arg("check")
+        .arg("--vault")
+        .arg(&vault)
+        .arg("--exclude-vault")
+        .arg(report.vault_id.to_string())
+        .arg("--json")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        response["data"]["plan"]["excluded_vaults"][0],
+        report.vault_id.to_string()
+    );
+    assert_eq!(
+        response["data"]["plan"]["scope"]["vaults"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
     );
 }
 

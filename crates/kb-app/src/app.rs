@@ -23,6 +23,7 @@ pub struct AppContext {
     environment: BTreeMap<String, String>,
     current_dir: PathBuf,
     user_paths: Result<UserPaths, KbError>,
+    update_runtime: Option<crate::UpdateRuntime>,
 }
 
 pub type AppResponse = Value;
@@ -35,7 +36,14 @@ impl AppContext {
             environment,
             current_dir,
             user_paths,
+            update_runtime: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_update_runtime(mut self, runtime: crate::UpdateRuntime) -> Self {
+        self.update_runtime = Some(runtime);
+        self
     }
 
     fn user_paths(&self) -> Result<&UserPaths, KbError> {
@@ -56,6 +64,7 @@ impl AppContext {
 
 #[derive(Debug, Clone)]
 pub enum AppRequest {
+    Update(Box<UpdateRequest>),
     Backup(BackupRequest),
     Review {
         vault: Option<String>,
@@ -118,6 +127,22 @@ pub enum AppRequest {
     },
     Version,
     Capabilities,
+}
+
+#[derive(Debug, Clone)]
+pub enum UpdateRequest {
+    Check(crate::UpdateSelection),
+    Prepare(crate::UpdateSelection),
+    Confirm {
+        token: kb_core::UpdateConfirmationToken,
+    },
+    Status {
+        operation_id: Option<OperationId>,
+    },
+    PlanTarget(Box<crate::TargetPlanRequest>),
+    Resume {
+        operation_id: OperationId,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +274,7 @@ pub enum VaultRequest {
 /// failed storage operations.
 pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbError> {
     match request {
+        AppRequest::Update(request) => run_update_request(*request, context),
         AppRequest::Backup(request) => run_backup(request, context),
         AppRequest::Review { vault } => run_review(context, vault),
         AppRequest::Maintenance { vault } => run_maintenance(context, vault),
@@ -336,6 +362,51 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
         })),
         AppRequest::Capabilities => to_value(capabilities()),
     }
+}
+
+fn run_update_request(request: UpdateRequest, context: &AppContext) -> Result<Value, KbError> {
+    match request {
+        UpdateRequest::Check(selection) => run_update_plan(context, &selection, false),
+        UpdateRequest::Prepare(selection) => run_update_plan(context, &selection, true),
+        UpdateRequest::PlanTarget(request) => to_value(crate::create_target_update_plan(&request)?),
+        UpdateRequest::Status { operation_id } => {
+            let store = crate::UpdateStore::new(context.user_paths()?);
+            match operation_id {
+                Some(operation_id) => to_value(store.load(operation_id)?),
+                None => to_value(store.latest()?),
+            }
+        }
+        UpdateRequest::Confirm { .. } | UpdateRequest::Resume { .. } => Err(KbError::new(
+            ErrorCode::CapabilityUnavailable,
+            "Confirmed unified update execution is not available in this build step.",
+            false,
+            "Keep the reviewed operation and resume after update execution support is installed.",
+        )),
+    }
+}
+
+fn run_update_plan(
+    context: &AppContext,
+    selection: &crate::UpdateSelection,
+    persist: bool,
+) -> Result<Value, KbError> {
+    let runtime = context.update_runtime.as_ref().ok_or_else(|| {
+        KbError::new(
+            ErrorCode::CapabilityUnavailable,
+            "This adapter did not provide an executable update runtime.",
+            false,
+            "Use the kb CLI to check or prepare executable updates.",
+        )
+    })?;
+    to_value(crate::plan_update(
+        runtime,
+        context.user_paths()?,
+        &context.agent_roots()?,
+        &context.current_dir,
+        &context.environment,
+        selection,
+        persist,
+    )?)
 }
 
 fn run_maintenance(context: &AppContext, vault: Option<String>) -> Result<Value, KbError> {

@@ -923,6 +923,7 @@ dependencies = [
  "hex",
  "html2text",
  "kb-core",
+ "kb-update",
  "quick-xml",
  "scraper",
  "serde",

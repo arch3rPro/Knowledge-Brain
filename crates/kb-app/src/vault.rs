@@ -15,7 +15,7 @@ pub struct VaultSelection {
     pub current_dir: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedVault {
     pub vault_id: Uuid,
     pub root: PathBuf,

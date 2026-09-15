@@ -40,6 +40,53 @@ impl UpdateStore {
         }
     }
 
+    /// Create a private temporary stage on the same filesystem as operations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when private update storage cannot be prepared.
+    pub fn create_stage(&self) -> Result<tempfile::TempDir, KbError> {
+        self.ensure_root()?;
+        tempfile::Builder::new()
+            .prefix(".stage-")
+            .tempdir_in(&self.root)
+            .map_err(|error| io_error("create private update stage", &self.root, &error))
+    }
+
+    /// Move a verified stage under an existing preview and record its metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error unless the operation is still an unconfirmed preview
+    /// and both source and destination are regular private directories.
+    pub fn attach_stage(
+        &self,
+        operation_id: OperationId,
+        stage: tempfile::TempDir,
+        metadata: &impl Serialize,
+    ) -> Result<(), KbError> {
+        let operation = self.load(operation_id)?;
+        if operation.execution_state != UpdateExecutionState::Preview {
+            return Err(invalid_transition(
+                operation.execution_state,
+                UpdateExecutionState::Preview,
+            ));
+        }
+        let directory = self.checked_operation_directory(operation_id)?;
+        let destination = directory.join("stage");
+        if fs::symlink_metadata(&destination).is_ok() {
+            return Err(KbError::invalid_config(
+                destination.display().to_string(),
+                "a staged release is already attached",
+            ));
+        }
+        let source = stage.keep();
+        ensure_tree_without_links(&source)?;
+        fs::rename(&source, &destination)
+            .map_err(|error| io_error("attach verified update stage", &destination, &error))?;
+        write_json(&directory.join("stage.json"), metadata)
+    }
+
     /// Persist an immutable preview and make it the latest update operation.
     ///
     /// # Errors
@@ -527,6 +574,19 @@ fn remove_tree_without_links(path: &Path) -> Result<(), KbError> {
     }
     fs::remove_dir(path)
         .map_err(|error| io_error("remove cancelled update directory", path, &error))
+}
+
+fn ensure_tree_without_links(path: &Path) -> Result<(), KbError> {
+    ensure_not_link_or_reparse_point(path)?;
+    if path.is_dir() {
+        for entry in
+            fs::read_dir(path).map_err(|error| io_error("read update stage", path, &error))?
+        {
+            let entry = entry.map_err(|error| io_error("read update stage entry", path, &error))?;
+            ensure_tree_without_links(&entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 fn parse_time(value: &str, field: &str) -> Result<OffsetDateTime, KbError> {

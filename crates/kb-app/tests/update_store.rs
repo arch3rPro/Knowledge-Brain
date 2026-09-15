@@ -222,3 +222,33 @@ fn operation_path_never_follows_a_symbolic_link() {
     assert!(store.create(&future_plan()).is_err());
     assert_eq!(fs::read_dir(outside).unwrap().count(), 0);
 }
+
+#[test]
+fn verified_stage_moves_under_the_persisted_preview() {
+    let temp = tempfile::tempdir().unwrap();
+    let paths = paths(&temp);
+    let store = UpdateStore::new(&paths);
+    let plan = future_plan();
+    let stage = store.create_stage().unwrap();
+    fs::create_dir(stage.path().join("verified")).unwrap();
+    fs::write(stage.path().join("verified/kb"), b"verified").unwrap();
+    store.create(&plan).unwrap();
+
+    store
+        .attach_stage(
+            plan.operation_id,
+            stage,
+            &serde_json::json!({ "executable_relative": "stage/verified/kb" }),
+        )
+        .unwrap();
+
+    let operation = paths
+        .state_dir
+        .join("updates")
+        .join(plan.operation_id.to_string());
+    assert_eq!(
+        fs::read(operation.join("stage/verified/kb")).unwrap(),
+        b"verified"
+    );
+    assert!(operation.join("stage.json").is_file());
+}

@@ -2,8 +2,9 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use directories::ProjectDirs;
 use kb_core::{ErrorCode, KbError};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserPaths {
     pub config_dir: PathBuf,
     pub state_dir: PathBuf,

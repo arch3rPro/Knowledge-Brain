@@ -20,6 +20,7 @@ pub(crate) enum ParsedCommand {
     Serve(ServeCommand),
     Mcp(McpCommand),
     Update(UpdateCommand),
+    UpdatePlan(TargetPlanCommand),
     Replace(ReplaceCommand),
     Cleanup(CleanupCommand),
 }
@@ -46,10 +47,17 @@ pub(crate) struct ServeCommand {
     pub vault: Option<String>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct UpdateCommand {
     pub check_only: bool,
     pub json: bool,
+    pub vault: Option<String>,
+    pub excluded_vaults: Vec<Uuid>,
+}
+
+pub(crate) struct TargetPlanCommand {
+    pub request: PathBuf,
+    pub output: PathBuf,
 }
 
 pub(crate) struct ReplaceCommand {
@@ -255,6 +263,19 @@ enum Commands {
         command: Option<UpdateCommands>,
         #[arg(long)]
         json: bool,
+        /// Update only one Vault path or registered stable ID.
+        #[arg(long, global = true)]
+        vault: Option<String>,
+        /// Exclude a selected stable Vault ID; repeatable.
+        #[arg(long = "exclude-vault", global = true)]
+        excluded_vaults: Vec<Uuid>,
+    },
+    #[command(name = "__update-plan", hide = true)]
+    UpdatePlan {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
     },
     #[command(name = "__replace", hide = true)]
     Replace {
@@ -779,12 +800,25 @@ impl Cli {
                 fail_on_findings: false,
                 full_hashes: false,
             },
-            Commands::Update { command, json } => {
+            Commands::Update {
+                command,
+                json,
+                vault,
+                excluded_vaults,
+            } => {
                 let (check_only, json) = match command {
                     Some(UpdateCommands::Check { json }) => (true, json),
                     None => (false, json),
                 };
-                ParsedCommand::Update(UpdateCommand { check_only, json })
+                ParsedCommand::Update(UpdateCommand {
+                    check_only,
+                    json,
+                    vault,
+                    excluded_vaults,
+                })
+            }
+            Commands::UpdatePlan { request, output } => {
+                ParsedCommand::UpdatePlan(TargetPlanCommand { request, output })
             }
             Commands::Replace {
                 parent_pid,

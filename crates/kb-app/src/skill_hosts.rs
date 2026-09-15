@@ -1,12 +1,12 @@
 use directories::BaseDirs;
 use kb_core::{ErrorCode, KbError, SkillHost, SkillScope};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentRoots {
     pub home_dir: PathBuf,
     pub config_dir: PathBuf,

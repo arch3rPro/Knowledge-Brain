@@ -135,6 +135,20 @@ pub struct SkillPlanRequest<'a> {
 ///
 /// Returns an error when the target is modified, invalid, or cannot be saved.
 pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, KbError> {
+    let plan = preview_skill_plan(request)?;
+    save_skill_plan(request.user_paths, &plan)?;
+    Ok(plan)
+}
+
+/// Build a Skill change plan without persisting an independent operation.
+///
+/// This is used by the unified updater so every managed change remains inside
+/// one review and confirmation boundary.
+///
+/// # Errors
+///
+/// Returns an error when the target is modified, invalid, or not owned.
+pub fn preview_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, KbError> {
     let target = skill_target(
         request.vault_root,
         request.roots,
@@ -185,7 +199,6 @@ pub fn create_skill_plan(request: &SkillPlanRequest<'_>) -> Result<SkillPlan, Kb
         created_at: time::OffsetDateTime::now_utc().unix_timestamp().to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
     };
-    save_skill_plan(request.user_paths, &plan)?;
     Ok(plan)
 }
 
