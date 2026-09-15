@@ -9,7 +9,18 @@ use kb_core::{
     PortableRelativePath, SearchGroup, SearchHit, SearchMatchMode, SearchMode, SearchRequest,
     SearchResponse, SearchScope,
 };
+use serde::{Deserialize, Serialize};
 use std::{cmp::Reverse, collections::BTreeSet, fs, path::Path};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexCompatibility {
+    Missing,
+    Current,
+    Stale,
+    Unsupported,
+    Malformed,
+}
 pub(crate) struct Document {
     pub(crate) path: PortableRelativePath,
     pub(crate) content_path: PortableRelativePath,
@@ -298,6 +309,69 @@ pub(crate) fn invalidate_caches(root: &Path) -> Vec<String> {
 /// # Errors
 /// Returns read, integrity or cache-write errors.
 pub fn rebuild_catalog(root: &Path, c: &EffectiveConfig) -> Result<Catalog, KbError> {
+    let catalog = build_catalog(root, c)?;
+    let p = safe_path(root, ".kb/cache/catalog.json")?;
+    let parent = safe_path(root, ".kb/cache")?;
+    fs::create_dir_all(&parent).map_err(|e| io("create cache directory", &parent, e))?;
+    crate::operation::write_json(&p, &catalog)?;
+    if c.search.mode.value == SearchMode::Bm25 {
+        crate::bm25::update(root, c)?;
+    }
+    Ok(catalog)
+}
+
+/// Inspect active search indexes without creating or rewriting cache files.
+///
+/// # Errors
+///
+/// Returns an error only when authoritative Vault content cannot be inspected safely.
+pub fn inspect_index(root: &Path, c: &EffectiveConfig) -> Result<IndexCompatibility, KbError> {
+    let path = safe_path(root, ".kb/cache/catalog.json")?;
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(io("read search catalog", &path, error)),
+    };
+    let catalog_state = match bytes {
+        None => IndexCompatibility::Missing,
+        Some(bytes) => match serde_json::from_slice::<Catalog>(&bytes) {
+            Err(_) => IndexCompatibility::Malformed,
+            Ok(catalog)
+                if catalog.schema_version != CURRENT_SCHEMA_VERSION
+                    || catalog.indexer_version != "catalog-v1" =>
+            {
+                IndexCompatibility::Unsupported
+            }
+            Ok(catalog) if catalog != build_catalog(root, c)? => IndexCompatibility::Stale,
+            Ok(_) => IndexCompatibility::Current,
+        },
+    };
+    let bm25_state = if c.search.mode.value == SearchMode::Bm25 {
+        crate::bm25::inspect(root, c)?
+    } else {
+        IndexCompatibility::Current
+    };
+    Ok(aggregate_index_state(catalog_state, bm25_state))
+}
+
+fn aggregate_index_state(
+    catalog: IndexCompatibility,
+    bm25: IndexCompatibility,
+) -> IndexCompatibility {
+    for state in [
+        IndexCompatibility::Malformed,
+        IndexCompatibility::Unsupported,
+        IndexCompatibility::Stale,
+        IndexCompatibility::Missing,
+    ] {
+        if catalog == state || bm25 == state {
+            return state;
+        }
+    }
+    IndexCompatibility::Current
+}
+
+fn build_catalog(root: &Path, c: &EffectiveConfig) -> Result<Catalog, KbError> {
     let mut entries = Vec::new();
     for scope in [SearchScope::Wiki, SearchScope::Sources] {
         for d in documents(root, scope, c)? {
@@ -316,17 +390,9 @@ pub fn rebuild_catalog(root: &Path, c: &EffectiveConfig) -> Result<Catalog, KbEr
         }
     }
     entries.sort_by(|a, b| (&a.scope, &a.path).cmp(&(&b.scope, &b.path)));
-    let catalog = Catalog {
+    Ok(Catalog {
         schema_version: CURRENT_SCHEMA_VERSION,
         indexer_version: "catalog-v1".into(),
         entries,
-    };
-    let p = safe_path(root, ".kb/cache/catalog.json")?;
-    let parent = safe_path(root, ".kb/cache")?;
-    fs::create_dir_all(&parent).map_err(|e| io("create cache directory", &parent, e))?;
-    crate::operation::write_json(&p, &catalog)?;
-    if c.search.mode.value == SearchMode::Bm25 {
-        crate::bm25::update(root, c)?;
-    }
-    Ok(catalog)
+    })
 }

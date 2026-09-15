@@ -98,7 +98,7 @@ pub struct SearchResponse {
     pub groups: Vec<SearchGroup>,
     pub warnings: Vec<String>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogEntry {
     pub scope: SearchScope,
     pub path: PortableRelativePath,
@@ -106,7 +106,7 @@ pub struct CatalogEntry {
     pub title: String,
     pub headings: Vec<String>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Catalog {
     pub schema_version: SchemaVersion,
     pub indexer_version: String,

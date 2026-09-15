@@ -1,6 +1,6 @@
 use crate::{
     extract_bytes,
-    search::{Document, documents},
+    search::{Document, IndexCompatibility, documents},
     source_io::{hash, io, safe_path},
 };
 use kb_core::{
@@ -133,6 +133,42 @@ pub(crate) fn validate_current_index(root: &Path, config: &EffectiveConfig) -> R
     let index = read_index(&path)?;
     validate_current(root, SearchScope::Wiki, config, &index)?;
     validate_current(root, SearchScope::Sources, config, &index)
+}
+
+pub(crate) fn inspect(
+    root: &Path,
+    config: &EffectiveConfig,
+) -> Result<IndexCompatibility, KbError> {
+    let path = safe_path(root, ".kb/cache/bm25.json")?;
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(IndexCompatibility::Missing);
+        }
+        Err(error) => return Err(io("read BM25F index", &path, error)),
+    };
+    let index: Index = match serde_json::from_slice(&bytes) {
+        Ok(index) => index,
+        Err(_) => return Ok(IndexCompatibility::Malformed),
+    };
+    if index.schema_version != CURRENT_SCHEMA_VERSION
+        || index.indexer_version != INDEXER_VERSION
+        || index.parameters != parameters()
+    {
+        return Ok(IndexCompatibility::Unsupported);
+    }
+    if validate_index(&index).is_err() {
+        return Ok(IndexCompatibility::Malformed);
+    }
+    for scope in [SearchScope::Wiki, SearchScope::Sources] {
+        if let Err(error) = validate_current(root, scope, config, &index) {
+            if error.code == ErrorCode::IndexStale {
+                return Ok(IndexCompatibility::Stale);
+            }
+            return Err(error);
+        }
+    }
+    Ok(IndexCompatibility::Current)
 }
 
 fn read_index(path: &Path) -> Result<Index, KbError> {

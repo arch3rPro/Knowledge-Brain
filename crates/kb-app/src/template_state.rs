@@ -53,6 +53,7 @@ pub struct TemplateWrite {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TemplateUpdatePlan {
     pub component_state: UpdateComponentState,
+    pub compatibility: TemplateCompatibility,
     pub from_template_version: Option<SchemaVersion>,
     pub to_template_version: SchemaVersion,
     pub writes: Vec<TemplateWrite>,
@@ -79,27 +80,10 @@ pub struct TemplateUpdateResult {
 /// Returns an error when the Vault or a managed path cannot be read safely.
 pub fn inspect_template(root: &Path) -> Result<TemplateInspection, KbError> {
     let plan = plan_template_update(root)?;
-    let compatibility = if !plan.conflicts.is_empty() {
-        if plan
-            .conflicts
-            .iter()
-            .any(|conflict| conflict.path.as_deref() == Some(Path::new(".kb/template.yml")))
-        {
-            TemplateCompatibility::Malformed
-        } else {
-            TemplateCompatibility::Modified
-        }
-    } else if plan.from_template_version.is_none() {
-        TemplateCompatibility::MissingManifest
-    } else if plan.writes.is_empty() {
-        TemplateCompatibility::Current
-    } else {
-        TemplateCompatibility::Outdated
-    };
     Ok(TemplateInspection {
         version: plan.from_template_version,
         latest: plan.to_template_version,
-        compatibility,
+        compatibility: plan.compatibility,
         upgrade_available: !plan.writes.is_empty(),
         modified_entries: plan
             .conflicts
@@ -125,6 +109,7 @@ pub fn plan_template_update(root: &Path) -> Result<TemplateUpdatePlan, KbError> 
             Err(error) => {
                 return Ok(conflicted_plan(
                     None,
+                    TemplateCompatibility::Malformed,
                     conflict(
                         ".kb/template.yml",
                         format!("Template metadata cannot be parsed: {error}"),
@@ -147,6 +132,7 @@ pub fn plan_template_update(root: &Path) -> Result<TemplateUpdatePlan, KbError> 
         if let Err(error) = validate_manifest(manifest) {
             return Ok(conflicted_plan(
                 Some(manifest.template_version),
+                TemplateCompatibility::Malformed,
                 conflict(
                     ".kb/template.yml",
                     format!("Template metadata is malformed: {error}"),
@@ -157,6 +143,7 @@ pub fn plan_template_update(root: &Path) -> Result<TemplateUpdatePlan, KbError> 
         if !is_recognized_manifest(manifest) {
             return Ok(conflicted_plan(
                 Some(manifest.template_version),
+                TemplateCompatibility::Unknown,
                 conflict(
                     ".kb/template.yml",
                     "Template metadata does not match a recognized Knowledge-Brain ownership baseline.",
@@ -168,6 +155,7 @@ pub fn plan_template_update(root: &Path) -> Result<TemplateUpdatePlan, KbError> 
 
     let mut plan = TemplateUpdatePlan {
         component_state: UpdateComponentState::Unchanged,
+        compatibility: TemplateCompatibility::Current,
         from_template_version: manifest.as_ref().map(|value| value.template_version),
         to_template_version: VAULT_TEMPLATE_VERSION,
         writes: Vec::new(),
@@ -184,8 +172,16 @@ pub fn plan_template_update(root: &Path) -> Result<TemplateUpdatePlan, KbError> 
         plan.writes.clear();
         plan.changes.clear();
         plan.component_state = UpdateComponentState::Skipped;
+        plan.compatibility = TemplateCompatibility::Modified;
     } else if !plan.writes.is_empty() {
         plan.component_state = UpdateComponentState::Pending;
+        plan.compatibility = if plan.from_template_version.is_some() {
+            TemplateCompatibility::Outdated
+        } else {
+            TemplateCompatibility::MissingManifest
+        };
+    } else if plan.from_template_version.is_none() {
+        plan.compatibility = TemplateCompatibility::MissingManifest;
     }
     plan.writes
         .sort_by(|left, right| left.path.cmp(&right.path));
@@ -544,10 +540,12 @@ fn conflict(
 
 fn conflicted_plan(
     from_template_version: Option<SchemaVersion>,
+    compatibility: TemplateCompatibility,
     conflict: UpdateConflict,
 ) -> TemplateUpdatePlan {
     TemplateUpdatePlan {
         component_state: UpdateComponentState::Skipped,
+        compatibility,
         from_template_version,
         to_template_version: VAULT_TEMPLATE_VERSION,
         writes: Vec::new(),

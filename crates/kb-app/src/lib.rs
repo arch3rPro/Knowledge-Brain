@@ -17,7 +17,7 @@ mod source_verify;
 pub use discovery::{DiscoveredSource, DiscoverySnapshot, SkippedSource, discover_sources};
 pub use extract::{BuiltinTextExtractor, classify_media_type, extract_bytes};
 pub use review::{inspect_source_changes, review_sources};
-pub use search::{query, rebuild_catalog};
+pub use search::{IndexCompatibility, inspect_index, query, rebuild_catalog};
 pub use skill_assets::{SKILL_NAMES, SkillAsset, legacy_skill_assets, skill_assets};
 pub use skill_hosts::{
     AgentRoots, DetectedSkillHost, SkillTarget, detect_skill_hosts, detect_skill_hosts_for_scope,

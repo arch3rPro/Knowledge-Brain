@@ -7,6 +7,7 @@ use uuid::Uuid;
 use crate::{
     ConfigOverrides, UserPaths, load_admission, load_effective_config,
     schema::vault_schema_compatibility,
+    template_state::{TemplateInspection, inspect_template},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -14,6 +15,7 @@ pub struct StatusReport {
     pub root: std::path::PathBuf,
     pub vault_id: Uuid,
     pub schema: SchemaStatus,
+    pub template: TemplateInspection,
     pub configuration: ValidationState,
     pub admission: AdmissionStatus,
     pub recovery: RecoveryStatus,
@@ -97,6 +99,7 @@ pub fn vault_status(
             version: identity.schema_version,
             compatibility,
         },
+        template: inspect_template(root)?,
         configuration,
         admission,
         recovery: RecoveryStatus {
@@ -110,9 +113,10 @@ pub(crate) fn pending_operations(user_paths: &UserPaths, root: &Path) -> usize {
     let source_pending = usize::from(root.join(".kb/runtime/source-pending.json").exists());
     let knowledge_pending = usize::from(root.join(".kb/runtime/knowledge-pending.json").exists());
     let upgrade_pending = usize::from(root.join(".kb/runtime/vault-upgrade-pending.json").exists());
+    let update_pending = incomplete_update_operations(user_paths, root);
     let operations = user_paths.state_dir.join("operations");
     let Ok(entries) = fs::read_dir(operations) else {
-        return source_pending + knowledge_pending + upgrade_pending;
+        return source_pending + knowledge_pending + upgrade_pending + update_pending;
     };
     entries
         .filter_map(Result::ok)
@@ -128,6 +132,40 @@ pub(crate) fn pending_operations(user_paths: &UserPaths, root: &Path) -> usize {
         + source_pending
         + knowledge_pending
         + upgrade_pending
+        + update_pending
+}
+
+pub(crate) fn incomplete_update_operations(user_paths: &UserPaths, root: &Path) -> usize {
+    let Ok(identity) = crate::vault::read_vault_identity(root) else {
+        return 0;
+    };
+    let updates = user_paths.state_dir.join("updates");
+    let Ok(entries) = fs::read_dir(updates) else {
+        return 0;
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read(entry.path().join("operation.json")).ok())
+        .filter_map(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .filter(|value| {
+            let state = value
+                .get("execution_state")
+                .and_then(serde_json::Value::as_str);
+            let terminal = matches!(
+                state,
+                Some("completed" | "completed_with_skips" | "partial" | "failed")
+            );
+            let contains_vault = value
+                .pointer("/scope/vaults")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|vaults| {
+                    vaults
+                        .iter()
+                        .any(|vault| vault.as_str() == Some(&identity.vault_id.to_string()))
+                });
+            !terminal && contains_vault
+        })
+        .count()
 }
 
 fn cache_status(root: &Path) -> Result<CacheStatus, KbError> {

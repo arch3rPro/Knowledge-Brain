@@ -1,6 +1,6 @@
 use kb_app::{
-    AppContext, AppRequest, ConfigOverrides, InitRequest, UserPaths, init_vault,
-    load_effective_config, query, rebuild_catalog, review_sources, run,
+    AppContext, AppRequest, ConfigOverrides, IndexCompatibility, InitRequest, UserPaths,
+    init_vault, inspect_index, load_effective_config, query, rebuild_catalog, review_sources, run,
 };
 use kb_core::{ErrorCode, SearchBackend, SearchMatchMode, SearchMode, SearchRequest, SearchScope};
 use sha2::{Digest, Sha256};
@@ -131,6 +131,56 @@ fn bm25f_boosts_fields_supports_cjk_and_explains_scores() {
             .unwrap()
             .query_terms
             .contains(&"备用名".into())
+    );
+}
+
+#[test]
+fn index_compatibility_inspection_is_read_only_and_distinguishes_failures() {
+    let (_temporary, vault, config) = setup();
+    let cache = vault.join(".kb/cache");
+    let before = fs::read_dir(&cache).unwrap().count();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Missing
+    );
+    assert_eq!(fs::read_dir(&cache).unwrap().count(), before);
+
+    fs::write(vault.join("Wiki/articles/a.md"), article("A", "alpha")).unwrap();
+    rebuild_catalog(&vault, &config).unwrap();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Current
+    );
+
+    fs::write(vault.join("Wiki/articles/a.md"), article("A", "changed")).unwrap();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Stale
+    );
+
+    fs::write(vault.join(".kb/cache/bm25.json"), "{broken").unwrap();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Malformed
+    );
+
+    let mut unsupported = index_after_rebuild(&vault, &config);
+    unsupported["indexer_version"] = serde_json::json!("future-index");
+    fs::write(
+        vault.join(".kb/cache/bm25.json"),
+        serde_json::to_vec_pretty(&unsupported).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Unsupported
+    );
+
+    rebuild_catalog(&vault, &config).unwrap();
+    fs::write(vault.join(".kb/cache/catalog.json"), []).unwrap();
+    assert_eq!(
+        inspect_index(&vault, &config).unwrap(),
+        IndexCompatibility::Malformed
     );
 }
 

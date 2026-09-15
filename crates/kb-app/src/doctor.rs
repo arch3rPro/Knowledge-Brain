@@ -9,8 +9,11 @@ use kb_core::{CURRENT_SCHEMA_VERSION, KbError, PortableRelativePath, SchemaCompa
 use serde::Serialize;
 
 use crate::{
-    ConfigOverrides, UserPaths, load_admission, load_effective_config, lock::probe_exclusive_lock,
-    schema::vault_schema_compatibility, status::pending_operations,
+    ConfigOverrides, UserPaths, load_admission, load_effective_config,
+    lock::probe_exclusive_lock,
+    schema::vault_schema_compatibility,
+    status::{incomplete_update_operations, pending_operations},
+    template_state::{TemplateCompatibility, inspect_template},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +101,7 @@ pub fn doctor(
         },
     });
     checks.push(lock_acquisition(root));
+    checks.push(template_check(root));
     let pending = pending_operations(user_paths, root);
     checks.push(DoctorCheck {
         id: "recovery_records",
@@ -108,6 +112,16 @@ pub fn doctor(
         },
         message: format!("{pending} operation recovery record(s) are pending."),
     });
+    let updates = incomplete_update_operations(user_paths, root);
+    checks.push(DoctorCheck {
+        id: "update_operations",
+        status: if updates == 0 {
+            CheckStatus::Pass
+        } else {
+            CheckStatus::Warn
+        },
+        message: format!("{updates} unified update operation(s) are incomplete."),
+    });
     checks.push(DoctorCheck {
         id: "optional_integrations",
         status: CheckStatus::NotChecked,
@@ -117,6 +131,43 @@ pub fn doctor(
         root: root.to_path_buf(),
         checks,
     })
+}
+
+fn template_check(root: &Path) -> DoctorCheck {
+    match inspect_template(root) {
+        Ok(template) => {
+            let status = match template.compatibility {
+                TemplateCompatibility::Current => CheckStatus::Pass,
+                TemplateCompatibility::Outdated
+                | TemplateCompatibility::MissingManifest
+                | TemplateCompatibility::Modified
+                | TemplateCompatibility::Unknown
+                | TemplateCompatibility::Malformed => CheckStatus::Warn,
+            };
+            let entries = if template.modified_entries.is_empty() {
+                "none".to_owned()
+            } else {
+                template.modified_entries.join(", ")
+            };
+            DoctorCheck {
+                id: "vault_template",
+                status,
+                message: format!(
+                    "Template is {:?}; version {}, latest {}, modified entries: {entries}.",
+                    template.compatibility,
+                    template
+                        .version
+                        .map_or_else(|| "unrecorded".to_owned(), |version| version.to_string()),
+                    template.latest,
+                ),
+            }
+        }
+        Err(error) => DoctorCheck {
+            id: "vault_template",
+            status: CheckStatus::Warn,
+            message: error.to_string(),
+        },
+    }
 }
 
 fn machine_runtime_directories(user_paths: &UserPaths) -> DoctorCheck {
