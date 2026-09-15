@@ -965,10 +965,12 @@ dependencies = [
 name = "kb-core"
 version = "0.1.3"
 dependencies = [
+ "hex",
  "pulldown-cmark",
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "sha2",
  "tempfile",
  "thiserror",
  "time",

@@ -12,6 +12,7 @@ mod platform;
 mod search;
 mod skill;
 mod source;
+mod update;
 mod version;
 pub use extraction::{
     ExtractedBlock, ExtractedDocument, ExtractedLink, ExtractionStatus, Extractor, MediaType,
@@ -26,6 +27,11 @@ pub use skill::{
     SkillHost, SkillInstallMode, SkillLinkChange, SkillPlan, SkillScope,
 };
 pub use source::{SourceId, SourceVersion};
+pub use update::{
+    UpdateComponent, UpdateComponentKind, UpdateComponentState, UpdateConfirmationToken,
+    UpdateConflict, UpdateExecutionState, UpdateFileAction, UpdateFileChange, UpdateOperation,
+    UpdateOwnership, UpdatePhase, UpdatePlan, UpdatePlanState, UpdateScope, UpdateScopeMode,
+};
 
 pub use admission::{AdmissionDocument, AdmissionEntry};
 pub use backup::{
