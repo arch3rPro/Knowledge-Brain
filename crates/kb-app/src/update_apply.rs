@@ -11,7 +11,7 @@ use crate::{
     TargetPlanRequest, UpdateStore, UserPaths, VaultLock, VaultSelection, apply_skill_plan_direct,
     apply_template_update, list_managed_skill_installations, load_effective_config,
     plan_template_update, preview_skill_plan, rebuild_catalog, resolve_vault,
-    update_plan::skill_component,
+    update_plan::{skill_component, target_environment},
 };
 
 pub(crate) fn resume_update_components(
@@ -48,7 +48,7 @@ pub(crate) fn resume_update_components(
         &plan,
         vaults.clone(),
         installations.clone(),
-    );
+    )?;
 
     if let Some(component) = operation
         .components
@@ -209,10 +209,20 @@ fn apply_component(
 
 fn verify_change_preconditions(component: &UpdateComponent) -> Result<(), KbError> {
     for change in &component.changes {
-        let actual = fs::read(&change.path).ok().map(|bytes| {
-            use sha2::{Digest, Sha256};
-            hex::encode(Sha256::digest(bytes))
-        });
+        let actual = match fs::read(&change.path) {
+            Ok(bytes) => {
+                use sha2::{Digest, Sha256};
+                Some(hex::encode(Sha256::digest(bytes)))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(KbError::io_failure(
+                    "verify update precondition",
+                    change.path.display().to_string(),
+                    error.to_string(),
+                ));
+            }
+        };
         if actual != change.before_sha256 {
             return Err(stale(component));
         }
@@ -251,7 +261,9 @@ fn resolve_operation_vaults(
                 &VaultSelection {
                     explicit: Some(vault_id.to_string()),
                     environment: environment.clone(),
-                    current_dir: std::env::current_dir().unwrap_or_default(),
+                    // The explicit stable ID selects the Vault. A deterministic local
+                    // directory avoids making recovery depend on the helper's cwd.
+                    current_dir: user_paths.state_dir.clone(),
                 },
             )
         })
@@ -265,12 +277,15 @@ fn target_request_for_resume(
     plan: &UpdatePlan,
     vaults: Vec<ResolvedVault>,
     managed_skills: Vec<kb_core::ManagedSkillInstallation>,
-) -> TargetPlanRequest {
-    TargetPlanRequest {
+) -> Result<TargetPlanRequest, KbError> {
+    let executable_path = std::env::current_exe().map_err(|error| {
+        KbError::io_failure("resolve current executable", ".", error.to_string())
+    })?;
+    Ok(TargetPlanRequest {
         operation_id: plan.operation_id,
         current_version: plan.current_version.clone(),
         target_version: plan.target_version.clone(),
-        executable_path: std::env::current_exe().unwrap_or_default(),
+        executable_path,
         executable_before_sha256: None,
         executable_after_sha256: None,
         executable_managed: false,
@@ -283,10 +298,10 @@ fn target_request_for_resume(
         },
         user_paths: user_paths.clone(),
         agent_roots: roots.clone(),
-        environment: environment.clone(),
+        environment: target_environment(environment),
         created_at: plan.created_at.clone(),
         expires_at: plan.expires_at.clone(),
-    }
+    })
 }
 
 fn component_vault<'a>(

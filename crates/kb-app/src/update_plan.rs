@@ -758,7 +758,9 @@ const TARGET_ENVIRONMENT_KEYS: &[&str] = &[
     "KB_OPERATIONS_PLAN_RETENTION_HOURS",
 ];
 
-fn target_environment(environment: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+pub(crate) fn target_environment(
+    environment: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
     environment
         .iter()
         .filter(|(key, _)| TARGET_ENVIRONMENT_KEYS.contains(&key.as_str()))
