@@ -26,7 +26,7 @@ fn user_previews_and_confirms_a_legacy_vault_upgrade() {
     );
 
     assert_eq!(preview["data"]["kind"], "upgrade_vault");
-    assert_eq!(preview["data"]["to_template_version"], "v1.2");
+    assert_eq!(preview["data"]["to_template_version"], "v1.3");
     assert_eq!(preview["data"]["conflicts"], serde_json::json!([]));
     assert!(
         preview["data"]["diff"]
@@ -71,7 +71,7 @@ fn user_previews_and_confirms_a_legacy_vault_upgrade() {
         ],
     );
 
-    assert_eq!(result["data"]["template_version"], "v1.2");
+    assert_eq!(result["data"]["template_version"], "v1.3");
     assert!(vault.join(".kb/template.yml").is_file());
     assert!(
         std::fs::read_to_string(vault.join("KB.md"))

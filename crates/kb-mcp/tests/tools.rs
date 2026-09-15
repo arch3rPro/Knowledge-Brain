@@ -359,7 +359,7 @@ fn update_tools_plan_only_the_fixed_vault_and_require_write_access_to_confirm() 
     assert!(
         fs::read_to_string(vault.join(".kb/template.yml"))
             .unwrap()
-            .contains("template_version: v1.2")
+            .contains("template_version: v1.3")
     );
 }
 

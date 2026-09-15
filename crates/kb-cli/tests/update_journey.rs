@@ -123,7 +123,7 @@ fn human_confirmation_applies_the_displayed_plan_once() {
     assert!(
         fs::read_to_string(fixture.vault.join(".kb/template.yml"))
             .unwrap()
-            .contains("template_version: v1.2")
+            .contains("template_version: v1.3")
     );
     assert!(fixture.vault.join(".kb/cache/catalog.json").is_file());
 }
@@ -227,7 +227,7 @@ fn multiple_vault_review_can_exclude_one_before_the_single_confirmation() {
     assert!(
         fs::read_to_string(fixture.vault.join(".kb/template.yml"))
             .unwrap()
-            .contains("template_version: v1.2")
+            .contains("template_version: v1.3")
     );
     assert_eq!(fs::read_to_string(second.join("KB.md")).unwrap(), OLD_KB);
     assert_eq!(

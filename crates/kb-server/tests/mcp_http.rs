@@ -290,7 +290,7 @@ async fn update_plan_and_confirmation_work_over_streamable_http() {
     assert!(
         std::fs::read_to_string(server.vault.join(".kb/template.yml"))
             .unwrap()
-            .contains("template_version: v1.2")
+            .contains("template_version: v1.3")
     );
 }
 
