@@ -8,7 +8,9 @@ use axum::{
     routing::post,
 };
 use kb_core::KbError;
-use kb_mcp::McpServer;
+use kb_mcp::{
+    LATEST_LEGACY_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSIONS, MODERN_PROTOCOL_VERSION, McpServer,
+};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
@@ -34,7 +36,7 @@ impl McpHttpState {
     }
 }
 
-/// Serve modern, stateless MCP over one Streamable HTTP endpoint.
+/// Serve stateless MCP over one Streamable HTTP endpoint.
 ///
 /// # Errors
 ///
@@ -98,7 +100,13 @@ async fn mcp_post(
             rpc_error(&id, -32700, "Request body must be valid JSON."),
         );
     };
-    if let Some(response) = validate_headers(&headers, &body) {
+    let era = match protocol_era(&headers, &body) {
+        Ok(era) => era,
+        Err(response) => return rpc_response(StatusCode::BAD_REQUEST, response),
+    };
+    if era == ProtocolEra::Modern
+        && let Some(response) = validate_headers(&headers, &body)
+    {
         return rpc_response(StatusCode::BAD_REQUEST, response);
     }
     if body.get("id").is_none() {
@@ -106,10 +114,16 @@ async fn mcp_post(
     }
 
     let method = body.get("method").and_then(Value::as_str);
-    let server = state.server.clone();
+    let mut server = state.server.clone();
     let request = body.clone();
-    let response = match tokio::task::spawn_blocking(move || server.handle_modern(&request)).await {
-        Ok(response) => response,
+    let response = match tokio::task::spawn_blocking(move || match era {
+        ProtocolEra::Modern => Some(server.handle_modern(&request)),
+        ProtocolEra::Legacy => server.handle(&request),
+    })
+    .await
+    {
+        Ok(Some(response)) => response,
+        Ok(None) => return StatusCode::ACCEPTED.into_response(),
         Err(error) => {
             return rpc_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -139,6 +153,64 @@ async fn mcp_post(
         return Sse::new(tokio_stream::once(Ok::<_, Infallible>(event))).into_response();
     }
     rpc_response(status, response)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProtocolEra {
+    Legacy,
+    Modern,
+}
+
+fn protocol_era(headers: &HeaderMap, body: &Value) -> Result<ProtocolEra, Value> {
+    let id = body.get("id").unwrap_or(&Value::Null);
+    let method = body.get("method").and_then(Value::as_str);
+    let header_version = header_text(headers, "mcp-protocol-version");
+    let body_version = body
+        .pointer("/params/_meta/io.modelcontextprotocol~1protocolVersion")
+        .and_then(Value::as_str);
+
+    if method == Some("initialize") {
+        if header_version == Some(MODERN_PROTOCOL_VERSION)
+            || body_version == Some(MODERN_PROTOCOL_VERSION)
+        {
+            return Err(unsupported_protocol_version(id, MODERN_PROTOCOL_VERSION));
+        }
+        return match header_version {
+            Some(version) if !LEGACY_PROTOCOL_VERSIONS.contains(&version) => {
+                Err(unsupported_protocol_version(id, version))
+            }
+            _ => Ok(ProtocolEra::Legacy),
+        };
+    }
+
+    match header_version {
+        Some(MODERN_PROTOCOL_VERSION) => Ok(ProtocolEra::Modern),
+        Some(version) if LEGACY_PROTOCOL_VERSIONS.contains(&version) => Ok(ProtocolEra::Legacy),
+        Some(version) => Err(unsupported_protocol_version(id, version)),
+        None if body_version == Some(MODERN_PROTOCOL_VERSION) => Ok(ProtocolEra::Modern),
+        None if let Some(version) = body_version => Err(unsupported_protocol_version(id, version)),
+        None => Ok(ProtocolEra::Legacy),
+    }
+}
+
+fn unsupported_protocol_version(id: &Value, requested: &str) -> Value {
+    json!({
+        "jsonrpc":"2.0",
+        "id":id,
+        "error":{
+            "code":-32022,
+            "message":"Unsupported protocol version",
+            "data":{
+                "requested":requested,
+                "supported":[
+                    MODERN_PROTOCOL_VERSION,
+                    LATEST_LEGACY_PROTOCOL_VERSION,
+                    "2025-06-18",
+                    "2025-03-26"
+                ]
+            }
+        }
+    })
 }
 
 fn authorized(state: &McpHttpState, headers: &HeaderMap) -> bool {

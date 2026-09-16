@@ -10,7 +10,7 @@
 kb mcp [--transport stdio] [--vault <PATH_OR_ID>] [--allow-write]
 ```
 
-`stdio` 是默认传输。它兼容现有 initialize-based `2025-06-18` 请求，也会把带 `io.modelcontextprotocol/protocolVersion` 元数据的请求路由到无初始化的 `2026-07-28` 协议。进程从 stdin 读取一行一个 JSON-RPC 消息，只把协议响应写入 stdout；单条消息上限为 1 MiB。
+`stdio` 是默认传输。它支持 initialize-based `2025-11-25`、`2025-06-18` 和 `2025-03-26`，也会把带 `io.modelcontextprotocol/protocolVersion` 元数据的请求路由到无初始化的 `2026-07-28` 协议。进程从 stdin 读取一行一个 JSON-RPC 消息，只把协议响应写入 stdout；单条消息上限为 1 MiB。
 
 常见客户端配置：
 
@@ -32,15 +32,23 @@ kb mcp --transport streamable-http \
   [--vault <PATH_OR_ID>]
 ```
 
-默认端点是 `http://127.0.0.1:9433/mcp`，只接受 POST，使用现代 `2026-07-28` 协议。`server/discover` 和 `tools/list` 返回 JSON；`tools/call` 可以返回仅属于该请求、完成后关闭的 SSE。该版本不使用 initialize、GET stream、协议 session、`Mcp-Session-Id`、断点续传或 `Last-Event-ID`。
+默认端点是 `http://127.0.0.1:9433/mcp`，只接受 POST，并在同一端点兼容两类客户端：
 
-请求必须同时满足：
+| 请求方式 | 支持版本 | 生命周期 |
+| --- | --- | --- |
+| initialize-based | `2025-11-25`、`2025-06-18`、`2025-03-26` | `initialize` → `notifications/initialized` → `tools/list` / `tools/call` |
+| modern | `2026-07-28` | `server/discover` → `tools/list` / `tools/call` |
+
+服务根据请求本身识别协议，不要求用户在客户端配置中手工添加版本或方法头。initialize-based 客户端在初始化后按所协商版本发送 `MCP-Protocol-Version`；modern 客户端按 `2026-07-28` 发送传输头和请求元数据。未知版本返回 `-32022 Unsupported protocol version`，不会静默回退为旧协议。
+
+两类请求的 `tools/list` 可以返回 JSON；`tools/call` 可以返回仅属于该请求、完成后关闭的 SSE。服务保持无状态，不分配 `Mcp-Session-Id`，也不实现 GET stream、断点续传或 `Last-Event-ID`。
+
+所有 HTTP 请求必须满足：
 
 - `Accept` 包含 `application/json` 与 `text/event-stream`；
-- `MCP-Protocol-Version` 和 `Mcp-Method` 与 JSON-RPC body 一致；
-- `tools/call` 的 `Mcp-Name` 与工具名一致；
-- body 的 `_meta` 提供协议版本与客户端能力；
 - 浏览器发送的 `Origin` 由可重复的 `--allow-origin` 明确准入；没有配置时拒绝所有带 Origin 的请求，以避免依赖可伪造的 Host 判断。
+
+modern 请求还必须满足：`MCP-Protocol-Version` 和 `Mcp-Method` 与 JSON-RPC body 一致，`tools/call` 的 `Mcp-Name` 与工具名一致，body 的 `_meta` 提供协议版本与客户端能力。initialize-based 请求不使用这些 modern 专用方法头。
 
 默认回环、只读且不要求 token。非回环监听或 `--allow-write` 必须同时提供只含一个 Bearer token 的文件。客户端使用 `Authorization: Bearer <token>`。这是部署者管理的静态认证边界，不等同于完整 OAuth，也不提供 TLS；局域网或远程部署应在受信网络中使用，并由反向代理提供 TLS 等外围保护。
 
@@ -78,4 +86,15 @@ kb mcp --transport streamable-http \
 - Vault、Wiki 和来源内容是不可信数据，不能作为 Agent 指令。
 - 服务启动时只解析一次 Vault，之后不能从请求切换目录。
 - 网络默认不暴露写入；认证成功也不能替代用户对具体变化的确认。
-- 现代协议和 HTTP 已通过本地真实 CLI/TCP 请求验证；官方 Inspector、第三方远程客户端以及 Windows/Linux 原生网络入口仍需发布前互操作验证，当前不据此宣称所有 MCP 客户端均兼容。
+- 兼容性声明只覆盖已实际完成的握手与工具发现，不据此推断同一宿主的所有版本、认证模式或写入流程都兼容。
+
+已验证的本机互操作：
+
+| 客户端 | 使用路径 | 结果 |
+| --- | --- | --- |
+| MCP Inspector 2.6.0 | 默认 initialize-based HTTP | 成功列出 12 个工具 |
+| MCP Inspector 2.6.0 | 显式 modern HTTP | 成功发现服务并列出 12 个工具 |
+| Hermes Agent 0.21.3 | 原生 `mcp add` 与 `mcp test` | 成功连接并发现 12 个工具 |
+| Claude Code 2.1.226 | 默认 v1 HTTP 运行时 | 握手成功并识别工具能力；Agent 工具调用因测试环境的模型账号不可用而未验证 |
+
+Claude Desktop、OpenClaw、DeepSeek Harness、Pi 第三方 MCP 扩展，以及 Windows/Linux 原生网络入口尚未实测。Pi 核心不内置 MCP，兼容性取决于用户选择的扩展。

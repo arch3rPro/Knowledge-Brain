@@ -88,7 +88,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         }))
         .unwrap();
     assert_eq!(initialized["id"], 1);
-    assert_eq!(initialized["result"]["protocolVersion"], "2025-06-18");
+    assert_eq!(initialized["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(initialized["result"]["capabilities"]["tools"], json!({}));
 
     let listed = server

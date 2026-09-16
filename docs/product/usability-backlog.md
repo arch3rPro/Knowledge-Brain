@@ -561,6 +561,28 @@ Agent 对明确的 Wiki 变更统一使用 `kb knowledge save`，不直接创建
 - 受管理页面缺少索引引用时报告 `index_missing_entry`，检查保持只读。
 - 修正通过明确的受管理保存完成；历史正文恢复依赖用户已启用的 Git 或备份，不猜测旧版本。
 
+## UX-023 — Streamable HTTP 需要兼容主流 initialize 客户端
+
+**状态：** 已解决。单一 `/mcp` 端点同时支持 initialize-based `2025-11-25`、`2025-06-18`、`2025-03-26` 和 modern `2026-07-28`；版本由客户端请求协商，用户不需要手工配置传输头。
+
+### 问题
+
+只接受 modern `2026-07-28` 请求会拒绝仍采用 initialize 生命周期的主流 MCP 客户端。失败表面上表现为传输头与 body 不一致，但根因不是客户端遗漏 modern 专用头，而是服务没有为 initialize-based 请求提供兼容路径。
+
+`MCP-Protocol-Version`、`Mcp-Method` 和 `Mcp-Name` 是 modern 协议字段，不是 Knowledge-Brain 私有字段；兼容修复不能删除 modern 校验，也不能要求 initialize-based 客户端伪造这些字段。
+
+### 目标体验
+
+用户只配置一个标准 MCP URL。服务根据 `initialize`、协议版本头和 modern 请求元数据选择对应生命周期：旧客户端完成标准初始化后使用现有工具，modern 客户端继续接受严格的头与 body 一致性校验。未知版本明确返回受支持版本，不静默降级。
+
+### 验收标准
+
+- initialize-based 客户端无需 `Mcp-Method` 或 `Mcp-Name` 即可完成初始化、通知、工具枚举和工具调用。
+- modern `2026-07-28` 请求继续校验版本、方法、工具名和 `_meta`，不能因兼容旧客户端而放宽。
+- 未知版本返回 `-32022` 和受支持版本列表；modern 版本不能与 `initialize` 混用。
+- HTTP 服务保持无状态，不为兼容旧客户端引入强制 session、GET stream 或额外用户配置。
+- 自动化测试覆盖全部受支持旧版本、modern 严格路径和未知版本；真实客户端验证结果与未验证范围记录在 MCP 参考中。
+
 ## 非目标
 
 - 不缩短或替换持久化的 SHA-256 身份。

@@ -105,12 +105,29 @@ async fn request(
     extra_headers: &str,
     body: &Value,
 ) -> (u16, String, String) {
+    transport_request(
+        server,
+        method,
+        &format!(
+            "MCP-Protocol-Version: {MODERN_PROTOCOL_VERSION}\r\nMcp-Method: {}\r\n{extra_headers}",
+            body["method"].as_str().unwrap_or("none"),
+        ),
+        body,
+    )
+    .await
+}
+
+async fn transport_request(
+    server: &RunningServer,
+    method: &str,
+    headers: &str,
+    body: &Value,
+) -> (u16, String, String) {
     let encoded = serde_json::to_string(body).unwrap();
     let mut stream = TcpStream::connect(server.address).await.unwrap();
     let wire = format!(
-        "{method} /mcp HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nMCP-Protocol-Version: {MODERN_PROTOCOL_VERSION}\r\nMcp-Method: {}\r\nContent-Length: {}\r\nConnection: close\r\n{extra_headers}\r\n{encoded}",
+        "{method} /mcp HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{encoded}",
         server.address,
-        body["method"].as_str().unwrap_or("none"),
         encoded.len(),
     );
     stream.write_all(wire.as_bytes()).await.unwrap();
@@ -119,6 +136,158 @@ async fn request(
     let (headers, response_body) = response.split_once("\r\n\r\n").unwrap();
     let status = headers.split_whitespace().nth(1).unwrap().parse().unwrap();
     (status, headers.to_owned(), response_body.to_owned())
+}
+
+#[tokio::test]
+async fn initialize_based_clients_can_list_and_call_tools_over_http() {
+    let server = start(None, false, vec![]).await;
+    let initialize = json!({
+        "jsonrpc":"2.0",
+        "id":1,
+        "method":"initialize",
+        "params":{
+            "protocolVersion":"2025-11-25",
+            "capabilities":{},
+            "clientInfo":{"name":"compatibility-test","version":"1"}
+        }
+    });
+    let (status, _, response) = transport_request(&server, "POST", "", &initialize).await;
+    assert_eq!(status, 200, "{response}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&response).unwrap()["result"]["protocolVersion"],
+        "2025-11-25"
+    );
+
+    let initialized = json!({
+        "jsonrpc":"2.0",
+        "method":"notifications/initialized",
+        "params":{}
+    });
+    let (status, _, _) = transport_request(
+        &server,
+        "POST",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &initialized,
+    )
+    .await;
+    assert_eq!(status, 202);
+
+    let list = json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}});
+    let (status, _, response) = transport_request(
+        &server,
+        "POST",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &list,
+    )
+    .await;
+    assert_eq!(status, 200, "{response}");
+    assert!(
+        serde_json::from_str::<Value>(&response).unwrap()["result"]["tools"]
+            .as_array()
+            .is_some_and(|tools| !tools.is_empty())
+    );
+
+    let call = json!({
+        "jsonrpc":"2.0",
+        "id":3,
+        "method":"tools/call",
+        "params":{"name":"kb_capabilities","arguments":{}}
+    });
+    let (status, headers, response) = transport_request(
+        &server,
+        "POST",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &call,
+    )
+    .await;
+    assert_eq!(status, 200, "{response}");
+    assert!(headers.to_ascii_lowercase().contains("text/event-stream"));
+    assert_eq!(sse_json(&response)["result"]["isError"], false);
+}
+
+#[tokio::test]
+async fn initialize_negotiates_each_supported_legacy_version() {
+    let server = start(None, false, vec![]).await;
+    for (id, version) in ["2025-11-25", "2025-06-18", "2025-03-26"]
+        .into_iter()
+        .enumerate()
+    {
+        let initialize = json!({
+            "jsonrpc":"2.0",
+            "id":id,
+            "method":"initialize",
+            "params":{
+                "protocolVersion":version,
+                "capabilities":{},
+                "clientInfo":{"name":"compatibility-test","version":"1"}
+            }
+        });
+        let (status, _, response) = transport_request(&server, "POST", "", &initialize).await;
+        assert_eq!(status, 200, "{response}");
+        assert_eq!(
+            serde_json::from_str::<Value>(&response).unwrap()["result"]["protocolVersion"],
+            version
+        );
+    }
+}
+
+#[tokio::test]
+async fn unknown_versions_are_rejected_instead_of_falling_back_to_legacy() {
+    let server = start(None, false, vec![]).await;
+    let list = json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}});
+    let (status, _, response) = transport_request(
+        &server,
+        "POST",
+        "MCP-Protocol-Version: 1900-01-01\r\n",
+        &list,
+    )
+    .await;
+    assert_eq!(status, 400);
+    let error = serde_json::from_str::<Value>(&response).unwrap();
+    assert_eq!(error["error"]["code"], -32022);
+    assert_eq!(error["error"]["data"]["requested"], "1900-01-01");
+
+    let metadata_only = json!({
+        "jsonrpc":"2.0",
+        "id":2,
+        "method":"tools/list",
+        "params":{"_meta":{
+            "io.modelcontextprotocol/protocolVersion":"1900-01-01",
+            "io.modelcontextprotocol/clientCapabilities":{}
+        }}
+    });
+    let (status, _, response) = transport_request(&server, "POST", "", &metadata_only).await;
+    assert_eq!(status, 400);
+    let error = serde_json::from_str::<Value>(&response).unwrap();
+    assert_eq!(error["error"]["code"], -32022);
+    assert_eq!(error["error"]["data"]["requested"], "1900-01-01");
+}
+
+#[tokio::test]
+async fn modern_version_cannot_be_combined_with_initialize() {
+    let server = start(None, false, vec![]).await;
+    let initialize = json!({
+        "jsonrpc":"2.0",
+        "id":1,
+        "method":"initialize",
+        "params":{
+            "protocolVersion":"2025-11-25",
+            "capabilities":{},
+            "clientInfo":{"name":"compatibility-test","version":"1"}
+        }
+    });
+    let (status, _, response) = transport_request(
+        &server,
+        "POST",
+        &format!("MCP-Protocol-Version: {MODERN_PROTOCOL_VERSION}\r\n"),
+        &initialize,
+    )
+    .await;
+    assert_eq!(status, 400);
+    assert_eq!(
+        serde_json::from_str::<Value>(&response).unwrap()["error"]["code"],
+        -32022
+    );
 }
 
 #[tokio::test]

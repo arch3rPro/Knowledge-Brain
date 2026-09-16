@@ -108,14 +108,14 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 
 参考：[Agent Skill](docs/reference/agent-skill.md)和 [MCP](docs/reference/mcp.md)。
 
-### Stage 4D — MCP 2026-07-28 与 Streamable HTTP
+### Stage 4D — MCP 双协议兼容与 Streamable HTTP
 
-**Status:** implemented locally，外部互操作与三平台网络验证待补。`kb mcp` 默认保留 stdio，并新增 modern-only Streamable HTTP；`kb serve` 仍是独立的 Knowledge-Brain HTTP/SSE API，不冒充 MCP transport。
+**Status:** implemented locally，更多宿主与三平台网络验证待补。`kb mcp` 默认保留 stdio；Streamable HTTP 在同一 `/mcp` 端点支持 initialize-based 与 modern 客户端。`kb serve` 仍是独立的 Knowledge-Brain HTTP/SSE API，不冒充 MCP transport。
 
 实现基线已通过 MCP 官方 `latest` 入口确认为 [`2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28)。当前实现包括：
 
 - 支持每请求携带协议版本、客户端能力和身份元数据的 modern MCP，并实现必需的 `server/discover` 与不支持版本错误。
-- 明确 stdio 和 Streamable HTTP 对 `2025-11-25` 及更早 initialize-based 客户端的兼容策略；选择 modern-only 或 dual-era 必须有客户端互操作证据。
+- stdio 和 Streamable HTTP 支持 `2025-11-25`、`2025-06-18`、`2025-03-26` initialize-based 客户端，并继续支持 modern `2026-07-28`。
 - 按 [`2026-07-28 Streamable HTTP`](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) 提供单一 POST MCP endpoint，每次请求返回 JSON 或仅属于该请求的 SSE 流。
 - 不实现该版本已经移除的 GET stream、`Mcp-Session-Id`、协议级 session、SSE 断点续传或 `Last-Event-ID` 语义；需要长时订阅时使用规范定义的机制。
 - stdio 与 Streamable HTTP 复用同一组 `kb-app` 工具和固定 Vault 边界，不复制来源、查询、计划、确认、apply、错误码或缓存规则。
@@ -123,7 +123,7 @@ WebUI、桌面 GUI 和宿主原生插件属于独立的未来扩展，不阻塞�
 - 网络实现必须覆盖 Origin 校验、DNS rebinding、防止任意 Vault 选择、请求与响应大小、并发、超时、取消、慢客户端、断线重试和日志脱敏。
 - 默认监听回环地址。开放局域网或公网是显式选择；鉴权、TLS 终止和反向代理边界按 MCP 最新授权与安全规范单独设计，现有静态 Bearer token 不自动等同于完整 MCP 授权实现。
 
-本地真实 CLI/TCP 已验证协议发现、工具枚举、JSON、请求级 SSE、默认只读、鉴权和请求头拒绝；stdio 兼容测试也已通过。完整验收仍需官方 MCP Inspector、至少两个真实远程 MCP 客户端，以及 Windows、macOS 和 Linux 原生网络入口；完成前不宣称所有远程 MCP 客户端兼容。
+本地真实 CLI/TCP 已验证协议发现、initialize 协商、工具枚举、JSON、请求级 SSE、默认只读、鉴权和请求头拒绝；stdio 兼容测试也已通过。MCP Inspector 2.6.0 的默认与 modern 模式、Hermes Agent 0.21.3，以及 Claude Code 2.1.226 的默认 HTTP 握手均已实测。Claude Code 的实际 Agent 工具调用、其他宿主及 Windows、macOS、Linux 三平台原生网络入口仍需补充验证；完成前不宣称所有 MCP 客户端兼容。
 
 [MCP 参考](docs/reference/mcp.md)已列出支持的协议版本、transport、监听默认值、认证模式和未支持能力。
 
