@@ -16,7 +16,7 @@ pub(crate) fn handle_modern(server: &McpServer, request: &Value) -> Value {
     let Some(method) = object.get("method").and_then(Value::as_str) else {
         return error(id, -32600, "Invalid JSON-RPC request.", None);
     };
-    let Some(params) = object
+    let Some(mut params) = object
         .get("params")
         .cloned()
         .unwrap_or_else(|| json!({}))
@@ -67,7 +67,10 @@ pub(crate) fn handle_modern(server: &McpServer, request: &Value) -> Value {
             id,
             json!({
                 "supportedVersions": [MODERN_PROTOCOL_VERSION],
-                "capabilities": { "tools": {} },
+                "capabilities": {
+                    "tools": {},
+                    "resources": {"subscribe": false, "listChanged": false}
+                },
                 "ttlMs": CACHE_TTL_MS,
                 "cacheScope": "private"
             }),
@@ -91,7 +94,20 @@ pub(crate) fn handle_modern(server: &McpServer, request: &Value) -> Value {
                 None => legacy,
             }
         }
+        "resources/list" => modernize(server.list_resources(id), id),
+        "resources/templates/list" => modernize(McpServer::list_resource_templates(id), id),
+        "resources/read" => {
+            params.remove("_meta");
+            modernize(server.read_standard_resource(id, Value::Object(params)), id)
+        }
         _ => error(id, -32601, "Method not found.", None),
+    }
+}
+
+fn modernize(response: Value, id: &Value) -> Value {
+    match response.get("result").cloned() {
+        Some(result) => complete(id, result),
+        None => response,
     }
 }
 

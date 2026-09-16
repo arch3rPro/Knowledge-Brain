@@ -6,8 +6,8 @@ use kb_app::{
     InitRequest, OperationRequest, SaveMode, SkillRequest, VaultRequest,
 };
 use kb_core::{
-    KnowledgePlanRequest, OperationId, SearchMatchMode, SkillHost, SkillInstallMode, SkillScope,
-    UpdateConfirmationToken,
+    DEFAULT_RESOURCE_PAGE_CHARS, KnowledgePlanRequest, OperationId, ResourceReadRequest,
+    SearchMatchMode, SkillHost, SkillInstallMode, SkillScope, UpdateConfirmationToken,
 };
 use uuid::Uuid;
 
@@ -190,6 +190,18 @@ enum Commands {
         /// Fail instead of falling back when the selected backend is unavailable.
         #[arg(long)]
         strict_backend: bool,
+        #[command(flatten)]
+        context: VaultContext,
+    },
+    /// Read complete knowledge selected by a Knowledge-Brain resource URI.
+    Read {
+        resource_uri: String,
+        /// Continue a previous long-resource read.
+        #[arg(long)]
+        cursor: Option<String>,
+        /// Maximum Unicode characters returned in this page.
+        #[arg(long, default_value_t = DEFAULT_RESOURCE_PAGE_CHARS)]
+        max_chars: usize,
         #[command(flatten)]
         context: VaultContext,
     },
@@ -766,6 +778,24 @@ impl Cli {
                 strict_backend,
                 context,
             } => query_command(query, &scope, limit, exact, strict_backend, context),
+            Commands::Read {
+                resource_uri,
+                cursor,
+                max_chars,
+                context,
+            } => ParsedCommand::App {
+                request: Ok(AppRequest::Read {
+                    vault: context.vault,
+                    request: ResourceReadRequest {
+                        resource_uri,
+                        cursor,
+                        max_chars,
+                    },
+                }),
+                json: context.json,
+                fail_on_findings: false,
+                full_hashes: false,
+            },
             Commands::Lint { strict, context } => lint_command(strict, context),
             Commands::Plan {
                 command: PlanCommands::Create { request, context },

@@ -27,6 +27,7 @@ Authorization: Bearer <token>
 | `GET /maintenance` | 无 | 只读聚合状态、准入来源变化、lint 与诊断 |
 | `GET /doctor` | 无 | 独立诊断结果 |
 | `POST /query` | `SearchRequest` JSON | 查询 Wiki 或来源 |
+| `POST /resources/read` | `{ "resource_uri": "...", "cursor": null, "max_chars": 16000 }` | 读取完整知识资源 |
 | `POST /lint` | 无 | 检查 Wiki 结构 |
 | `POST /source/save` | `{ "apply": false }` | 准备来源保存，或以 `confirmation_token` 提交 |
 | `POST /review` | 无 | 审查准入来源并创建计划 |
@@ -40,7 +41,7 @@ Authorization: Bearer <token>
 | `GET /update/status/{operation_id}` | 无 | 查看指定的固定 Vault 更新状态 |
 | `POST /update/confirm` | `{ "confirmation_token": "..." }` | 确认精确更新计划，仅 `--allow-write` |
 
-`SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
+`SearchRequest` 的字段为 `query`、`scope`（`wiki`、`sources` 或 `all`）、`limit`、`strict_backend` 和 `match_mode`。`match_mode` 可为 `relevant` 或 `exact`，默认 `relevant`；`exact` 用于区分大小写的字面量核验。查询响应始终返回实际采用的 `match_mode`。查询结果的 `resource_uri` 可直接交给 `POST /resources/read`；长文档根据 `complete` 与 `next_cursor` 分页读取。`search.mode` 只为 Relevant 查询选择 direct 或 BM25F 后端。完整查询语义和跨适配器契约见[搜索参考](search.md)。知识计划请求见[知识计划参考](knowledge-plans.md)。JSON 请求体上限为 1 MiB。
 
 成功与失败都使用和 CLI `--json` 相同的 `schema_version: v1.0` 信封。常见 HTTP 映射是：鉴权缺失 `401`、权限不足 `403`、Vault/operation 不存在 `404`、陈旧计划或恢复冲突 `409`、请求或领域校验失败 `400`、内部 I/O 失败 `500`。客户端仍应以稳定的 `error.code` 判断业务原因。备份归档校验与恢复目标的错误代码、`legacy_code` 迁移详情见[备份参考](backup.md#错误分类与迁移)；HTTP 沿用共享错误信封，不新增备份路由或为旧客户端转换新枚举。
 

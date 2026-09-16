@@ -9,6 +9,7 @@ mod okf;
 mod operation;
 mod path;
 mod platform;
+mod resource;
 mod search;
 mod skill;
 mod source;
@@ -58,6 +59,10 @@ pub use path::{
     portability_key, validate_admission_directory, validate_generated_path,
 };
 pub use platform::ensure_not_link_or_reparse_point;
+pub use resource::{
+    DEFAULT_RESOURCE_PAGE_CHARS, KnowledgeResourceUri, MAX_RESOURCE_PAGE_CHARS, ResourceKind,
+    ResourceLink, ResourcePathScope, ResourceReadRequest, ResourceReadResponse,
+};
 pub use version::{
     CURRENT_SCHEMA_VERSION, MigrationCatalog, MigrationCatalogError, MigrationStep,
     SchemaCompatibility, SchemaRelation, SchemaVersion, SchemaVersionParseError,

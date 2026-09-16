@@ -163,7 +163,8 @@ kb apply <operation-id> --json
 | `kb apply` | 执行已审核的操作计划 |
 | `kb review` | 查看准入来源变化并生成保存计划 |
 | `kb maintain` | 只读汇总状态、来源变化、lint 与诊断 |
-| `kb query` | 查询 Wiki 或已保存来源 |
+| `kb query` | 发现 Wiki 或已保存来源 |
+| `kb read` | 按资源 URI 读取完整知识内容 |
 | `kb cache rebuild` | 重建轻量目录及已启用的搜索索引 |
 | `kb source verify` | 核对已保存来源的完整性 |
 | `kb backup` | 创建、校验和恢复标准 ZIP 备份 |

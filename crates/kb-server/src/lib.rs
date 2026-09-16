@@ -15,8 +15,8 @@ use axum::{
 };
 use kb_app::{AppContext, AppRequest, OperationRequest, SaveMode, UpdateSelection};
 use kb_core::{
-    ErrorCode, KbError, KnowledgePlanRequest, OperationEventReport, OperationId, SearchRequest,
-    UpdateConfirmationToken,
+    ErrorCode, KbError, KnowledgePlanRequest, OperationEventReport, OperationId,
+    ResourceReadRequest, SearchRequest, UpdateConfirmationToken,
 };
 use kb_protocol::{Envelope, ErrorEnvelope};
 use serde::Deserialize;
@@ -195,6 +195,7 @@ fn router(state: ServerState) -> Router {
         .route("/maintenance", get(maintenance))
         .route("/doctor", get(doctor))
         .route("/query", post(query))
+        .route("/resources/read", post(resource_read))
         .route("/lint", post(lint))
         .route("/review", post(review))
         .route("/source/save", post(source_save))
@@ -239,14 +240,26 @@ async fn capabilities(State(state): State<ServerState>, headers: HeaderMap) -> R
 }
 
 async fn status(State(state): State<ServerState>, headers: HeaderMap) -> Response {
-    run_authenticated(
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    match call(
         &state,
-        &headers,
         AppRequest::Status {
             vault: Some(selected(&state)),
         },
     )
     .await
+    {
+        Ok(mut value) => {
+            if let Some(object) = value.as_object_mut() {
+                object.remove("root");
+                object.insert("access_mode".into(), Value::String("remote".into()));
+            }
+            success(value)
+        }
+        Err(error) => failure(error),
+    }
 }
 
 #[derive(Deserialize)]
@@ -395,6 +408,32 @@ async fn query(
     match call(
         &state,
         AppRequest::Query {
+            vault: Some(selected(&state)),
+            request,
+        },
+    )
+    .await
+    {
+        Ok(value) => success(value),
+        Err(error) => failure(error),
+    }
+}
+
+async fn resource_read(
+    State(state): State<ServerState>,
+    headers: HeaderMap,
+    request: Result<Json<ResourceReadRequest>, JsonRejection>,
+) -> Response {
+    if let Err(error) = authenticate(&state, &headers) {
+        return failure_with_status(StatusCode::UNAUTHORIZED, error);
+    }
+    let request = match json_request(request) {
+        Ok(request) => request,
+        Err(error) => return failure_with_status(StatusCode::BAD_REQUEST, error),
+    };
+    match call(
+        &state,
+        AppRequest::Read {
             vault: Some(selected(&state)),
             request,
         },
@@ -793,7 +832,9 @@ fn success(value: Value) -> Response {
 fn failure(error: KbError) -> Response {
     let status = match error.code {
         ErrorCode::AuthDenied => StatusCode::FORBIDDEN,
-        ErrorCode::VaultNotFound | ErrorCode::OperationNotFound => StatusCode::NOT_FOUND,
+        ErrorCode::VaultNotFound | ErrorCode::OperationNotFound | ErrorCode::ResourceNotFound => {
+            StatusCode::NOT_FOUND
+        }
         ErrorCode::WriteBusy
         | ErrorCode::VaultNeedsRecovery
         | ErrorCode::PlanStale

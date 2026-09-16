@@ -49,6 +49,7 @@ kb source save [--yes | --confirm <TOKEN>] [--vault <PATH_OR_ID>] [--json]
 kb review [--vault <PATH_OR_ID>] [--json]
 kb maintain [--vault <PATH_OR_ID>] [--json]
 kb query <QUERY> [--scope wiki|sources|all] [--limit <1..100>] [--exact] [--strict-backend] [--vault <PATH_OR_ID>] [--json]
+kb read <RESOURCE_URI> [--cursor <CURSOR>] [--max-chars <N>] [--vault <PATH_OR_ID>] [--json]
 kb cache rebuild [--vault <PATH_OR_ID>] [--json]
 kb source verify [--vault <PATH_OR_ID>] [--json]
 kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
@@ -61,6 +62,8 @@ kb lint [--strict] [--vault <PATH_OR_ID>] [--json]
 `maintain` 是只读维护入口：聚合 Vault 状态、准入来源变化、Wiki lint 和 doctor 独立诊断。来源检查不创建 operation、确认 token 或入库记录；命令也不生成 Wiki、修复文件或重建缓存。和其他并发安全的读取命令一样，它可能在 `.kb/runtime` 创建空锁文件；该文件不承载知识或操作状态。摘要只使用各报告实际返回的字段。存在待恢复操作时，来源与 lint 明确返回 `not_checked`，而不是把跳过检查显示成正常。
 
 `query` 默认 `scope=wiki`、`limit=10`，并按相关性发现结果；`--exact` 改为区分大小写的字面量核验。空白查询或越界 limit 返回 `invalid_query`。`all` 固定返回 Wiki、来源两组，limit 分别作用于每组；不生成 LLM 回答。每个响应以 `match_mode` 报告实际采用的模式。相关性查询的 BM25 索引不可用时默认整次回退 direct 并返回 warning；`--strict-backend` 改为返回 `index_stale`。匹配、排序、解释和索引新鲜度规则见[搜索参考](search.md)。
+
+`read` 读取 `query` 或 `status` 返回的 `resource_uri`。默认每页最多 16000 个 Unicode 字符；`complete=false` 时把 `next_cursor` 原样传给下一次 `--cursor`。游标绑定资源和内容哈希，正文变化后旧游标返回 `resource_cursor_stale`。可读范围仅包括 `KB.md`、Wiki Markdown 和已保存的精确来源版本，不包括尚未保存的准入文件。
 
 `cache rebuild` 从实际文件重建轻量目录；启用 BM25 时同时增量维护字段索引。它不创建知识内容。`source verify` 核对来源记录引用的所有历史对象，逐项返回 `pass`、`fail` 或 `not_checked`。成功取得报告不代表所有对象通过：自动化必须检查各项状态；来源记录无法解析时整个命令失败。
 

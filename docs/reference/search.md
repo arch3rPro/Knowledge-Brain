@@ -33,7 +33,9 @@ Markdown 按 ATX 标题分段，围栏代码内的 `#` 不产生新章节。每�
 
 正文没有命中时，文档文件名/来源标题可产生元数据结果。返回每组最多 `limit` 条，默认 10，允许 1–100。摘要不超过 240 个 Unicode 字符，不跨到相邻章节。这是确定性的直接搜索，不是 BM25 分数。
 
-结果中的 `path` 指向 Wiki 文档或来源记录；`content_path` 指向实际命中文本（文档、记录或原始对象）。`line_start` 是 Markdown 或文本从 1 开始的章节行号；HTML、EPUB 和 DOCX 使用 `location` 返回格式原生位置。元数据命中的两种位置都为空。`source_uri` 提供精确版本引用；`heading`、`title`、`snippet` 和 `match_count` 供 CLI 或未来 UI 展示。
+结果中的 `resource_uri` 是后续完整读取和引用使用的稳定资源身份；`path_scope=server_vault` 表示 `path` 与 `content_path` 属于提供结果的 Vault，远程客户端不得把它们拼到自己的工作目录。`path` 指向 Wiki 文档或来源记录；`content_path` 指向实际命中文本（文档、记录或原始对象）。`line_start` 是 Markdown 或文本从 1 开始的章节行号；HTML、EPUB 和 DOCX 使用 `location` 返回格式原生位置。元数据命中的两种位置都为空。`source_uri` 提供精确版本引用；`heading`、`title`、`snippet` 和 `match_count` 供 CLI 或未来 UI 展示。
+
+`snippet` 最多 240 个 Unicode 字符，只用于选择候选结果，不能代替完整证据。选中结果后使用 `kb read <RESOURCE_URI>`、MCP `kb_read`/`resources/read` 或 HTTP `POST /resources/read` 读取正文；长内容按 `next_cursor` 继续，直到 `complete=true`。
 
 direct 结果的 `backend` 为 `direct`，`match_count` 表示直接命中次数；`score_micros` 和 `explanation` 为空。
 

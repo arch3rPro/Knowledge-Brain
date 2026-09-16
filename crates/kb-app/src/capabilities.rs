@@ -41,6 +41,7 @@ pub fn capabilities() -> Capabilities {
             "review",
             "maintain",
             "query",
+            "read",
             "lint",
             "cache",
             "source",

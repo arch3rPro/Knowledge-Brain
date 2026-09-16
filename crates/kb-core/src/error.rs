@@ -28,6 +28,12 @@ pub enum ErrorCode {
     UnsafePath,
     OperationNotFound,
     IoFailure,
+    InvalidResourceUri,
+    ResourceNotFound,
+    ResourceOutOfScope,
+    ResourceNotReadable,
+    ResourceCursorStale,
+    UnsupportedContentType,
 }
 
 /// A caller-facing application error with stable machine semantics.

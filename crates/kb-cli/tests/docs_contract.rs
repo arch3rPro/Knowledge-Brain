@@ -187,6 +187,10 @@ fn agent_skill_and_mcp_references_own_their_public_contracts() {
         "kb_update_plan",
         "kb_update_status",
         "kb_update_confirm",
+        "kb_read",
+        "resources/read",
+        "resource_uri",
+        "server_vault",
     ] {
         assert!(mcp.contains(contract), "missing MCP contract: {contract}");
     }
@@ -202,6 +206,8 @@ fn http_reference_documents_scoped_update_routes() {
         "confirmation_token",
         "固定 Vault",
         "--allow-write",
+        "POST /resources/read",
+        "resource_uri",
     ] {
         assert!(
             http.contains(contract),

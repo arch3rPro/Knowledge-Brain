@@ -187,7 +187,13 @@ kb query "<QUERY>" --scope wiki|sources|all --limit <LIMIT> --vault "<VAULT>" --
 - `all` 分组返回两类结果。
 - `--exact` 用于区分大小写的字面核验；普通查询用于相关性发现。
 
-引用结果时保留返回的路径、标题、位置和来源 URI。片段不足以支持结论时缩小查询或读取对应内容，不根据文件名补全结论。搜索后端与 BM25F 规则见[搜索参考](../reference/search.md)。
+查询片段只用于选择候选内容。选中结果后读取完整资源：
+
+```text
+kb read "<RESOURCE_URI>" --vault "<VAULT>" --json
+```
+
+如果返回 `complete=false`，继续传入 `next_cursor`，直到读取完成。引用结果时保留 `resource_uri`、标题、章节或来源位置，不根据文件名和片段补全结论。搜索后端与 BM25F 规则见[搜索参考](../reference/search.md)。
 
 ## 维护与诊断
 
@@ -232,6 +238,8 @@ kb update check --json
 ### MCP
 
 MCP 可以把固定 Vault 的能力提供给支持 MCP 的 Agent。它是 CLI 之上的可选入口：优先调用匹配的 MCP action，缺少对应 action 时回到 `kb --json`。MCP 默认只读；写入还要求服务以 `--allow-write` 启动，并且调用方已经取得用户对具体变化的一次确认。配置方式见[MCP 参考](../reference/mcp.md)。
+
+远程 MCP 流程固定为：调用 `kb_status` 取得 `rules_uri`，用 `kb_read` 读取规则，使用 `kb_query` 发现候选知识，再对选中结果的 `resource_uri` 调用 `kb_read` 读取完整正文。`path_scope=server_vault`、`path` 和 `content_path` 都属于服务器端 Vault，不能在 Agent 本地工作目录查找。支持标准 MCP Resources 的客户端也可使用 `resources/read`；不要假定每个宿主都会把 Resources 暴露给模型。
 
 本地子进程集成使用默认 stdio；需要远程或局域网连接时，显式使用 `kb mcp --transport streamable-http`。网络模式默认仅监听回环地址；非回环或写入模式必须配置 token，浏览器 Origin 必须显式准入。不要把独立的 `kb serve` HTTP API 当作 MCP endpoint。
 

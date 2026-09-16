@@ -145,7 +145,8 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     let (status, response) = request(&server, "GET", "/status", None, "").await;
     assert_eq!(status, 200);
     assert_eq!(response["schema_version"], "v1.0");
-    assert_eq!(response["data"]["root"], vault.display().to_string());
+    assert!(response["data"].get("root").is_none());
+    assert_eq!(response["data"]["access_mode"], "remote");
 
     let (status, response) = request(&server, "GET", "/maintenance", None, "").await;
     assert_eq!(status, 200);
@@ -179,6 +180,35 @@ async fn read_routes_use_the_shared_envelope_and_machine_errors() {
     let (status, response) = request(&server, "POST", "/query", None, &oversized).await;
     assert_eq!(status, 400);
     assert_eq!(response["error"]["code"], "invalid_config");
+}
+
+#[tokio::test]
+async fn resource_read_returns_complete_server_owned_content() {
+    let temporary = tempfile::tempdir().unwrap();
+    let context = context(temporary.path());
+    let vault = temporary.path().join("vault");
+    let initialized = initialize(&context, &vault);
+    fs::write(
+        vault.join("Wiki/articles/http-read.md"),
+        "# HTTP read\n\nComplete content.\n",
+    )
+    .unwrap();
+    let server = start(context, &vault, None, false).await;
+    let uri = format!(
+        "kb-vault://{}/Wiki/articles/http-read.md",
+        initialized["vault_id"].as_str().unwrap()
+    );
+    let body = json!({"resource_uri":uri,"max_chars":16000}).to_string();
+
+    let (status, response) = request(&server, "POST", "/resources/read", None, &body).await;
+
+    assert_eq!(status, 200, "{response}");
+    assert_eq!(response["data"]["resource_uri"], uri);
+    assert_eq!(
+        response["data"]["content"],
+        "# HTTP read\n\nComplete content.\n"
+    );
+    assert_eq!(response["data"]["complete"], true);
 }
 
 #[tokio::test]

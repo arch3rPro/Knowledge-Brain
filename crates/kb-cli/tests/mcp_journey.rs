@@ -11,6 +11,11 @@ fn real_mcp_process_exposes_query_match_mode_contract_over_stdio() {
     let temp = tempfile::tempdir().unwrap();
     let vault = temp.path().join("vault");
     run_cli(temp.path(), &["init", vault.to_str().unwrap(), "--json"]);
+    std::fs::write(
+        vault.join("Wiki/articles/readable.md"),
+        "# Readable\n\nneedle complete remote content\n",
+    )
+    .unwrap();
 
     let mut child = mcp_process(temp.path(), &vault, false);
     let mut stdin = child.stdin.take().unwrap();
@@ -47,6 +52,20 @@ fn real_mcp_process_exposes_query_match_mode_contract_over_stdio() {
     assert_eq!(
         omitted["result"]["structuredContent"]["data"]["match_mode"],
         "relevant"
+    );
+    let resource_uri =
+        omitted["result"]["structuredContent"]["data"]["groups"][0]["results"][0]["resource_uri"]
+            .as_str()
+            .unwrap();
+    send(
+        &mut stdin,
+        &json!({"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"kb_read","arguments":{"resource_uri":resource_uri}}}),
+    );
+    let read = receive(&mut stdout);
+    assert_eq!(read["result"]["isError"], false, "{read}");
+    assert_eq!(
+        read["result"]["structuredContent"]["data"]["content"],
+        "# Readable\n\nneedle complete remote content\n"
     );
 
     send(

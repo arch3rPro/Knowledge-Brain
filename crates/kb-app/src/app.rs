@@ -80,6 +80,10 @@ pub enum AppRequest {
         vault: Option<String>,
         request: kb_core::SearchRequest,
     },
+    Read {
+        vault: Option<String>,
+        request: kb_core::ResourceReadRequest,
+    },
     Lint {
         vault: Option<String>,
     },
@@ -352,6 +356,16 @@ pub fn run(request: AppRequest, context: &AppContext) -> Result<AppResponse, KbE
                 context.user_paths()?,
                 &context.overrides(),
             )?)
+        }
+        AppRequest::Read { vault, request } => {
+            let selected = select_vault(context, vault)?;
+            let _lock = VaultLock::acquire(&selected.root, LockMode::Shared, "read", None)?;
+            let config = crate::load_effective_config(
+                &selected.root,
+                context.user_paths()?,
+                &context.overrides(),
+            )?;
+            to_value(crate::read_resource(&selected.root, &config, &request)?)
         }
         AppRequest::Doctor { vault } => {
             let root = select_doctor_root(context, vault)?;

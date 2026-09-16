@@ -15,6 +15,18 @@ fn help_identifies_the_portable_cli() {
 }
 
 #[test]
+fn read_help_exposes_typed_resource_pagination() {
+    Command::cargo_bin("kb")
+        .unwrap()
+        .args(["read", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("RESOURCE_URI"))
+        .stdout(predicate::str::contains("--cursor"))
+        .stdout(predicate::str::contains("--max-chars"));
+}
+
+#[test]
 fn lint_help_explains_the_strict_exit_policy() {
     Command::cargo_bin("kb")
         .unwrap()

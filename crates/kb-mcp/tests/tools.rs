@@ -115,6 +115,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
     assert_eq!(initialized["id"], 1);
     assert_eq!(initialized["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(initialized["result"]["capabilities"]["tools"], json!({}));
+    assert!(initialized["result"]["capabilities"]["resources"].is_object());
 
     let listed = server
         .handle(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
@@ -132,6 +133,7 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
             "kb_status",
             "kb_maintenance",
             "kb_query",
+            "kb_read",
             "kb_lint",
             "kb_review_sources",
             "kb_source_save",
@@ -172,6 +174,15 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         status["result"]["structuredContent"]["data"]["vault_id"],
         vault_id
     );
+    assert_eq!(
+        status["result"]["structuredContent"]["data"]["access_mode"],
+        "remote"
+    );
+    assert!(
+        status["result"]["structuredContent"]["data"]
+            .get("root")
+            .is_none()
+    );
 
     let maintenance = call(&mut server, 5, "kb_maintenance", &json!({}));
     assert_eq!(maintenance["result"]["isError"], false);
@@ -192,6 +203,59 @@ fn fixed_vault_server_exposes_read_and_planning_tools_without_apply_by_default()
         &json!({"operation_id":"c9af2059-734c-4ce8-b76a-4b68f20584a1"}),
     );
     assert_eq!(denied["error"]["code"], -32602);
+}
+
+#[test]
+fn tool_and_standard_resources_read_the_same_server_owned_document() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized = kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    fs::write(
+        vault.join("Wiki/articles/remote.md"),
+        "# Remote\n\nComplete server-owned content.\n",
+    )
+    .unwrap();
+    let vault_id = initialized["vault_id"].as_str().unwrap();
+    let uri = format!("kb-vault://{vault_id}/Wiki/articles/remote.md");
+    let mut server = McpServer::new(context, vault_id.into(), false);
+
+    let listed = server
+        .handle(&json!({"jsonrpc":"2.0","id":1,"method":"resources/list","params":{}}))
+        .unwrap();
+    let resource_uris = listed["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|resource| resource["uri"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(resource_uris.contains(&format!("kb-vault://{vault_id}/KB.md").as_str()));
+    assert!(!resource_uris.contains(&uri.as_str()));
+
+    let via_resource = server
+        .handle(&json!({
+            "jsonrpc":"2.0","id":2,"method":"resources/read",
+            "params":{"uri":uri}
+        }))
+        .unwrap();
+    assert_eq!(via_resource["result"]["contents"][0]["uri"], uri);
+    assert_eq!(
+        via_resource["result"]["contents"][0]["text"],
+        "# Remote\n\nComplete server-owned content.\n"
+    );
+
+    let via_tool = call(&mut server, 3, "kb_read", &json!({"resource_uri":uri}));
+    assert_eq!(via_tool["result"]["isError"], false);
+    assert_eq!(
+        via_tool["result"]["structuredContent"]["data"]["content"],
+        "# Remote\n\nComplete server-owned content.\n"
+    );
 }
 
 fn assert_knowledge_change_schema(listed: &Value) {

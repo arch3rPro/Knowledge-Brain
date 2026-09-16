@@ -44,6 +44,10 @@ pub struct SearchHit {
     pub path: PortableRelativePath,
     pub content_path: PortableRelativePath,
     pub source_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_scope: Option<crate::ResourcePathScope>,
     pub title: String,
     pub heading: Option<String>,
     pub line_start: Option<u64>,

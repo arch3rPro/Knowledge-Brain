@@ -6,8 +6,8 @@ use crate::{
 };
 use kb_core::{
     CURRENT_SCHEMA_VERSION, Catalog, CatalogEntry, EffectiveConfig, KbError, MediaType,
-    PortableRelativePath, SearchGroup, SearchHit, SearchMatchMode, SearchMode, SearchRequest,
-    SearchResponse, SearchScope,
+    PortableRelativePath, ResourcePathScope, SearchGroup, SearchHit, SearchMatchMode, SearchMode,
+    SearchRequest, SearchResponse, SearchScope,
 };
 use serde::{Deserialize, Serialize};
 use std::{cmp::Reverse, collections::BTreeSet, fs, path::Path};
@@ -222,6 +222,12 @@ fn search_scope(
                 path: document.path.clone(),
                 content_path,
                 source_uri: document.source_uri.clone(),
+                resource_uri: Some(resource_uri(
+                    config.vault_id,
+                    &document.path,
+                    document.source_uri.as_deref(),
+                )),
+                path_scope: Some(ResourcePathScope::ServerVault),
                 title,
                 heading: block.heading,
                 line_start: block.line_start,
@@ -244,8 +250,14 @@ fn search_scope(
                 Reverse(true),
                 SearchHit {
                     path: document.path.clone(),
-                    content_path: document.path,
-                    source_uri: document.source_uri,
+                    content_path: document.path.clone(),
+                    source_uri: document.source_uri.clone(),
+                    resource_uri: Some(resource_uri(
+                        config.vault_id,
+                        &document.path,
+                        document.source_uri.as_deref(),
+                    )),
+                    path_scope: Some(ResourcePathScope::ServerVault),
                     title: document_title.clone(),
                     heading: None,
                     line_start: None,
@@ -276,6 +288,17 @@ fn search_scope(
             .map(|(_, _, _, hit)| hit)
             .collect(),
     })
+}
+
+fn resource_uri(
+    vault_id: uuid::Uuid,
+    path: &PortableRelativePath,
+    source_uri: Option<&str>,
+) -> String {
+    source_uri.map_or_else(
+        || format!("kb-vault://{vault_id}/{}", path.as_str()),
+        str::to_owned,
+    )
 }
 fn snippet(text: &str, phrase: &str, match_mode: SearchMatchMode) -> String {
     let line = text

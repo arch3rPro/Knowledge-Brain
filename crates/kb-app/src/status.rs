@@ -14,6 +14,8 @@ use crate::{
 pub struct StatusReport {
     pub root: std::path::PathBuf,
     pub vault_id: Uuid,
+    pub rules_uri: String,
+    pub wiki_index_uri: String,
     pub schema: SchemaStatus,
     pub template: TemplateInspection,
     pub configuration: ValidationState,
@@ -95,6 +97,8 @@ pub fn vault_status(
     Ok(StatusReport {
         root: root.to_path_buf(),
         vault_id: identity.vault_id,
+        rules_uri: format!("kb-vault://{}/KB.md", identity.vault_id),
+        wiki_index_uri: format!("kb-vault://{}/Wiki/index.md", identity.vault_id),
         schema: SchemaStatus {
             version: identity.schema_version,
             compatibility,

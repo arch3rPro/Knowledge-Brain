@@ -36,8 +36,8 @@ kb mcp --transport streamable-http \
 
 | 请求方式 | 支持版本 | 生命周期 |
 | --- | --- | --- |
-| initialize-based | `2025-11-25`、`2025-06-18`、`2025-03-26` | `initialize` → `notifications/initialized` → `tools/list` / `tools/call` |
-| modern | `2026-07-28` | `server/discover` → `tools/list` / `tools/call` |
+| initialize-based | `2025-11-25`、`2025-06-18`、`2025-03-26` | `initialize` → `notifications/initialized` → Tools 或 Resources |
+| modern | `2026-07-28` | `server/discover` → Tools 或 Resources |
 
 服务根据请求本身识别协议，不要求用户在客户端配置中手工添加版本或方法头。initialize-based 客户端在初始化后按所协商版本发送 `MCP-Protocol-Version`；modern 客户端按 `2026-07-28` 发送传输头和请求元数据。未知版本返回 `-32022 Unsupported protocol version`，不会静默回退为旧协议。
 
@@ -62,6 +62,7 @@ modern 请求还必须满足：`MCP-Protocol-Version` 和 `Mcp-Method` 与 JSON-
 | `kb_status` | 读取固定 Vault 的事实状态 |
 | `kb_maintenance` | 只读聚合状态、准入来源变化、lint 与诊断 |
 | `kb_query` | 查询 Wiki、来源或两者 |
+| `kb_read` | 按 `resource_uri` 读取完整服务端知识，支持分页 |
 | `kb_lint` | 检查 Wiki 结构和引用 |
 | `kb_source_save` | 准备来源保存，或提交已确认的准备结果 |
 | `kb_review_sources` | 审阅准入来源变化并创建计划 |
@@ -71,7 +72,11 @@ modern 请求还必须满足：`MCP-Protocol-Version` 和 `Mcp-Method` 与 JSON-
 | `kb_update_plan` | 为固定 Vault 创建完整更新预览，不执行变更 |
 | `kb_update_status` | 查看最新或指定的固定 Vault 更新状态 |
 
-`kb_query` 的完整参数与跨入口语义见[搜索参考](search.md)。默认不注册 `kb_apply_operation` 或 `kb_update_confirm`。显式传入 `--allow-write` 后才注册这两个工具，并允许保存工具使用 `confirmation_token` 或 `apply: true` 写入。`kb_update_confirm` 只接受 `{ "confirmation_token": "..." }`。
+`kb_query` 只负责发现候选知识，结果的 `snippet` 是预览。客户端使用 `resource_uri` 调用 `kb_read`，并在 `complete=false` 时携带 `next_cursor` 继续读取。`path_scope=server_vault` 表示返回路径位于 MCP 服务器管理的 Vault，Agent 不得在自己的本地工作目录查找该路径。完整搜索语义见[搜索参考](search.md)。
+
+服务同时声明标准 MCP Resources：`resources/list` 只列出 `KB.md` 和 Wiki 索引两个稳定入口，`resources/templates/list` 描述 `kb-vault://` 与 `kb-source://`，`resources/read` 读取精确资源。Tools-only 客户端使用 `kb_read`，两种入口调用同一应用读取能力。
+
+默认不注册 `kb_apply_operation` 或 `kb_update_confirm`。显式传入 `--allow-write` 后才注册这两个工具，并允许保存工具使用 `confirmation_token` 或 `apply: true` 写入。`kb_update_confirm` 只接受 `{ "confirmation_token": "..." }`。
 
 ## 确认与返回值
 

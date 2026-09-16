@@ -1,4 +1,4 @@
-use kb_app::AppContext;
+use kb_app::{AppContext, AppRequest, InitRequest};
 use kb_mcp::{MODERN_PROTOCOL_VERSION, McpServer};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path};
@@ -14,6 +14,7 @@ fn discovery_reports_the_modern_stateless_contract() {
         json!([MODERN_PROTOCOL_VERSION])
     );
     assert_eq!(response["result"]["capabilities"]["tools"], json!({}));
+    assert!(response["result"]["capabilities"]["resources"].is_object());
     assert_eq!(
         response["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
         "knowledge-brain"
@@ -86,6 +87,36 @@ fn stdio_entry_point_routes_modern_requests_without_breaking_notifications() {
         "params":{"_meta": metadata(MODERN_PROTOCOL_VERSION)}
     });
     assert!(server.handle(&notification).is_none());
+}
+
+#[test]
+fn modern_resources_read_accepts_protocol_metadata() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized = kb_app::run(
+        AppRequest::Init(InitRequest {
+            target: vault.clone(),
+        }),
+        &context,
+    )
+    .unwrap();
+    std::fs::write(
+        vault.join("Wiki/articles/modern.md"),
+        "# Modern\n\nReadable.\n",
+    )
+    .unwrap();
+    let vault_id = initialized["vault_id"].as_str().unwrap();
+    let server = McpServer::new(context, vault_id.into(), false);
+    let uri = format!("kb-vault://{vault_id}/Wiki/articles/modern.md");
+
+    let response = server.handle_modern(&request(9, "resources/read", json!({"uri":uri})));
+
+    assert_eq!(
+        response["result"]["contents"][0]["text"],
+        "# Modern\n\nReadable.\n"
+    );
+    assert_eq!(response["result"]["resultType"], "complete");
 }
 
 fn server() -> McpServer {

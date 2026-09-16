@@ -125,7 +125,7 @@ pub(crate) fn search(
     let path = safe_path(root, ".kb/cache/bm25.json")?;
     let index = read_index(&path)?;
     validate_current(root, scope, config, &index)?;
-    Ok(rank(scope, query, limit, &index))
+    Ok(rank(scope, query, limit, &index, config.vault_id))
 }
 
 pub(crate) fn validate_current_index(root: &Path, config: &EffectiveConfig) -> Result<(), KbError> {
@@ -402,7 +402,13 @@ pub(crate) fn tokenize(value: &str) -> Vec<String> {
     output
 }
 
-fn rank(scope: SearchScope, query: &str, limit: usize, index: &Index) -> SearchGroup {
+fn rank(
+    scope: SearchScope,
+    query: &str,
+    limit: usize,
+    index: &Index,
+    vault_id: uuid::Uuid,
+) -> SearchGroup {
     let query_terms = tokenize(query)
         .into_iter()
         .collect::<BTreeSet<_>>()
@@ -466,6 +472,10 @@ fn rank(scope: SearchScope, query: &str, limit: usize, index: &Index) -> SearchG
                 path: document.path.clone(),
                 content_path: chunk.content_path.clone(),
                 source_uri: document.source_uri.clone(),
+                resource_uri: Some(document.source_uri.clone().unwrap_or_else(|| {
+                    format!("kb-vault://{vault_id}/{}", document.path.as_str())
+                })),
+                path_scope: Some(kb_core::ResourcePathScope::ServerVault),
                 title: chunk
                     .heading
                     .clone()

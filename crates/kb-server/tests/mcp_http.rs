@@ -203,6 +203,35 @@ async fn initialize_based_clients_can_list_and_call_tools_over_http() {
     assert_eq!(status, 200, "{response}");
     assert!(headers.to_ascii_lowercase().contains("text/event-stream"));
     assert_eq!(sse_json(&response)["result"]["isError"], false);
+
+    let vault_id = std::fs::read_to_string(server.vault.join(".kb/config.yml"))
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix("vault_id: "))
+        .unwrap()
+        .trim_matches('"')
+        .to_owned();
+    let read = json!({
+        "jsonrpc":"2.0",
+        "id":4,
+        "method":"resources/read",
+        "params":{"uri":format!("kb-vault://{vault_id}/KB.md")}
+    });
+    let (status, _, response) = transport_request(
+        &server,
+        "POST",
+        "MCP-Protocol-Version: 2025-11-25\r\n",
+        &read,
+    )
+    .await;
+    assert_eq!(status, 200, "{response}");
+    let response = serde_json::from_str::<Value>(&response).unwrap();
+    assert!(
+        response["result"]["contents"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Knowledge-Brain")
+    );
 }
 
 #[tokio::test]

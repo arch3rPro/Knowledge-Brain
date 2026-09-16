@@ -47,6 +47,7 @@ mod operation;
 mod operation_events;
 mod operation_summary;
 mod registry;
+mod resource_read;
 mod schema;
 mod status;
 mod storage;
@@ -90,6 +91,7 @@ pub use operation_summary::{
 pub use registry::{
     VaultRecord, VaultRegistry, list_vaults, rebind_vault, register_vault, unregister_vault,
 };
+pub use resource_read::read_resource;
 pub use status::{
     AdmissionStatus, CacheStatus, RecoveryStatus, SchemaStatus, StatusReport, ValidationState,
     vault_status,

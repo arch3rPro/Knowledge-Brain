@@ -111,6 +111,16 @@ fn bm25f_boosts_fields_supports_cjk_and_explains_scores() {
         "Wiki/articles/title.md"
     );
     let hit = &result.groups[0].results[0];
+    assert!(
+        hit.resource_uri
+            .as_deref()
+            .unwrap()
+            .starts_with("kb-vault://")
+    );
+    assert_eq!(
+        hit.path_scope,
+        Some(kb_core::ResourcePathScope::ServerVault)
+    );
     assert_eq!(hit.backend, Some(SearchBackend::Bm25f));
     assert!(hit.score_micros.unwrap() > 0);
     assert!(

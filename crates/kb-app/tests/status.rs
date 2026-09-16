@@ -32,6 +32,14 @@ fn current_data_schema_and_old_template_are_reported_independently() {
 
     let report = vault_status(&vault, &paths, &ConfigOverrides::default()).unwrap();
 
+    assert_eq!(
+        report.rules_uri,
+        format!("kb-vault://{}/KB.md", report.vault_id)
+    );
+    assert_eq!(
+        report.wiki_index_uri,
+        format!("kb-vault://{}/Wiki/index.md", report.vault_id)
+    );
     assert_eq!(report.schema.compatibility, SchemaCompatibility::Current);
     assert_eq!(report.template.version, Some(SchemaVersion::new(1, 1)));
     assert_eq!(report.template.latest, SchemaVersion::new(1, 3));
