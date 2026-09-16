@@ -40,7 +40,7 @@ fn real_mcp_process_exposes_query_match_mode_contract_over_stdio() {
 
     send(
         &mut stdin,
-        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"needle"}}}),
+        &json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kb_query","arguments":{"query":"needle"},"_meta":{}}}),
     );
     let omitted = receive(&mut stdout);
     assert_eq!(omitted["result"]["isError"], false, "{omitted}");

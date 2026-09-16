@@ -85,9 +85,7 @@ pub(crate) fn handle_modern(server: &McpServer, request: &Value) -> Value {
             )
         }
         "tools/call" => {
-            let mut call_params = params;
-            call_params.remove("_meta");
-            let legacy = server.call_tool(id, Value::Object(call_params));
+            let legacy = server.call_tool(id, Value::Object(params));
             match legacy.get("result").cloned() {
                 Some(result) => complete(id, result),
                 None => legacy,

@@ -264,7 +264,10 @@ impl McpServer {
         tools
     }
 
-    pub(crate) fn call_tool(&self, id: &Value, params: Value) -> Value {
+    pub(crate) fn call_tool(&self, id: &Value, mut params: Value) -> Value {
+        if let Some(params) = params.as_object_mut() {
+            params.remove("_meta");
+        }
         let Ok(call) = serde_json::from_value::<ToolCall>(params) else {
             return protocol_error(id, -32602, "Invalid tools/call parameters.");
         };

@@ -7,6 +7,31 @@ const OLD_KB: &str = include_str!("../../../assets/vault-template-history/v1.1/K
 const OLD_MANIFEST: &str = include_str!("../../../assets/vault-template-history/v1.1/template.yml");
 
 #[test]
+fn legacy_tools_call_accepts_empty_sdk_metadata() {
+    let temp = tempfile::tempdir().unwrap();
+    let context = context(temp.path());
+    let vault = temp.path().join("vault");
+    let initialized =
+        kb_app::run(AppRequest::Init(InitRequest { target: vault }), &context).unwrap();
+    let mut server = McpServer::new(
+        context,
+        initialized["vault_id"].as_str().unwrap().to_owned(),
+        false,
+    );
+
+    let response = server
+        .handle(&json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"tools/call",
+            "params":{"name":"kb_status","arguments":{},"_meta":{}}
+        }))
+        .unwrap();
+
+    assert_eq!(response["result"]["isError"], false, "{response}");
+}
+
+#[test]
 fn operation_show_preserves_plan_and_result_roots_with_additive_summary() {
     let temp = tempfile::tempdir().unwrap();
     let context = context(temp.path());
